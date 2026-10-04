@@ -1034,4 +1034,31 @@ class ClaudeHistoryTest {
         assertTrue(first.contains("go on"))
         assertTrue(read <= 2, "read $read lines to hand over one")
     }
+
+    // A rewind leaves its dropped turns in the file (see TranscriptRewinds). A pass that met its mark says
+    // so, and the page and the count are read again without them - a file without a mark is read once.
+    @Test
+    fun `a rewound conversation is paged and counted without what the rewind took out`() {
+        val lines = listOf(
+            """{"parentUuid":null,"isSidechain":false,"type":"user","message":{"role":"user","content":"APPLE"},"uuid":"a1"}""",
+            """{"parentUuid":"a1","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"OK"}]},"type":"assistant","uuid":"r1"}""",
+            """{"parentUuid":"r1","isSidechain":false,"type":"user","message":{"role":"user","content":"BANANA"},"uuid":"b1"}""",
+            """{"parentUuid":"b1","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"OK"}]},"type":"assistant","uuid":"r2"}""",
+            """{"type":"last-prompt","leafUuid":"r1","explicit":true,"rewound":true,"sessionId":"s"}""",
+            """{"parentUuid":"r1","isSidechain":false,"type":"user","message":{"role":"user","content":"CHERRY"},"uuid":"c1"}""",
+        )
+
+        val first = ClaudeHistory.tailOf(lines.asSequence(), before = null, pageSize = 60)
+        assertTrue(first.rewound)
+        assertEquals(3, ClaudeHistory.scan(lines.asSequence()).messages)
+
+        val alive = TranscriptRewinds.alive(lines.asSequence(), TranscriptRewinds.cutLines(lines.asSequence()))
+        val page = ClaudeHistory.tailOf(alive, before = null, pageSize = 60).window.lines
+
+        assertTrue(page.none { it.contains("BANANA") })
+        assertTrue(page.any { it.contains("APPLE") } && page.any { it.contains("CHERRY") })
+        assertEquals(2, ClaudeHistory.scan(TranscriptRewinds.alive(lines.asSequence(), TranscriptRewinds.cutLines(lines.asSequence()))).messages)
+        assertTrue(ClaudeHistory.scan(lines.asSequence()).rewound)
+        assertTrue(!ClaudeHistory.tailOf(lines.take(4).asSequence(), before = null, pageSize = 60).rewound)
+    }
 }

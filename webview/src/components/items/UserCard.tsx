@@ -8,6 +8,7 @@ import { chipFile, chipLabel, chipTitle, pasteBlockPreview, pasteBody, pasteLine
 import { COPY_ATTRIBUTE } from '../../feed/copy'
 import { clipboardMessage, clipboardText } from '../../feed/tokens'
 import { reusableMessage } from '../../feed/reuse'
+import { rewindable } from '../../feed/rewind'
 import type { Chip, ChipKind, UserItem } from '../../feed/types'
 import type { CardState } from '../../hooks/useCardState'
 import { useOpenFile } from '../../hooks/useOpenFile'
@@ -52,6 +53,14 @@ interface UserCardProps {
    */
   onReuse?: (item: UserItem) => void
   /**
+   * Open the rewind dialog over this message - cut the conversation back to before it, put the code back,
+   * or both (see RewindDialog and feed/rewind.ts).
+   *
+   * Absent where the conversation is not one's own to cut: a step log of a scenario, a phone (its sheet
+   * behind the three dots carries the same action, see MessageSheet).
+   */
+  onRewind?: (item: UserItem) => void
+  /**
    * Pin this message over the conversation, or unpin it (see feed/pins.ts). Absent where there is no
    * strip to pin it to - the phone, the same way the reuse button is absent there.
    */
@@ -73,6 +82,7 @@ export const UserCard = ({
   userLabel,
   onOpenLink,
   onReuse,
+  onRewind,
   onPin,
   pinned,
   pinsFull,
@@ -86,6 +96,7 @@ export const UserCard = ({
    */
   const reuse = useMemo(() => reusableMessage(item), [item])
   const copied = useMemo(() => clipboardMessage(item), [item])
+  const rewind = rewindable(item)
 
   return (
   <div className={s.user}>
@@ -117,6 +128,26 @@ export const UserCard = ({
             onClick={() => onReuse(item)}
           >
             <ReuseArrow />
+          </button>
+        ) : null}
+
+        {/* Last, because it is the one that takes something away: this message and everything after it
+            leave the conversation (the dialog asks first, and says what else goes). A message written
+            into a running turn shows the button dead and says why, rather than hiding it - a missing
+            button on one card of many reads as a broken one. A message the panel never named (sent before
+            it named them) has nothing to rewind by, and no button. */}
+        {onRewind && rewind !== 'unnamed' ? (
+          <button
+            type="button"
+            // Dead the way a full strip's pin is dead (see PinButton): `aria-disabled` and no handler, so
+            // the hover hint - the one line that says why - still appears.
+            className={`${s.userAction} ${rewind === 'steering' ? s.pinDead : ''}`}
+            aria-label={t.feed.rewind.label}
+            aria-disabled={rewind === 'steering' || undefined}
+            data-tooltip={rewind === 'steering' ? t.feed.rewind.steering : t.feed.rewind.hint}
+            onClick={rewind === 'steering' ? undefined : () => onRewind(item)}
+          >
+            <RewindArrow />
           </button>
         ) : null}
 
@@ -216,6 +247,18 @@ export const ReuseArrow = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <path d="M3.4 6.6h6.4a3 3 0 0 1 0 6H6.2" />
     <path d="M5.8 4.2 3.4 6.6l2.4 2.4" />
+  </svg>
+)
+
+/**
+ * An arrow turning back round a circle - "go back to how it was here". The circle is what tells it from the
+ * reuse arrow beside it, which takes a message somewhere rather than taking time back.
+ */
+const RewindArrow = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3.2 8a4.8 4.8 0 1 0 1.4-3.4" />
+    <path d="M3.4 2.6v2.6h2.6" />
+    <path d="M8 5.6V8l1.7 1.2" />
   </svg>
 )
 

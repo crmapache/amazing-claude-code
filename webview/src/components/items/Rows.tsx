@@ -23,6 +23,8 @@ import type {
 } from '../../feed/types'
 import s from '../feed.module.css'
 import { Caret } from './Caret'
+import { FORK_WHOLE, forkCodeOf } from '../../feed/rewind'
+import { refusalWords } from '../RewindDialog'
 
 /**
  * The thoughts of one piece of a turn go into one card, with the last of them showing outside.
@@ -76,8 +78,14 @@ export const ThinkRow = ({ item, open, onToggle }: { item: ThinkItem; open: bool
 export const CheckpointRow = ({ item, onLoadEarlier }: { item: CheckpointItem; onLoadEarlier?: () => void }) => {
   const t = useT()
   // A mark the panel worded itself says it in today's language; one carrying the conversation's own
-  // words (a fork's name, a compaction's summary) says them as they are.
-  const target = item.targetKey ? t.feed.checkpoint[item.targetKey] : item.target
+  // words (a compaction's summary) says them as they are. A fork's mark is both: the panel's sentence
+  // around the parent's title, which is the conversation's (see CheckpointKey).
+  const target =
+    item.targetKey === 'forked' || item.targetKey === 'forkedAt'
+      ? t.feed.checkpoint[item.targetKey](item.target)
+      : item.targetKey
+        ? t.feed.checkpoint[item.targetKey]
+        : item.target
 
   return onLoadEarlier ? (
     // The row sits inside the button rather than being it: a fingertip's worth of height belongs to the
@@ -495,7 +503,8 @@ export const ErrorRow = ({
             https://status.claude.com" asks one to go and look. So it stays a link, as in the agent's
             answer (see LinkedText). */}
         <span className={s.errorText}>
-          <LinkedText text={item.message} onOpenLink={onOpenLink} />
+          {/* The two refusals the IDE says as codes - the panel words them (see FORK_WHOLE, FORK_CODE). */}
+          <LinkedText text={errorWords(t, item.message)} onOpenLink={onOpenLink} />
         </span>
 
         {offered ? (
@@ -552,4 +561,11 @@ export const ErrorRow = ({
       </button>
     </div>
   )
+}
+
+/** An error row's text: the IDE's own words, or the panel's for the codes it says instead (see feed/rewind.ts). */
+const errorWords = (t: ReturnType<typeof useT>, message: string): string => {
+  if (message === FORK_WHOLE) return t.feed.forkWhole
+  const code = forkCodeOf(message)
+  return code ? t.feed.forkCode(refusalWords(t, code)) : message
 }

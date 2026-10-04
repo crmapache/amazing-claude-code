@@ -16,6 +16,7 @@ class ClaudeLaunchTest {
         allowBypassSwitch: Boolean = true,
         briefing: String = ClaudeLaunch.PANEL_BRIEFING,
         settingSources: String = SettingSources.ALL,
+        forkAt: String? = null,
     ) = ClaudeLaunch.arguments(
         model = model,
         effort = effort,
@@ -25,6 +26,7 @@ class ClaudeLaunchTest {
         allowBypassSwitch = allowBypassSwitch,
         briefing = briefing,
         settingSources = settingSources,
+        forkAt = forkAt,
     )
 
     private fun briefingOf(args: List<String>): String = args[args.indexOf(ClaudeLaunch.BRIEFING_FLAG) + 1]
@@ -246,5 +248,27 @@ class ClaudeLaunchTest {
     @Test
     fun `settings of our own are not slipped to the conversation`() {
         assertFalse("--settings" in arguments(model = "opus", effort = "xhigh"))
+    }
+
+    // A fork from a message carries the parent only as far as the line before it (see
+    // TranscriptRewinds.anchorBefore); the flag rides with the fork and with nothing else.
+    @Test
+    fun `a fork cut at a message says where, and only a fork does`() {
+        val forked = arguments(forkFrom = "parent-1", forkAt = "line-7")
+        assertEquals("line-7", forked[forked.indexOf(ClaudeLaunch.FORK_AT_FLAG) + 1])
+        assertTrue(forked.indexOf(ClaudeLaunch.FORK_AT_FLAG) > forked.indexOf("--fork-session"))
+
+        assertFalse(ClaudeLaunch.FORK_AT_FLAG in arguments(forkFrom = "parent-1"))
+        // Continuing its own conversation, a fork is a conversation like any other.
+        assertFalse(ClaudeLaunch.FORK_AT_FLAG in arguments(conversationId = "fork-1", forkFrom = "parent-1", forkAt = "line-7"))
+    }
+
+    // A streaming launch keeps no copies of files unless asked - and the panel asks by the person's own
+    // `checkpoints` setting, never past it.
+    @Test
+    fun `copies of files are asked for exactly when the setting is on`() {
+        assertEquals("1", ClaudeLaunch.environment(emptyMap(), fileCheckpoints = true)[ClaudeLaunch.CHECKPOINTS_VARIABLE])
+        assertFalse(ClaudeLaunch.CHECKPOINTS_VARIABLE in ClaudeLaunch.environment(emptyMap(), fileCheckpoints = false))
+        assertFalse(ClaudeLaunch.CHECKPOINTS_VARIABLE in ClaudeLaunch.environment(emptyMap()))
     }
 }

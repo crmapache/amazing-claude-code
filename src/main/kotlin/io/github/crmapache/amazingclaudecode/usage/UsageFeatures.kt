@@ -43,6 +43,7 @@ internal object UsageFeatures {
         "ask_answer",
         "subagent_window",
         "message_reuse",
+        "rewind",
         "pin",
         "open_in_editor",
         "send_selection",
@@ -154,6 +155,7 @@ internal object UsageFeatures {
         "stopTask",
         "sideQuestion",
         "sideQuestionCancel",
+        "rewind",
         "resumeSession",
         "search",
         "searchAi",
@@ -201,6 +203,9 @@ internal object UsageFeatures {
         "ready",
         "history",
         "historyPage",
+        // The rewind dialog asking what the code part would touch - it opens with the dialog; the press
+        // is the rewind itself.
+        "rewindPreview",
         "searchCancel",
         "renameSession",
         "mcpList",
@@ -244,6 +249,7 @@ internal object UsageFeatures {
         "stopTask" -> "stop_task"
         "bash" -> "bash_mode"
         "sideQuestion" -> "side_question"
+        "rewind" -> "rewind"
         "improvePrompt" -> "improve_prompt"
         "setModel" -> "model_switch"
         "setEffort" -> "effort_switch"

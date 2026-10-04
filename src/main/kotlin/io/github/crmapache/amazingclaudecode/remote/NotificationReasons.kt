@@ -45,6 +45,9 @@ internal object NotificationReasons {
      */
     const val EXTRA_USAGE = "extraUsage"
 
+    /** The end of a turn - named for whoever has to tell it from the rest (see ClaudeSessionHub.broadcast). */
+    const val TURN_FINISHED = "turnFinished"
+
     /**
      * By default everything calls except the end of a turn.
      *
@@ -113,7 +116,7 @@ internal object NotificationReasons {
             // message, fourteen of them untrue. The panel has always known this - its finished sound goes
             // by the same reading of its own task cards (see workGoesOn in feed/build.ts) - and the phone
             // did not, because there is no feed on this side to read it from.
-            return if (after.pendingAgents.isNotEmpty()) null else "turnFinished"
+            return if (after.pendingAgents.isNotEmpty()) null else TURN_FINISHED
         }
 
         return null

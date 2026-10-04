@@ -15,8 +15,8 @@ import { owns, type Product } from './products.js'
  * the side menu opened, and "setting:<name>" for a setting changed.
  *
  * The two plugins share the panel, so most of every list is shared; what is left is the agent underneath.
- * ACX (the Codex fork) has no stopping of one background task (`app-server` has no such request) and no
- * Claude Design sign-in, no Claude Code settings screens, and has Codex's project trust and settings instead.
+ * ACX (the Codex fork) has no stopping of one background task (`app-server` has no such request), no rewind,
+ * no Claude Design sign-in, no Claude Code settings screens, and has Codex's project trust and settings instead.
  */
 
 export interface FeatureLabel {
@@ -100,6 +100,8 @@ export const FEATURES: Record<Product, Record<string, FeatureLabel>> = {
   acc: {
     ...SHARED_FEATURES,
     stop_task: { group: 'conversation', label: 'Stop a background task' },
+    // Claude Code's rewind_conversation/rewind_files - Codex's app-server has nothing like them yet.
+    rewind: { group: 'conversation', label: 'Rewind a conversation to an earlier message' },
     plugins_manage: { group: 'manage', label: 'Install or manage a Claude Code plugin' },
     account_add: { group: 'manage', label: 'Add a Claude account' },
     account_switch: { group: 'manage', label: 'Switch Claude account' },

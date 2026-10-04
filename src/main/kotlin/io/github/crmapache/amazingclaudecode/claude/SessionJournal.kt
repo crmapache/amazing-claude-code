@@ -277,6 +277,33 @@ internal class SessionJournal(
         dropped = 0
     }
 
+    /**
+     * Drop the entry that first mentions [marker] and everything after it - the conversation was cut back
+     * to before that message (see ClaudeSessionHub.rewind). Returns the number the dropped stretch began at.
+     *
+     * No entry mentions it: the message is older than everything here - a page of the history read past
+     * the journal, or a head the journal let go of - and the CLI did cut there, so all of it goes. Kept,
+     * it came back to every window opened later, under the very mark of the rewind that removed it.
+     *
+     * The numbering carries on, exactly as after a [reset]: the entry that says what happened is appended
+     * right after this, under the same lock, and carries the number returned here. A client without the
+     * message that holds anything numbered from it on was handed part of what was dropped, and everything it
+     * holds came after the message - it clears it all (the phone handed the end of a conversation). A client
+     * whose last number is below it was built from the journal after the cut, and holds what was kept.
+     */
+    @Synchronized
+    fun cutFrom(marker: String): Long {
+        val found = entries.indexOfFirst { it.json.contains(marker) }
+        val at = if (found < 0) 0 else found
+        val from = entries.getOrNull(at)?.seq ?: nextSeq
+
+        while (entries.size > at) {
+            val removed = entries.removeLast()
+            chars -= removed.json.length
+        }
+        return from
+    }
+
     private fun trim() {
         while (entries.size > maxEntries || (chars > maxChars && entries.size > 1)) {
             val removed = entries.removeFirst()

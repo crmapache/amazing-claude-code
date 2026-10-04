@@ -2967,41 +2967,6 @@ describe('compacting the context', () => {
   })
 })
 
-describe('the branch and the PR from the background polling', () => {
-  it('lets the branch arrive in its own message, apart from the PR - without wiping a known PR', () => {
-    let state = reducePanel(initialPanelState, {
-      kind: 'project',
-      pullRequest: '42',
-      pullRequestUrl: 'https://github.com/x/y/pull/42',
-    })
-    state = reducePanel(state, { kind: 'project', gitBranch: 'feature/foo' })
-
-    expect(state.project?.gitBranch).toBe('feature/foo')
-    expect(state.project?.pullRequest).toBe('42')
-    expect(state.project?.pullRequestUrl).toBe('https://github.com/x/y/pull/42')
-  })
-
-  it('lets the PR arrive in its own message, apart from the branch - without wiping a known branch', () => {
-    let state = reducePanel(initialPanelState, { kind: 'project', gitBranch: 'main' })
-    state = reducePanel(state, { kind: 'project', pullRequest: '7', pullRequestUrl: 'https://github.com/x/y/pull/7' })
-
-    expect(state.project?.gitBranch).toBe('main')
-    expect(state.project?.pullRequest).toBe('7')
-  })
-
-  it('lets an empty string from a fresh PR check explicitly clear the old number rather than keep it', () => {
-    let state = reducePanel(initialPanelState, {
-      kind: 'project',
-      pullRequest: '42',
-      pullRequestUrl: 'https://github.com/x/y/pull/42',
-    })
-    state = reducePanel(state, { kind: 'project', pullRequest: '', pullRequestUrl: '' })
-
-    expect(state.project?.pullRequest).toBe('')
-    expect(state.project?.pullRequestUrl).toBe('')
-  })
-})
-
 describe('the context indicator', () => {
   it('does not let contextUsage divide by zero on a zero or negative limit', () => {
     const usage = { input_tokens: 100, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
@@ -3520,6 +3485,19 @@ describe('the end of a past conversation replay', () => {
 
       expect(askOf(state)?.answered).toBe(true)
       expect(askOf(state)?.historic).toBe(true)
+    })
+
+    // The answer is the result of the agent's own call, in the middle of its turn: cut before it, a fork would
+    // carry the call without its answer, and a rewind to it is refused by the CLI. Drawn as a message, it is
+    // marked as one said inside a turn (see rewindable and forkPointAfter in feed/rewind.ts).
+    it('draws the answer as a message said inside the turn, not one that starts a turn', () => {
+      const state = finish(
+        replay([askEvent('ask-1'), { ...answeredEvent('ask-1', { 'Which option shall I make?': 'The first' }), uuid: 'u-ans' } as AgentEvent]),
+      )
+      const answer = state.items.find((item): item is UserItem => item.kind === 'user')
+
+      expect(answer?.uuid).toBe('u-ans')
+      expect(answer?.steering).toBe(true)
     })
 
     /** A question closed with the cross leaves a refusal rather than answers, and it is closed all the same. */
@@ -4168,5 +4146,114 @@ describe('the time under an answer counts the request rather than its last turn'
     state = reducePanel(state, { kind: 'agent', event: resultEvent(60_000) }, minute(5))
 
     expect(durations(state)).toEqual(['1m 00s'])
+  })
+})
+
+describe('a conversation cut back by a rewind', () => {
+  const NOW = 1_700_000_000_000
+  const prompt = (state: PanelState, text: string, uuid?: string, steering = false): PanelState =>
+    reducePanel(
+      state,
+      { kind: 'prompt', tokens: [{ kind: 'text', value: text }], quotes: [], ...(uuid ? { uuid } : {}), steering },
+      NOW,
+    )
+  const users = (state: PanelState) =>
+    state.items.filter((item): item is UserItem => item.kind === 'user').map((item) => item.tokens)
+
+  /** Three turns, each a message and its answer - the conversation every case below starts from. */
+  const threeTurns = (): PanelState => {
+    let state = prompt(initialPanelState, 'first', 'u-1')
+    state = play([textEvent('one'), resultEvent(1000)], state)
+    state = prompt(state, 'second', 'u-2')
+    state = play([textEvent('two'), resultEvent(1000)], state)
+    state = prompt(state, 'third', 'u-3')
+    return play([textEvent('three'), resultEvent(1000)], state)
+  }
+
+  it('keeps the name a message was sent under, and whether it went into a running turn', () => {
+    const state = prompt(prompt(initialPanelState, 'first', 'u-1'), 'by the way', 'u-2', true)
+    const sent = state.items.filter((item): item is UserItem => item.kind === 'user')
+
+    expect(sent.map((item) => item.uuid)).toEqual(['u-1', 'u-2'])
+    expect(sent.map((item) => item.steering === true)).toEqual([false, true])
+  })
+
+  it('drops the message and everything after it, and marks where', () => {
+    const cut = reducePanel(threeTurns(), { kind: 'rewound', uuid: 'u-2' }, NOW)
+
+    expect(users(cut)).toEqual([[{ kind: 'text', value: 'first' }]])
+    expect(cut.items.some((item) => item.kind === 'text' && item.source === 'two')).toBe(false)
+    expect(cut.items.some((item) => item.kind === 'text' && item.source === 'one')).toBe(true)
+    expect(cut.items.at(-1)).toMatchObject({ kind: 'checkpoint', chip: 'REWIND', targetKey: 'rewound' })
+    expect(cut.status).toBe('idle')
+  })
+
+  it('stops a turn that was running, answer being printed and all', () => {
+    let state = prompt(threeTurns(), 'fourth', 'u-4')
+    state = reducePanel(state, { kind: 'agent', event: { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'hal' } } } }, NOW)
+    expect(state.status).toBe('running')
+
+    const cut = reducePanel(state, { kind: 'rewound', uuid: 'u-4' }, NOW)
+    expect(cut.status).toBe('idle')
+    expect(cut.turnStartedAt).toBeUndefined()
+    expect(cut.streamingText).toBe('')
+    expect(users(cut)).toHaveLength(3)
+  })
+
+  it('takes the pins on the dropped rows with them and keeps the rest', () => {
+    let state = threeTurns()
+    const first = state.items.find((item) => item.kind === 'user')!
+    const last = [...state.items].reverse().find((item) => item.kind === 'text')!
+    state = reducePanel(reducePanel(state, { kind: 'pin', id: first.id }, NOW), { kind: 'pin', id: last.id }, NOW)
+
+    const cut = reducePanel(state, { kind: 'rewound', uuid: 'u-2' }, NOW)
+    expect(cut.pins).toEqual([first.id])
+  })
+
+  it('puts the task list back to the last one the kept part had', () => {
+    let state = prompt(initialPanelState, 'plan it', 'u-1')
+    state = play([toolUseEvent('t1', 'TodoWrite', { todos: [{ content: 'Build', status: 'pending' }] }), resultEvent(1000)], state)
+    state = prompt(state, 'go on', 'u-2')
+    state = play([toolUseEvent('t2', 'TodoWrite', { todos: [{ content: 'Build', status: 'completed' }, { content: 'Ship', status: 'pending' }] })], state)
+
+    const cut = reducePanel(state, { kind: 'rewound', uuid: 'u-2' }, NOW)
+    expect(Object.values(cut.tasks).map((todo) => [todo.text, todo.state])).toEqual([['Build', 'todo']])
+  })
+
+  // A window opened on a journal the rewind has already cut: what it holds is what was kept.
+  it('leaves the feed alone apart from the mark when the message is not in it', () => {
+    const state = threeTurns()
+    const cut = reducePanel(state, { kind: 'rewound', uuid: 'not-here' }, NOW)
+
+    expect(users(cut)).toEqual(users(state))
+    expect(cut.items.at(-1)).toMatchObject({ kind: 'checkpoint', targetKey: 'rewound' })
+  })
+
+  // A window holding only the end of the conversation - the phone's tail, a journal that let its head go - and
+  // a rewind to a message older than all of it: everything it shows came after the cut.
+  it('drops everything when all it holds came after the cut, and keeps the mark above it', () => {
+    let state = reducePanel(initialPanelState, { kind: 'checkpoint', chip: 'EARLIER', target: '', targetKey: 'notOnPhone' }, NOW)
+    state = prompt(state, 'fifth', 'u-5')
+    state = play([textEvent('five'), resultEvent(1000)], state)
+
+    const cut = reducePanel(state, { kind: 'rewound', uuid: 'u-1', all: true }, NOW)
+
+    expect(users(cut)).toEqual([])
+    expect(cut.items.some((item) => item.kind === 'text')).toBe(false)
+    expect(cut.items[0]).toMatchObject({ kind: 'checkpoint', targetKey: 'notOnPhone' })
+    expect(cut.items.at(-1)).toMatchObject({ kind: 'checkpoint', targetKey: 'rewound' })
+  })
+
+  it('cuts at the message when it has it, whatever the window held', () => {
+    const cut = reducePanel(threeTurns(), { kind: 'rewound', uuid: 'u-2', all: true }, NOW)
+
+    expect(users(cut)).toEqual([[{ kind: 'text', value: 'first' }]])
+  })
+
+  it('does not stack marks when it is rewound twice in a row', () => {
+    const once = reducePanel(threeTurns(), { kind: 'rewound', uuid: 'u-3' }, NOW)
+    const twice = reducePanel(once, { kind: 'rewound', uuid: 'missing' }, NOW)
+
+    expect(twice.items.filter((item) => item.kind === 'checkpoint')).toHaveLength(1)
   })
 })

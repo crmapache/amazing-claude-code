@@ -48,6 +48,8 @@ paths:
 - `latestTodo` (список задач из реплея не всплывает) - history
 - выбор из истории, какую вкладку занять - history
 - `branchFrom` / форк и шкала контекста форка - fork-tabs
+- `fork(quote, point)`, `forkWhole`, `forkable`, разрез из выделения (`forkPointAfter`) - fork-tabs
+- `openRewind`, `confirmRewind`, `rewindOutcome`, `rewindInFork`, `rewinding`, `case 'rewindPreview'`/`'rewound'`, `uuid` в `submit` - rewind
 - `startingModel`, `setCustomModels`, `stuckPick`, `onBorn` - models
 - `jumping`, `resetSearch`, эффект над `sessions` - search
 - `watchedRuns`, `scenariosView`, `scenariosShown`, `runRecords`, `case 'scenarioLog'` - scenarios
@@ -68,7 +70,8 @@ paths:
 - `claudeConfig*` состояние, `openClaudeConfig`, `case 'claudeConfig'`, `config` в `runLocal` - claude-config
 - хоткеи поверх панели, пока собирается иероглиф - composer-field
 - `sideThreads`, `askAside`, `forgetSide`, `case 'sideAnswer'`/`'sideProgress'`, Esc над карточкой вопроса сбоку, `SideQuestionCard` в `dockCards` - btw
-- только в `mobile/App.tsx`: `openMachineScreen`, `openRepository`, `Door`/`from`, `edit.home`/`edit.origin` -
+- только в `mobile/App.tsx`: `PhoneRewind`, `refills`, `RewindSheet` - rewind; `forkFrom`/`forkWhole` (`kind: 'branch'`, `before`) - fork-tabs;
+  `openMachineScreen`, `openRepository`, `Door`/`from`, `edit.home`/`edit.origin` -
   remote-access и scenarios; `vividOf` - calm-colors; `case 'effort'` в `mobile/feed.ts` - models
 
 **`webview/src/protocol.ts`**:
@@ -87,6 +90,8 @@ paths:
 - `EditorRef`, `editorContext`, `shareEditor`, `setShareEditor`, `editor` у `prompt`/`queuePrompt`/`promptEcho` - editor-context
 - `TitleSource` (`'user'`), `nameSession`, `titleSource` у `SearchHit` - tab-names
 - `usageStats`, `usageStatsReport`, `setUsageStats`, `usageStatsPreview`, `stat` с `kind: 'feature'` - usage-stats
+- `rewind`, `rewindPreview`, `rewindOutcome`, `rewound`, `RewindCode`, `RewindRefusal`, `uuid` у `prompt`/`promptEcho` - rewind;
+  `before` у `newSession` - fork-tabs
 
 **`webview/src/feed/build.ts`** (редьюсер ленты):
 - `TodoWrite`/`TaskCreate`/`TaskUpdate`, `tasksCarried`, `pendingTasks` - task-list
@@ -101,6 +106,7 @@ paths:
 - `case 'outranked'` и `OutrankedItem`, `overSampling` и метки `addError` - setting-sources
 - в состояние кладутся признаки, а не слова - i18n
 - `editorOfBlocks` в `addReplayedPrompt`, `editor` у действия `prompt` - editor-context
+- `applyRewound`, `case 'rewound'`, `uuid`/`steering` у действия `prompt` - rewind
 
 **`webview/src/feed/types.ts`** и **`webview/src/feed/panelState.ts`**:
 - `DraftEdit` - prompt-improver; `ErrorItem.signIn` - expired-sign-in; `ErrorItem.sampling` - setting-sources;
@@ -153,15 +159,16 @@ paths:
 - `stats` - stats; круг сна простаивающих - idle-sleep; прогрев `ClaudeHome` - claude-home
 - `restoreTabs`, `rememberTabs`, `replayTranscript`, `lostTranscript`, `showTab`, `asleepUntilSeen` - restore-tabs
 - `nameSession`, `titleWanted`/`ownTitle` у `conversations` - tab-names
+- `rewind`, `previewRewind`, `cutBack`, `rewinding` (очередь и пуш ждут отката), `uuid` в `deliverPrompt` - rewind
 
 **`ClaudeSession.kt`** (подгружает turn-lifecycle): `rename`, `nameAfterPerson`, `namedAs`, `ownTitle` - tab-names; `setEffort`, `effort` - models; `awaitingPermission` -
 permissions; окружение в `start` - task-list; `rememberConversation` - аргументы запуска в CLAUDE.md;
 `isBusy` - idle-sleep; `forkFrom` - accounts; `context` в `userMessage` (заметка редактора отдельным блоком) -
-editor-context.
+editor-context; `rewind`, `previewRewind`, `cut`, `uuid` в `userMessage` - rewind; `forkPoint`, `forkBefore` - fork-tabs.
 
 **`ClaudeSessions.kt`** (подгружает accounts и idle-sleep): `rename`, `ownTitle` - tab-names; `branchFrom` - fork-tabs; `adoptModel` - history;
 `newSession`, `onBorn`, `setPermissionMode` - models; `renewAfterSignIn` - expired-sign-in;
-`releasedRole` и рамка в `prompt` - scenarios.
+`releasedRole` и рамка в `prompt` - scenarios; `branchFrom(before)`, `forkBefore` в `moveTo` - fork-tabs; `rewind`, `previewRewind` - rewind.
 
 **`ProjectCatalog.kt`**: `sendCalmColors` - calm-colors; `runShellCommand` - editor-sync; `sendCustomModels` -
 models; `pasteCollapse` в `sendInit` - paste; `authenticateMcp`, `sayProject` - remote-access;
@@ -182,7 +189,7 @@ models; `openFile` - open-in-editor; фидбэк и лог незнакомог
 `run`/`onStarted` и отмена - search; `--tools ""` у разовых запусков - task-list.
 
 **`ClaudeLaunch.kt`** (подгружает task-list): `PANEL_BRIEFING`, `oneLine` - аргументы запуска в CLAUDE.md;
-`AFTER_SCENARIO_HEAD` - scenarios.
+`AFTER_SCENARIO_HEAD` - scenarios; `CHECKPOINTS_VARIABLE` - rewind; `FORK_AT_FLAG`, `forkAt` - fork-tabs.
 
 **`ClaudePreferences.kt`** (подгружает models): `gaugeVivid` - calm-colors; `language` - i18n;
 `improveInstructions` - prompt-improver; стартовая модель новой вкладки переехала в `StartingChoice.kt` -

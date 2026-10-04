@@ -52,6 +52,12 @@ internal class TabMemory(
         val id: String,
         /** The tab it was forked from, if it was and that tab is kept too - see [restorable]. */
         val parentId: String?,
+        /**
+         * The parent's message a fork not yet started is cut short of (see ClaudeSession.forkBefore) - kept
+         * with it, or the first message after a restart forked the parent whole: the turns "In a new tab" and
+         * "Fork from here" were pressed to leave behind, and the waiting message said a second time.
+         */
+        val forkBefore: String? = null,
         val title: String,
         val titleSource: String,
         /** The conversation it held, if one had been born in it. */
@@ -188,6 +194,7 @@ internal class TabMemory(
                     addJsonObject {
                         put("id", tab.id)
                         tab.parentId?.let { put("parentId", it) }
+                        tab.forkBefore?.let { put("forkBefore", it) }
                         put("title", tab.title)
                         put("titleSource", tab.titleSource)
                         tab.conversationId?.let { put("conversationId", it) }
@@ -214,6 +221,7 @@ internal class TabMemory(
                 Tab(
                     id = id,
                     parentId = tab.string("parentId").takeIf { it.isNotEmpty() },
+                    forkBefore = tab.string("forkBefore").takeIf { it.isNotEmpty() },
                     title = tab.string("title"),
                     titleSource = tab.string("titleSource").ifEmpty { SessionSnapshot.TITLE_DEFAULT },
                     conversationId = tab.string("conversationId").takeIf { it.isNotEmpty() },
@@ -240,7 +248,8 @@ internal class TabMemory(
          * asked where the transcript is read anyway, off that thread (see ClaudeSessionHub.lostTranscript).
          *
          * A fork whose parent is not coming back stands on its own: its conversation is its own either
-         * way, and a group headed by a tab that is not there is a group nothing on the strip can show.
+         * way, and a group headed by a tab that is not there is a group nothing on the strip can show. Its
+         * point to cut at goes with the parent - it names one of the parent's messages.
          */
         fun restorable(state: State): State {
             val kept = ArrayList<Tab>()
@@ -249,7 +258,8 @@ internal class TabMemory(
                 val named = tab.titleSource == SessionSnapshot.TITLE_USER
                 if (tab.conversationId == null && !hasDraft(tab.draft) && !named) continue
 
-                kept += tab.copy(parentId = tab.parentId?.takeIf { parent -> kept.any { it.id == parent } })
+                val parent = tab.parentId?.takeIf { parent -> kept.any { it.id == parent } }
+                kept += tab.copy(parentId = parent, forkBefore = tab.forkBefore.takeIf { parent != null })
             }
 
             return State(active = state.active?.takeIf { active -> kept.any { it.id == active } }, tabs = kept)

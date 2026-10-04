@@ -18,14 +18,14 @@ import type {
  * from one state to the next.
  */
 
+/**
+ * The project as one conversation sees it - its name and the folder the agent works in, by which the paths
+ * in the cards are shortened. The branch and its pull request are not here: they are the folder's, not the
+ * conversation's (see feed/branch.ts).
+ */
 export interface PanelProject {
   name: string
   workingDirectory: string
-  gitBranch?: string
-  /** The current branch's pull request number, when it has one. */
-  pullRequest?: string
-  /** The same PR's address - the page opens by it. */
-  pullRequestUrl?: string
 }
 
 /**
@@ -396,7 +396,13 @@ export type PanelAction =
    * steps rather than start a new turn with it. Such a message is only added to the feed and interrupts
    * nothing in it.
    */
-  | { kind: 'prompt'; tokens: UserToken[]; quotes: string[]; steering?: boolean; editor?: EditorRef }
+  | { kind: 'prompt'; tokens: UserToken[]; quotes: string[]; steering?: boolean; editor?: EditorRef; uuid?: string }
+  /**
+   * The conversation was cut back to before the message `uuid` - see the rewound message in protocol.ts and
+   * applyRewound in feed/build.ts. `all`: the feed does not hold the message and everything it holds came
+   * after it, which the client works out from the journal numbers (see lastHeld in mobile/feed.ts).
+   */
+  | { kind: 'rewound'; uuid: string; all?: boolean }
   /**
    * replay marks an event of a past conversation's replay rather than a live turn: it lands in the feed
    * the same way but tells nothing about the conversation right now (see 'assistant').
@@ -455,8 +461,6 @@ export type PanelAction =
    * two tabs at once.
    */
   | { kind: 'resumed'; conversationId: string }
-  /** The branch and its pull request arrive later: the number is fetched from GitHub. */
-  | { kind: 'project'; gitBranch?: string; pullRequest?: string; pullRequestUrl?: string }
   /** This conversation's taken context window - a figure from the CLI itself. */
   | { kind: 'context'; used: number; max: number }
   /** A bash-mode command: first the card with it, then its output. */

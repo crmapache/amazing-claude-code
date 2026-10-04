@@ -307,4 +307,18 @@ describe('tabAfterElsewhere', () => {
   it('stays put when the tab is still there', () => {
     expect(tabAfterElsewhere(sessions, [], ids(sessions), 'second')).toBe('second')
   })
+
+  /**
+   * The first list after a restart: the page drew the opening tab on its own, and the strip the IDE
+   * restored does not have it. Nothing that stood beside it is left to fall back on.
+   */
+  it('moves to the first tab of the news when nothing that stood here is left', () => {
+    const opening = [tab('main', 'main')]
+
+    expect(tabAfterElsewhere(opening, [], ['second', 'third'], 'main')).toBe('second')
+  })
+
+  it('leaves the screen empty when the news names nothing at all', () => {
+    expect(tabAfterElsewhere([tab('main', 'main')], [], [], 'main')).toBe('')
+  })
 })

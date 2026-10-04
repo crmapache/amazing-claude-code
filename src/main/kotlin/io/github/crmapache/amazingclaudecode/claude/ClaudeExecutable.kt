@@ -79,6 +79,22 @@ internal object ClaudeExecutable {
 
     private val supportedFlags = ConcurrentHashMap<String, Boolean>()
 
+    /**
+     * Whether the CLI knows a flag it does not list in its help - one that takes a value, like
+     * ClaudeLaunch.FORK_AT_FLAG.
+     *
+     * `--help` cannot answer this: hidden options are left out of it, and `--help` beside an unknown flag
+     * prints the help all the same. The flag ALONE can: the CLI parses its arguments before anything else,
+     * and a known option missing its value is refused in words of its own ("option '--x <id>' argument
+     * missing"), an unknown one in others ("unknown option '--x'"). Measured on 2.1.280: under a tenth of
+     * a second either way, nothing started and nothing written. Kept by the same key as [supportsFlag].
+     */
+    fun knowsHiddenOption(executable: File, flag: String): Boolean =
+        supportedFlags.getOrPut("${executable.absolutePath}|${executable.lastModified()}|hidden|$flag") {
+            val said = capture(listOf(executable.absolutePath, flag), HELP_TIMEOUT_MS) ?: return@getOrPut false
+            said.contains("'$flag") && said.contains("argument missing")
+        }
+
     private const val HELP_TIMEOUT_MS = 10_000
     private const val LOOKUP_TIMEOUT_MS = 5_000
 

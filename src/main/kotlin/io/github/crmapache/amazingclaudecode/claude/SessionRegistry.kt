@@ -233,9 +233,10 @@ internal class SessionRegistry {
      * what a person comes back expecting, the first tab included when it had been dragged away from the
      * front.
      *
-     * Tabs the order does not name keep their places in front of the rest - that is the opening tab, when
-     * it had nothing worth bringing back. The order was read off this very list, so its groups are
-     * unbroken runs already, and a stable sort keeps them so.
+     * Tabs the order does not name keep their places in front of the rest. Today there are none: the
+     * opening tab, when it had nothing worth bringing back, is closed before the strip is put back. The
+     * order was read off this very list, so its groups are unbroken runs already, and a stable sort keeps
+     * them so.
      */
     @Synchronized
     fun arrange(order: List<String>) {

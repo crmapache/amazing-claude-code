@@ -11,6 +11,11 @@ export interface Selection {
   pointer: { x: number; y: number }
   /** The feed's visible part at the moment of the reading. */
   bounds: Box
+  /**
+   * The feed row the selection is in - what a fork "from here" is cut after (see forkPointAfter). Read off
+   * the row's own mark (`data-acc-id`, see Feed), absent when the selection is in none.
+   */
+  itemId?: string
 }
 
 /** Below this threshold a selection counts as an accidental click and no menu is shown. */
@@ -168,5 +173,7 @@ const read = (container: HTMLElement | null, pointer: { x: number; y: number }):
   // Scrolled clean out of the feed's visible part: there is no longer any text to hang the menu on.
   if (lines.tail.bottom < bounds.top || lines.head.top > bounds.bottom) return null
 
-  return { text, head: lines.head, tail: lines.tail, pointer, bounds }
+  const itemId = anchor.closest('[data-acc-id]')?.getAttribute('data-acc-id') ?? undefined
+
+  return { text, head: lines.head, tail: lines.tail, pointer, bounds, ...(itemId ? { itemId } : {}) }
 }

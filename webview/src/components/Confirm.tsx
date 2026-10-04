@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useDialogKeys } from './dialogKeys'
 import s from './shell.module.css'
 import { useT } from '../i18n'
 
@@ -24,34 +25,24 @@ interface ConfirmProps {
 /**
  * Ask before doing something irreversible.
  *
- * The keys are intercepted in the capture phase and suppressed: Escape in the panel is taken - it stops
- * the turn (see App) - and without this, closing the question would also break off work nobody asked to
- * break off.
+ * The keys are the questions' own (see useDialogKeys): Escape cancels, Enter presses the button that has
+ * the focus - the main one when the question opens.
  */
 export const Confirm = ({ title, subject, note, confirmLabel, onConfirm, onCancel }: ConfirmProps) => {
   const t = useT()
+  const dialog = useRef<HTMLDivElement | null>(null)
   const confirmRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
     confirmRef.current?.focus()
+  }, [])
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' && event.key !== 'Enter') return
-
-      event.preventDefault()
-      event.stopPropagation()
-      if (event.key === 'Escape') onCancel()
-      else onConfirm()
-    }
-
-    window.addEventListener('keydown', onKeyDown, true)
-    return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [onConfirm, onCancel])
+  useDialogKeys(dialog, onConfirm, onCancel)
 
   return (
     <>
       <div className={s.confirmScrim} onClick={onCancel} />
-      <div className={s.confirm} role="dialog" aria-modal="true" aria-label={title}>
+      <div className={s.confirm} role="dialog" aria-modal="true" aria-label={title} ref={dialog}>
         <div className={s.confirmTitle}>{title}</div>
         <div className={s.confirmSubject}>{subject}</div>
         {note ? <div className={s.confirmNote}>{note}</div> : null}

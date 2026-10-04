@@ -403,8 +403,12 @@ internal object ClaudeHistory {
         else -> signature
     }
 
-    /** What one pass over the file yields: the window a page is cut from, and the CLI's last word on the model. */
-    internal data class Tail(val window: Window, val identity: String)
+    /**
+     * What one pass over the file yields: the window a page is cut from, and the CLI's last word on the model.
+     * [rewound] says the pass met a rewind's mark - the window may hold lines the rewind took out, and the
+     * page is read again without them (see [page]).
+     */
+    internal data class Tail(val window: Window, val identity: String, val rewound: Boolean = false)
 
     /**
      * One pass over the transcript, for two things at once.
@@ -420,9 +424,14 @@ internal object ClaudeHistory {
      */
     internal fun tailOf(lines: Sequence<String>, before: String?, pageSize: Int): Tail {
         var identity = ""
-        val window = windowOf(candidates(lines.onEach { line -> modelIdentity(line)?.let { identity = it } }), before, pageSize)
+        var rewound = false
+        val read = lines.onEach { line ->
+            modelIdentity(line)?.let { identity = it }
+            if (!rewound && TranscriptRewinds.marks(line)) rewound = true
+        }
+        val window = windowOf(candidates(read), before, pageSize)
 
-        return Tail(window, identity)
+        return Tail(window, identity, rewound)
     }
 
     /**
@@ -457,9 +466,32 @@ internal object ClaudeHistory {
         // what the tab holds asks for its pages one after another: the veil stood over the feed for as
         // long as it took to read the whole file that many times over. Told by their shape alone, the
         // lines cost a pass of string checks; the parsing is paid for a page's worth of them.
-        val scanned = runCatching { file.useLines { lines -> tailOf(lines, before, pageSize) } }
-            .onFailure { thisLogger().warn("Failed to page conversation $id", it) }
-            .getOrDefault(Tail(Window(emptyList(), moreAbove = false), identity = ""))
+        // A file already known to be rewound skips the pass that would only find that out (see below): a live
+        // conversation's pages come one after another, and each used to read the whole file three times.
+        val first = if (TranscriptRewinds.known(file)) {
+            null
+        } else {
+            runCatching { file.useLines { lines -> tailOf(lines, before, pageSize) } }
+                .onFailure { thisLogger().warn("Failed to page conversation $id", it) }
+                .getOrDefault(Tail(Window(emptyList(), moreAbove = false), identity = ""))
+        }
+
+        // A conversation that was rewound is read once more, without what the rewind took out (see
+        // TranscriptRewinds): the CLI leaves the dropped turns in the file, and a conversation reopened
+        // from here would otherwise bring back exactly what the person rewound to be rid of. Only such a
+        // file pays for the second pass, and its cuts are read on from where the last reading stopped. A
+        // mark always stands after what it cut, so a page asked for by a boundary has met every mark that
+        // matters to it before the boundary stopped the pass.
+        val scanned = if (first != null && !first.rewound) {
+            first
+        } else {
+            runCatching {
+                val cut = TranscriptRewinds.cutLines(file)
+                file.useLines { lines -> tailOf(TranscriptRewinds.alive(lines, cut), before, pageSize) }
+            }
+                .onFailure { thisLogger().warn("Failed to page rewound conversation $id", it) }
+                .getOrDefault(first ?: Tail(Window(emptyList(), moreAbove = false), identity = ""))
+        }
         val prepared = scanned.window.lines.mapNotNull(::replayLine).map(::shortened)
 
         // The boundary has already done its work inside the window, so the slicing is asked for the
@@ -737,9 +769,22 @@ internal object ClaudeHistory {
     private fun entryFor(file: File): Entry? {
         val id = file.nameWithoutExtension
 
-        val scan = runCatching { file.useLines(block = ::scan) }
-            .onFailure { thisLogger().warn("Failed to scan conversation $id", it) }
-            .getOrDefault(Scan("", 0))
+        // A file already known to be rewound is counted once, without the pass that would only find that out.
+        val first = if (TranscriptRewinds.known(file)) {
+            null
+        } else {
+            runCatching { file.useLines(block = ::scan) }
+                .onFailure { thisLogger().warn("Failed to scan conversation $id", it) }
+                .getOrDefault(Scan("", 0))
+        }
+
+        // Counted again without what a rewind took out, when one did - see [page] and TranscriptRewinds.
+        val scan = if (first != null && !first.rewound) {
+            first
+        } else {
+            runCatching { file.useLines { lines -> scan(TranscriptRewinds.alive(lines, TranscriptRewinds.cutLines(file))) } }
+                .getOrDefault(first ?: Scan("", 0))
+        }
 
         // A conversation without a single message is an abandoned launch, with nothing to show.
         if (scan.messages == 0) return null
@@ -763,6 +808,8 @@ internal object ClaudeHistory {
         val aiTitle: String? = null,
         /** The name a person gave the conversation - see AgentStream.customTitle. */
         val customTitle: String? = null,
+        /** The pass met a rewind's mark, so the count may hold what the rewind took out - see [entryFor]. */
+        val rewound: Boolean = false,
     ) {
         /** Which of the three names the history shows - see [Entry.titleSource]. */
         val titleSource: String
@@ -795,9 +842,12 @@ internal object ClaudeHistory {
         var aiTitle: String? = null
         var customTitle: String? = null
         var messages = 0
+        var rewound = false
 
         for (line in lines) {
             if (!line.startsWith("{")) continue
+
+            if (!rewound && TranscriptRewinds.marks(line)) rewound = true
 
             // The CLI's own name repeats many times over through the file with the same value - we keep
             // the last one seen: if the conversation's topic has changed since, it has had time to
@@ -837,7 +887,7 @@ internal object ClaudeHistory {
             }
         }
 
-        return Scan(title.ifEmpty { fallbackCommand }, messages, aiTitle, customTitle)
+        return Scan(title.ifEmpty { fallbackCommand }, messages, aiTitle, customTitle, rewound)
     }
 
     /**

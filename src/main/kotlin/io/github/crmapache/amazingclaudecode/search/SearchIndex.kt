@@ -3,6 +3,7 @@ package io.github.crmapache.amazingclaudecode.search
 import com.intellij.openapi.diagnostic.thisLogger
 import io.github.crmapache.amazingclaudecode.claude.AgentStream
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
+import io.github.crmapache.amazingclaudecode.claude.TranscriptRewinds
 import io.github.crmapache.amazingclaudecode.claude.SessionSnapshot
 import io.github.crmapache.amazingclaudecode.scenario.ScenarioConversations
 import java.io.ByteArrayOutputStream
@@ -68,6 +69,11 @@ internal class SearchIndex(
         var kept = Seen(0, 0, 0)
         /** The copy on disk is behind the words in memory - a write failed - and is rewritten whole next time. */
         var stale = false
+        /**
+         * The reading that is under way met a rewind's mark - the words of the turns it took out are still
+         * among [messages] and come out once the reading is done (see [refresh]). Not kept past that.
+         */
+        var rewound = false
         /** The index's version this conversation was last written into the model's corpus at. */
         var corpusVersion = -1L
 
@@ -150,6 +156,15 @@ internal class SearchIndex(
 
             target.seen = Seen(size, modified, consumed)
             if (!appended) target.stale = true
+
+            // A rewind left its mark in what was just read: the turns it took out stay in the file (see
+            // TranscriptRewinds), and a search that finds them would open a conversation on words that
+            // are no longer in it. They come out of the index, and the copy on disk is written whole.
+            if (target.rewound) {
+                target.rewound = false
+                val cut = TranscriptRewinds.cutUuids(file)
+                if (cut.isNotEmpty() && target.messages.removeAll { it.uuid in cut }) target.stale = true
+            }
             keep(target)
             changed = true
         }
@@ -360,6 +375,11 @@ internal class SearchIndex(
 
     /** One transcript line into the conversation: a message, a title, or nothing. */
     private fun take(conversation: Conversation, line: String) {
+        if (TranscriptRewinds.marks(line)) {
+            conversation.rewound = true
+            return
+        }
+
         val named = AgentStream.aiTitle(line)
         if (named != null) {
             // The CLI's own name repeats through the file; the last one seen is the current one.

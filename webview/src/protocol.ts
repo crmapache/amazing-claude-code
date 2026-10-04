@@ -7,6 +7,30 @@
 
 export type SessionKind = 'main' | 'branch'
 
+/**
+ * What putting the code back to before a message would touch, as the IDE found out (see Rewind.Code).
+ * `ready` lists the first files (`count` is all of them) and the lines; `none` - nothing changed since;
+ * `off` - the `checkpoints` setting is off; `notTracked` - this conversation's process keeps no copies;
+ * `noCheckpoint` - nothing was kept when this message went out; `unavailable` - the CLI said `detail`.
+ */
+export type RewindCode =
+  | { state: 'ready'; files: string[]; count: number; insertions: number; deletions: number }
+  | { state: 'none' | 'off' | 'notTracked' | 'noCheckpoint' }
+  | { state: 'unavailable'; detail?: string }
+
+/** Why a rewind did not happen - see Rewind.Refusal. */
+export type RewindRefusal =
+  | 'busy'
+  | 'gone'
+  | 'moved'
+  | 'midCall'
+  | 'notSaved'
+  | 'code'
+  | 'unsupported'
+  | 'noProcess'
+  | 'ended'
+  | 'other'
+
 export interface SessionInfo {
   id: string
   title: string
@@ -1072,6 +1096,37 @@ type ShellMessageBody =
       errorStatus?: number
     }
   /**
+   * What putting the code back to before a message would touch - the rewind dialog's answer, to the client
+   * that opened it (see rewindPreview below and Rewind.kt).
+   */
+  | { type: 'rewindPreview'; sessionId: string; uuid: string; code: RewindCode }
+  /**
+   * How a rewind ended, told to the client that pressed the button: the message goes back into its field.
+   * `prefill` is the message's text as the CLI kept it - for a client whose card does not carry the pieces.
+   * `files` says what came of the code part, `detail` is the CLI's own words when something did not go.
+   */
+  | {
+      type: 'rewindOutcome'
+      sessionId: string
+      uuid: string
+      ok: boolean
+      conversation?: boolean
+      prefill?: string
+      files?: 'skipped' | 'restored' | 'failed'
+      reason?: RewindRefusal
+      detail?: string
+    }
+  /**
+   * The conversation was cut back to before the message `uuid`: that message and everything after it are
+   * gone from the agent's memory, and every client takes them off its feed. Kept in the journal after the
+   * cut it describes (see ClaudeSessionHub.rewind). `fromSeq` is the journal number the cut began at: a
+   * client without the message whose last entry before this one is numbered from there on was handed part
+   * of what was dropped - everything it holds came after the message, and it clears it all. One whose last
+   * entry is below it was built from the journal after the cut (see SessionJournal.cutFrom). Absent from an
+   * IDE older than it.
+   */
+  | { type: 'rewound'; sessionId: string; uuid: string; fromSeq?: number }
+  /**
    * The tabs as the shell keeps them. It is the shell that owns this list now: the interface makes the
    * identifiers up (a "+" has to answer instantly) but the order, the grouping and the names live on
    * the other side, where a second client can see them too.
@@ -1206,6 +1261,8 @@ type ShellMessageBody =
       type: 'promptEcho'
       sessionId: string
       id?: string
+      /** The name the message went into the conversation under - what a rewind names it by (see Rewind.kt). */
+      uuid?: string
       /** UserToken[] from feed/types - opaque to the shell, which is why it is not typed here. */
       tokens?: unknown
       quotes?: string[]
@@ -1951,6 +2008,12 @@ export type WebviewMessage =
       sessionId: string
       /** This message's own identifier - it comes back in promptEcho, and by it the sender knows its own. */
       id?: string
+      /**
+       * The name the message goes into the conversation under - a uuid, which the CLI takes for its own line
+       * (see ClaudeSession.sendPrompt). Made up on the press, so the card can be rewound to from its first
+       * second; one the IDE makes up when it is absent.
+       */
+      uuid?: string
       /** The pieces the feed draws this message from - see promptEcho. */
       tokens?: unknown
       quotes?: string[]
@@ -2020,6 +2083,14 @@ export type WebviewMessage =
     }
   /** Taking a side question back while it is still out - it then ends as `cancelled`. */
   | { type: 'sideQuestionCancel'; sessionId: string; id: string }
+  /** The rewind dialog opening over the message `uuid`: what would the code part touch? See rewindPreview above. */
+  | { type: 'rewindPreview'; sessionId: string; uuid: string }
+  /**
+   * Rewind to before the message `uuid`: drop it and everything after it from the conversation, put the
+   * files back the way they were then, or both. `lastSeen` is the newest message on this client's screen -
+   * one sent since from somewhere else stops the rewind instead of being dropped unread.
+   */
+  | { type: 'rewind'; sessionId: string; uuid: string; lastSeen?: string; conversation: boolean; files: boolean }
   | { type: 'stop'; sessionId: string }
   /** The ordinary Stop went unconfirmed - the user asked outright to kill the process. */
   | { type: 'kill'; sessionId: string }
@@ -2039,6 +2110,17 @@ export type WebviewMessage =
       /** The conversation we branch off. The branch gets its whole transcript. */
       parentId?: string
       quote?: string
+      /**
+       * The parent's message the branch stops short of: it carries everything said before that message and
+       * nothing from it on. Absent - the whole conversation.
+       */
+      before?: string
+      /**
+       * Put the code back in the parent tab as well, to before [before] - the rewind dialog's "In a new tab"
+       * with both chosen (see forkTakesCode in feed/rewind.ts). The IDE does it on this one command, and a
+       * code part it could not do is said in the parent's feed rather than to a dialog that has closed.
+       */
+      code?: boolean
       /**
        * What this conversation is to start on, when the client had to be asked rather than reading the
        * settings - which is the phone's case: the selectors it would read live at the desk.

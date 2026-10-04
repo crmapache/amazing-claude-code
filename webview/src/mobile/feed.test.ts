@@ -150,6 +150,59 @@ describe('the phone building a conversation', () => {
     expect(feed.state.items[0]?.kind).toEqual('checkpoint')
   })
 
+  /*
+   * A phone handed only the end of a conversation, and a rewind at the desk to a message older than all of it:
+   * the rewind says where the journal's cut began, and everything this phone holds came after that.
+   */
+  it('drops all it holds when a rewind cut further back than its tail reaches', () => {
+    const echo = (uuid: string, text: string, seq: number) =>
+      message({ type: 'promptEcho', sessionId: 'main', id: uuid, uuid, tokens: [{ kind: 'text', value: text }], seq })
+    const feed = apply([
+      message({ type: 'restoreStarted', sessionId: 'main', from: 0, truncated: true }),
+      { ...echo('u-5', 'fifth', 40) },
+      { ...assistant('five'), seq: 41 } as ShellMessage,
+      message({ type: 'restoreFinished', sessionId: 'main', upTo: 41 }),
+      message({ type: 'rewound', sessionId: 'main', uuid: 'u-2', fromSeq: 12, seq: 42 }),
+    ])
+
+    expect(feed.state.items.some((item) => item.kind === 'user' || item.kind === 'text')).toBe(false)
+    expect(feed.state.items.at(-1)).toMatchObject({ kind: 'checkpoint', targetKey: 'rewound' })
+  })
+
+  /*
+   * The journal let its head go while the phone was watching, and the desk rewound to a message older than
+   * everything left in it: the cut took all of the journal, from a number above the phone's first. What the
+   * phone holds from that number on is dropped, so all of it came after the message.
+   */
+  it('drops all it holds when the journal let its head go and the cut took the rest', () => {
+    const echo = (uuid: string, text: string, seq: number) =>
+      message({ type: 'promptEcho', sessionId: 'main', id: uuid, uuid, tokens: [{ kind: 'text', value: text }], seq })
+    const feed = apply([
+      message({ type: 'restoreStarted', sessionId: 'main', from: 0, truncated: true }),
+      echo('u-28', 'from the morning', 2800),
+      message({ type: 'restoreFinished', sessionId: 'main', upTo: 2800 }),
+      echo('u-30', 'from the afternoon', 3000),
+      message({ type: 'rewound', sessionId: 'main', uuid: 'u-25', fromSeq: 2900, seq: 3001 }),
+    ])
+
+    expect(feed.state.items.some((item) => item.kind === 'user')).toBe(false)
+  })
+
+  /* The same rewind read back from a journal it already cut: what came before the cut is what was kept. */
+  it('keeps what it holds from before the cut when the rewind comes in a restore', () => {
+    const echo = (uuid: string, text: string, seq: number) =>
+      message({ type: 'promptEcho', sessionId: 'main', id: uuid, uuid, tokens: [{ kind: 'text', value: text }], seq })
+    const feed = apply([
+      message({ type: 'restoreStarted', sessionId: 'main', from: 0 }),
+      echo('u-1', 'first', 1),
+      { ...assistant('one'), seq: 2 } as ShellMessage,
+      message({ type: 'rewound', sessionId: 'main', uuid: 'u-2', fromSeq: 3, seq: 9 }),
+      message({ type: 'restoreFinished', sessionId: 'main', upTo: 9 }),
+    ])
+
+    expect(feed.state.items.filter((item) => item.kind === 'user')).toHaveLength(1)
+  })
+
   /** From nothing means the tab holds another conversation's remains rather than a shorter version. */
   it('clears what was there when the restore starts from nothing', () => {
     const withContent = apply([assistant('an older conversation')])

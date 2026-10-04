@@ -38,6 +38,7 @@ import {
   targetFor,
 } from './tools'
 import type {
+  CheckpointItem,
   ClosedReason,
   CompactOutcome,
   DetailLine,
@@ -47,6 +48,7 @@ import type {
   TextItem,
   ThinkItem,
   TodoEntry,
+  TodoItem,
   ToolGroupItem,
   MetaItem,
   TaskItem,
@@ -181,22 +183,6 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
 
     case 'resumed':
       return { ...state, sessionId: action.conversationId }
-
-    case 'project':
-      // The branch and the PR now arrive as separate messages with frequencies of their own (see
-      // ClaudePanel.refreshBranch/refreshPullRequest) - each field falls back to its previous value when
-      // this message was not about it, rather than being wiped with emptiness.
-      return {
-        ...state,
-        project: {
-          name: state.project?.name ?? '',
-          workingDirectory: state.project?.workingDirectory ?? '',
-          ...state.project,
-          gitBranch: action.gitBranch ?? state.project?.gitBranch,
-          pullRequest: action.pullRequest ?? state.project?.pullRequest,
-          pullRequestUrl: action.pullRequestUrl ?? state.project?.pullRequestUrl,
-        },
-      }
 
     case 'status': {
       // Usually an interrupted turn closes itself - with an ordinary result a little before its time, and
@@ -372,6 +358,8 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         tokens: action.tokens,
         quotes: action.quotes,
         ...(action.editor ? { editor: action.editor } : {}),
+        ...(action.uuid ? { uuid: action.uuid } : {}),
+        ...(action.steering ? { steering: true } : {}),
       }
 
       // A message written into a running turn starts nothing afresh: the agent carries on with its own,
@@ -408,6 +396,9 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
         pendingTasks: {},
       }
     }
+
+    case 'rewound':
+      return applyRewound(state, action.uuid, action.all === true, now)
 
     /**
      * A bash-mode command. It neither starts nor touches the agent's turn: one may have been running at
@@ -964,6 +955,76 @@ const letGoBackground = (
         }))
       : current
   }, items)
+
+/** The mark above a feed that starts partway through its conversation - see applyRewound. */
+const isEarlierMark = (item: FeedItem): boolean =>
+  item.kind === 'checkpoint' && (item.targetKey === 'earlier' || item.targetKey === 'notKept' || item.targetKey === 'notOnPhone')
+
+/**
+ * The conversation was cut back to before the message [uuid] - the message and everything after it are gone
+ * from the agent's memory, and so they go from the feed (see Rewind.kt for what the CLI does).
+ *
+ * What goes with them, the way /clear takes its share (see conversation_reset): the answer being printed,
+ * the turn's clocks, the pins on rows that no longer exist, the bookkeeping of calls and agents whose cards
+ * are gone. The task list goes back to what the last kept list said - the agent's own memory of it is cut
+ * back to the same place. What stays: the context figure until the CLI's new one arrives (the IDE asks for
+ * it), and the background commands - a dev server raised in the dropped part is still running, and its chip
+ * is the only place that says so.
+ *
+ * Not found here, the message is either already gone - a feed rebuilt from a journal the rewind had cut - or
+ * older than everything this feed holds: the phone handed the end of a conversation, a journal that let its
+ * head go. Only the journal numbers tell the two apart, so the client works it out and says [all] (see the
+ * rewound message in protocol.ts): then everything goes but the mark above it that says the beginning is not
+ * shown - the conversation still has one, before the message.
+ *
+ * A mark goes at the end whether or not the message was found here: it is the one trace that anything
+ * happened. Two rewinds in a row leave one mark, not a stack of them.
+ */
+const applyRewound = (state: PanelState, uuid: string, all: boolean, now: number): PanelState => {
+  const at = state.items.findIndex((item) => item.kind === 'user' && item.uuid === uuid)
+  const kept = at >= 0 ? state.items.slice(0, at) : all ? state.items.filter(isEarlierMark) : state.items
+
+  const live = new Set<string>()
+  for (const item of kept) {
+    live.add(item.id)
+    if (item.kind === 'toolGroup') item.tools.forEach((tool) => live.add(tool.id))
+  }
+  state.background.forEach((task) => live.add(task.id))
+
+  const keep = <T,>(record: Record<string, T>, alive: (key: string, value: T) => boolean): Record<string, T> =>
+    Object.fromEntries(Object.entries(record).filter(([key, value]) => alive(key, value)))
+
+  const lastList = [...kept].reverse().find((item): item is TodoItem => item.kind === 'todo')
+  const marked = kept[kept.length - 1]?.kind === 'checkpoint' && (kept[kept.length - 1] as CheckpointItem).targetKey === 'rewound'
+  const goesOn = workGoesOn(kept)
+
+  const cut: PanelState = {
+    ...state,
+    items: marked
+      ? kept
+      : [...kept, { id: `rewound-${state.seq}`, kind: 'checkpoint', chip: 'REWIND', target: '', targetKey: 'rewound' }],
+    seq: state.seq + 1,
+    pins: state.pins.filter((id) => live.has(id)),
+    streamingText: '',
+    streamingId: undefined,
+    streamingThinking: '',
+    status: 'idle',
+    turnStartedAt: undefined,
+    stintStartedAt: goesOn ? state.stintStartedAt : undefined,
+    pausedMs: goesOn ? state.pausedMs : 0,
+    waitStartedAt: undefined,
+    stopRequestedAt: undefined,
+    starting: false,
+    startedAt: keep(state.startedAt, (key) => live.has(key)),
+    taskByToolUseId: keep(state.taskByToolUseId, (_, card) => live.has(card)),
+    taskCards: keep(state.taskCards, (_, card) => live.has(card)),
+    tasks: lastList ? Object.fromEntries(lastList.todos.map((todo) => [todo.id, todo])) : {},
+    tasksCarried: false,
+    pendingTasks: {},
+  }
+
+  return closeRetry(finishCompacting(cut), 'stopped', now)
+}
 
 const applyProcessExited = (state: PanelState, exitCode: number, now: number): PanelState => {
   const { items, startedAt } = closeUnfinished(
@@ -2390,6 +2451,9 @@ const addReplayedAnswers = (
     quotes: [],
     // The transcript's name for the line, so a search hit on it can be found in the feed (see rowOf).
     ...(event.uuid ? { uuid: event.uuid } : {}),
+    // Said inside the agent's turn - the answer to its own call. A fork cut before it would carry the call
+    // without its answer, and the CLI refuses a rewind to it (see rewindable and forkPointAfter).
+    steering: true,
   }))
 }
 

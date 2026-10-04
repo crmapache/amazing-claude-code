@@ -1,4 +1,4 @@
-import type { AgentEvent, ShellMessage } from '../protocol'
+import type { AgentEvent, RewindCode, RewindRefusal, ShellMessage } from '../protocol'
 
 export type ScenarioStep =
   | { kind: 'shell'; message: ShellMessage }
@@ -57,6 +57,10 @@ export type PlaybackMode = 'auto' | 'step'
 
 declare global {
   interface Window {
+    /** What the harness answers the rewind dialog's question about the code with - see answerRewind. */
+    __accHarnessRewindCode?: RewindCode
+    /** The next rewind is refused for this reason - see answerRewind. */
+    __accHarnessRewindRefuse?: RewindRefusal
     /**
      * A thin hook in App.tsx (dev builds only): the harness imitates a genuine send of a message from the
      * input field without touching the input field itself.

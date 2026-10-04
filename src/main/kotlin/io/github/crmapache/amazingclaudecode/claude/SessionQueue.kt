@@ -128,6 +128,17 @@ internal class SessionQueue {
         return first to list.toList()
     }
 
+    /**
+     * The messages named, dropped, and what is left - the ones queued since the names were taken stay (see
+     * ClaudeSessionHub.rewind).
+     */
+    @Synchronized
+    fun removeAll(sessionId: String, ids: Set<String>): List<Entry> {
+        val list = bySession[sessionId] ?: return emptyList()
+        list.removeAll { it.id in ids }
+        return list.toList()
+    }
+
     /** Everything this conversation was waiting to say, dropped. True when there was anything to drop. */
     @Synchronized
     fun clear(sessionId: String): Boolean = bySession.remove(sessionId)?.isNotEmpty() == true

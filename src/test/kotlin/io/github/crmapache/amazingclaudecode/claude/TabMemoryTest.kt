@@ -92,6 +92,33 @@ class TabMemoryTest {
         assertNull(TabMemory.restorable(state).tabs.single().parentId)
     }
 
+    // A fork made by "In a new tab" or "Fork from here" waits with its message in the field; restored without
+    // the point it was cut at, its first message after a restart forked the parent whole - the very turns it
+    // was made to leave behind, and that same message a second time.
+    @Test
+    fun `a fork not yet started comes back cut where it was cut`() {
+        val waiting = tab("fork", parent = "main", draft = """{"tokens":[{"kind":"text","value":"again"}],"quotes":[]}""")
+            .copy(forkBefore = "u-7")
+        val state = TabMemory.State(active = "fork", tabs = listOf(tab("main", conversation = "c-1"), waiting))
+
+        val back = TabMemory.restorable(TabMemory.decode(TabMemory.encode(state))!!).tabs.single { it.id == "fork" }
+
+        assertEquals("main", back.parentId)
+        assertEquals("u-7", back.forkBefore)
+    }
+
+    // The point names a message of the parent's: with no parent coming back there is nothing to cut.
+    @Test
+    fun `a fork standing on its own keeps no point to cut at`() {
+        val orphan = tab("fork", parent = "gone", draft = """{"tokens":[{"kind":"text","value":"again"}],"quotes":[]}""")
+            .copy(forkBefore = "u-7")
+
+        val back = TabMemory.restorable(TabMemory.State(active = null, tabs = listOf(orphan))).tabs.single()
+
+        assertNull(back.parentId)
+        assertNull(back.forkBefore)
+    }
+
     @Test
     fun `the tab to show is named only when it is coming back`() {
         val tabs = listOf(tab("a", conversation = "c-1"), tab("b"))

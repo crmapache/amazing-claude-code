@@ -2,6 +2,7 @@ import { ASIDE_COMMAND } from '../feed/side'
 import { calmVividOf } from '../calmColors'
 import type { CommandEntry, CommandHint } from '../feed/slash'
 import { buildCommands } from '../feed/slash'
+import { withBranch, type BranchFacts } from '../feed/branch'
 import { emptyUsageBook, mergeUsageBook, usageOf, type UsageBook, type UsageFacts } from '../feed/usage'
 import type { Dict } from '../i18n/en'
 import type {
@@ -25,7 +26,7 @@ import type {
  * they outlive the screen. Walking out of a chat and back into it must not empty the limit rings and
  * blank the branch while the IDE gets round to saying them again.
  */
-export interface ProjectFacts extends UsageFacts {
+export interface ProjectFacts extends UsageFacts, BranchFacts {
   /**
    * The subscription's figures of every account this machine runs, not just one set.
    *
@@ -40,9 +41,6 @@ export interface ProjectFacts extends UsageFacts {
    * and a shape that differs from the desk's for no reason is a shape that drifts from it.
    */
   usage: UsageBook
-  gitBranch?: string
-  pullRequest?: string
-  pullRequestUrl?: string
   /** The project's paths, for the "@" hint. Trimmed on the way out - see RemoteFeed.forPhone. */
   files: string[]
   hints: Record<string, CommandHint>
@@ -198,23 +196,9 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage, watching =
       // Into the account it names, never over the picture on screen - see [ProjectFacts.usage].
       return { ...facts, usage: mergeUsageBook(facts.usage, message) }
 
-    /*
-     * The branch and its pull request, each falling back to what is already held.
-     *
-     * The machine says the whole of this fact every time (see ProjectCatalog.sayProject), so on a current
-     * plugin nothing ever falls back. The fallback is for the other case, which is the ordinary one for a
-     * week after a release: this page is served by the relay and updates with it, while the plugin
-     * updates when somebody gets round to it - and an older one sends the branch and the pull request as
-     * two separate messages, each carrying its half. Replaced whole, the second of them wiped the first,
-     * so a project's card showed a branch that disappeared at the next look at GitHub.
-     */
+    // The branch and its pull request, each falling back to what is already held - see withBranch.
     case 'project':
-      return {
-        ...facts,
-        gitBranch: message.gitBranch ?? facts.gitBranch,
-        pullRequest: message.pullRequest ?? facts.pullRequest,
-        pullRequestUrl: message.pullRequestUrl ?? facts.pullRequestUrl,
-      }
+      return withBranch(facts, message)
 
     case 'files':
       return { ...facts, files: message.files }

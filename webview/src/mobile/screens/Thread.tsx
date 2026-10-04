@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AgentStreamView } from '../../components/AgentStreamView'
 import { Feed } from '../../components/Feed'
 import { WorkflowAgentView } from '../../components/items/WorkflowAgentView'
@@ -111,6 +111,13 @@ interface ThreadProps {
   onRun: () => void
   /** One message's own actions: quote, fork, copy, pin. */
   onMessage: (item: FeedItem) => void
+  /**
+   * Text to put into the field from outside this screen - a message a rewind took out of the conversation,
+   * to be said again (see RewindSheet). A new [nonce] is a new request, as with the field's own fill.
+   */
+  refill?: { text: string; nonce: number }
+  /** The refill has gone into the field - it is not to come back the next time this screen mounts. */
+  onRefilled?: () => void
   /** Which messages are pinned over this conversation, and the button that changes that. */
   pins: readonly string[]
   onPin: (id: string) => void
@@ -185,6 +192,8 @@ export const Thread = ({
   onPickTab,
   onRun,
   onMessage,
+  refill,
+  onRefilled,
   pins,
   onPin,
   onSearch,
@@ -207,6 +216,15 @@ export const Thread = ({
 
   /** A side question taken into the chat: put into the field, where the agent has its tools (see Composer.fill). */
   const [fill, setFill] = useState<{ text: string; nonce: number } | undefined>(undefined)
+
+  // A message a rewind gave back, into the same field by the same road - see [refill].
+  useEffect(() => {
+    if (!refill) return
+    setFill(refill)
+    onRefilled?.()
+    // Keyed on the refill alone: the handler is a fresh closure every render and changes nothing here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refill])
 
   /**
    * What this conversation is waiting to say, held by the IDE and fired by it when the turn ends.

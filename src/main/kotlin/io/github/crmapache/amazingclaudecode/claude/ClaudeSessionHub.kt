@@ -29,9 +29,11 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
@@ -236,6 +238,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     /** What each conversation is waiting to say once the turn in progress ends - see [SessionQueue]. */
     private val queued = SessionQueue()
 
+    /**
+     * The conversations a rewind is on its way for - their queue waits for its answer (see [runQueued] and
+     * [rewind]). Declared up here, before `init`: restoring the tabs there can already end a turn.
+     */
+    private val rewinding = RewindsUnderWay()
+
     /** Which messages each conversation has already taken, so a phone's resend is not said twice - see [ArrivedMessages]. */
     internal val arrived = ArrivedMessages()
 
@@ -310,6 +318,13 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * when it is first put on screen, or when somebody writes into it.
      */
     private val asleepUntilSeen = ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * Held while a restored tab whose conversation is gone is closed or emptied - see [lostTranscript].
+     * Each tab's transcript is looked for on a pooled thread of its own, and two tabs that each saw the
+     * other one still standing would close the strip down to nothing.
+     */
+    private val losing = Any()
 
     init {
         // Where the CLI keeps its files for this project is a process to find out on a WSL project, and
@@ -754,13 +769,21 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * Everything a client would need to rebuild the feed comes this way. What does not: the deltas of
      * the answer being printed (see [emitLive]) and answers addressed to whoever asked (see [emitTo]).
      */
-    fun broadcast(sessionId: String, json: String, strand: SessionJournal.Strand? = null) {
-        val trimmed = JournalTrim.trim(json)
+    fun broadcast(sessionId: String, json: String, strand: SessionJournal.Strand? = null) =
+        broadcastWith(sessionId, strand) { json }
+
+    /**
+     * [broadcast] of a message made under the journal's lock, from the journal itself - for one that has to
+     * be the very next entry after what it did to the journal (see [cutBack]).
+     */
+    private fun broadcastWith(sessionId: String, strand: SessionJournal.Strand? = null, make: (SessionJournal) -> String) {
         val at = System.currentTimeMillis()
 
-        val stamped = synchronized(lock(sessionId)) {
-            val entry = journal(sessionId).append(trimmed, at, strand)
-            SessionMessages.stamp(trimmed, entry.seq, entry.at)
+        val (trimmed, stamped) = synchronized(lock(sessionId)) {
+            val journal = journal(sessionId)
+            val trimmed = JournalTrim.trim(make(journal))
+            val entry = journal.append(trimmed, at, strand)
+            trimmed to SessionMessages.stamp(trimmed, entry.seq, entry.at)
         }
 
         // The reason a notification might be worth sending is a transition rather than a message: "a
@@ -772,7 +795,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
         deliver(stamped)
 
-        if (reason != null) {
+        // A turn a rewind is stopping can close with a result of its own before the rewind answers - and that
+        // is not work finished, it is work the person has just thrown away (see [rewind]).
+        val rewound = reason == NotificationReasons.TURN_FINISHED && sessionId in rewinding
+        if (reason != null && !rewound) {
             notificationListener?.invoke(sessionId, reason, targetOf(trimmed))
         }
 
@@ -982,6 +1008,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
          * means the settings decide, exactly as before (see SessionLaunch).
          */
         launch: SessionLaunch = SessionLaunch(),
+        /** The parent's message a branch stops short of - see ClaudeSessions.branchFrom. */
+        before: String? = null,
     ) {
         val opened = tabs.open(
             id = id,
@@ -995,7 +1023,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // whole per-conversation business exists to avoid.
         if (opened && !launch.isEmpty) conversations.rememberLaunch(id, launch)
 
-        if (opened && parentId != null) conversations.branchFrom(parentId, id)
+        if (opened && parentId != null) conversations.branchFrom(parentId, id, before)
 
         if (opened) {
             val tab = tabs.tabs().firstOrNull { it.id == id }
@@ -1009,14 +1037,18 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     }
 
     fun closeSession(id: String) {
+        // Before the conversation goes: a rewind it leaves unanswered is answered as the process goes (see
+        // AwaitedControls), and finding its tab still holding a queue, it would send it - raising a process
+        // for a tab nobody has any more.
+        rewinding.forget(id)
+        // What this conversation was waiting to say goes with it: there is nothing left to say it to.
+        queued.clear(id)
         conversations.close(id)
         stats.noteSessionClosed(id)
         // A tab closed is a tab forgotten: its draft goes with it, and the next start does not bring it back.
         remembered.remove(id)
         drafts.remove(id)
         asleepUntilSeen.remove(id)
-        // What this conversation was waiting to say goes with it: there is nothing left to say it to.
-        queued.clear(id)
         arrived.forget(id)
         journals.remove(id)
         snapshots.remove(id)
@@ -1102,6 +1134,20 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         val state = TabMemory.restorable(saved)
         if (state.tabs.isEmpty()) return
 
+        // The opening tab stands on the strip so that a panel never starts on an empty one. A strip that
+        // comes back has tabs of its own, and an empty "main session" in front of them is a tab nobody
+        // opened - on every start, closed or not the time before. Nothing but its line exists yet: it has
+        // no conversation, no draft and no name, or it would have come back with the rest.
+        //
+        // Before the tabs are opened rather than after: a restored tab whose transcript is gone is closed
+        // only while another tab stands (see [lostTranscript]), and it is looked for while this loop is
+        // still running - the opening tab still there would count as that other one, and go a moment later.
+        if (state.tabs.none { it.id == ClaudeSessions.MAIN_SESSION }) tabs.close(ClaudeSessions.MAIN_SESSION)
+
+        // Every tab on the strip before any transcript is looked for: whether a tab whose transcript is gone
+        // closes or is cleared depends on whether another tab stands (see [lostTranscript]), and that is
+        // asked on the thread reading the first tab's transcript - which used to win the race against the
+        // second tab being opened, and leave an empty nameless tab, the very thing closing it was for.
         for (tab in state.tabs) {
             if (tab.id == ClaudeSessions.MAIN_SESSION) {
                 if (tab.titleSource != SessionSnapshot.TITLE_DEFAULT) tabs.rename(tab.id, tab.title, tab.titleSource)
@@ -1111,7 +1157,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
             remembered[tab.id] = tab.copy(draft = null)
             tab.draft?.let { drafts[tab.id] = it }
+        }
 
+        for (tab in state.tabs) {
             // Written down before the conversation is made, which is when it is read (see
             // ClaudeSessions.newSession) - and read again by the first message of a tab that holds only a
             // draft, which has no conversation to make yet.
@@ -1133,7 +1181,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
                 // A fork that had not said anything yet, kept for its draft: it is still a fork, and its
                 // first message still forks its parent's conversation rather than starting a blank one.
-                tab.parentId != null -> conversations.branchFrom(tab.parentId, tab.id)
+                tab.parentId != null -> conversations.branchFrom(tab.parentId, tab.id, tab.forkBefore)
             }
         }
 
@@ -1151,27 +1199,32 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * gave it stays for them, as the empty tab it now is - without the conversation, because a first
      * message into it would ask the CLI to continue a transcript that is gone, and the CLI refuses to
      * start at all.
+     *
+     * The last tab on the strip is emptied rather than closed, name and all. The opening tab is no longer
+     * there to fall back on (see [restoreTabs]), and the CLI clears out old transcripts by itself: a
+     * project left alone for a month would otherwise open on a strip with nothing on it.
      */
     private fun lostTranscript(sessionId: String) {
-        val tab = remembered[sessionId] ?: return
-        thisLogger().info("A restored tab's conversation is gone from disk")
+        synchronized(losing) {
+            val tab = remembered[sessionId] ?: return
+            thisLogger().info("A restored tab's conversation is gone from disk")
 
-        val named = tabs.titleSource(sessionId) == SessionSnapshot.TITLE_USER
+            val named = tabs.titleSource(sessionId) == SessionSnapshot.TITLE_USER
+            val alone = tabs.tabs().none { it.id != sessionId }
 
-        // The opening tab is never closed - a message naming no conversation belongs to it (see
-        // ClaudeSessions.MAIN_SESSION) - so without a draft it is emptied instead, name and all.
-        if (!drafts.containsKey(sessionId) && !named && sessionId != ClaudeSessions.MAIN_SESSION) {
-            closeSession(sessionId)
-            return
+            if (!drafts.containsKey(sessionId) && !named && !alone) {
+                closeSession(sessionId)
+                return
+            }
+
+            remembered[sessionId] = tab.copy(conversationId = null)
+            conversations.close(sessionId)
+            val launch = SessionLaunch(model = tab.model, effort = tab.effort, mode = tab.mode)
+            if (!launch.isEmpty) conversations.rememberLaunch(sessionId, launch)
+            if (!drafts.containsKey(sessionId) && !named) tabs.resetTitle(sessionId)
+            resetJournal(sessionId)
+            broadcastSessions()
         }
-
-        remembered[sessionId] = tab.copy(conversationId = null)
-        conversations.close(sessionId)
-        val launch = SessionLaunch(model = tab.model, effort = tab.effort, mode = tab.mode)
-        if (!launch.isEmpty) conversations.rememberLaunch(sessionId, launch)
-        if (!drafts.containsKey(sessionId) && !named) tabs.resetTitle(sessionId)
-        resetJournal(sessionId)
-        broadcastSessions()
     }
 
     /**
@@ -1191,12 +1244,16 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     private fun rememberTabsNow() {
         val list = tabs.tabs().map { tab ->
             val before = remembered[tab.id]
+            val conversationId = conversations.conversationIdOf(tab.id) ?: before?.conversationId
             TabMemory.Tab(
                 id = tab.id,
                 parentId = tab.parentId,
+                // The last written point when the session has none to say - a restored fork whose parent had no
+                // conversation to fork from yet.
+                forkBefore = (conversations.forkBefore(tab.id) ?: before?.forkBefore).takeIf { conversationId == null },
                 title = tab.title,
                 titleSource = tab.titleSource,
-                conversationId = conversations.conversationIdOf(tab.id) ?: before?.conversationId,
+                conversationId = conversationId,
                 model = conversations.model(tab.id) ?: before?.model.orEmpty(),
                 effort = conversations.effort(tab.id) ?: before?.effort.orEmpty(),
                 mode = conversations.permissionMode(tab.id) ?: before?.mode.orEmpty(),
@@ -1435,6 +1492,18 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             openSession(id = sessionId, parentId = null, title = "", quote = "")
         }
 
+        // The name the message goes into the conversation under, and the one it is rewound by later (see
+        // Rewind). The panel names its own message on the press, so the card it draws has the name from
+        // the first second; a message fired out of the queue, or one from a sender that named nothing, is
+        // named here. Only a uuid passes: the name goes into the process's stdin and the CLI's matching.
+        val uuid = (echo?.get("uuid") as? JsonPrimitive)?.contentOrNull?.takeIf(Rewind::isUuid)
+            ?: UUID.randomUUID().toString()
+        // Said into a running turn, whoever sent it - the phone's Send works mid-turn too and marks nothing.
+        // Such a message has no clean "before" (the CLI files it between the turn's steps): its card's rewind
+        // button stands dead, and a fork "from here" does not cut before it (see feed/rewind.ts). Decided here,
+        // once for every sender, by the one who knows whether the turn runs.
+        val steering = snapshot(sessionId).get().status == SessionSnapshot.STATUS_RUNNING
+
         // Before the write into the process, not after: the entry's number has to fall where the message
         // genuinely stands in the conversation, or a fast first answer would be numbered ahead of the
         // question it answers.
@@ -1444,7 +1513,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 buildJsonObject {
                     put("type", "promptEcho")
                     put("sessionId", sessionId)
-                    echo.forEach { (key, value) -> put(key, value) }
+                    echo.forEach { (key, value) -> if (key != "uuid" && key != "steering") put(key, value) }
+                    // Every window's card carries it, so any of them can rewind to it - and the journal cut
+                    // by a rewind finds the message by it (see [rewind]).
+                    put("uuid", uuid)
+                    if (steering) put("steering", true)
                 }.toString(),
             )
         }
@@ -1456,7 +1529,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // panel, a phone, a queued message and an answer to a question all arrive here, so saving in
         // this one place covers the lot.
         UnsavedEdits.flush(project)
-        conversations.prompt(sessionId, text, images, context)
+        conversations.prompt(sessionId, text, images, context, uuid)
     }
 
     /**
@@ -1565,6 +1638,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // the new one is not in yet, so this would raise a bare third one on no transcript at all. The
         // move says so itself the moment it is done (see ClaudeSessions.onMoved).
         if (conversations.isMoving(sessionId)) return
+        // A rewind of a conversation is on its way: what is queued was written after the messages it may be
+        // about to drop, and it waits for the answer - dropped with them, or sent once the rewind is refused
+        // (see [rewind]). The turn a rewind stops can end before the rewind answers, and that end would
+        // otherwise fire the queue into the conversation a moment before it is cut.
+        if (sessionId in rewinding) return
 
         val (entry, rest) = queued.take(sessionId) ?: return
         sendQueue(sessionId, rest)
@@ -1597,6 +1675,120 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 }
             }
         }.toString()
+
+    /**
+     * The rewind dialog opening over one of the person's messages: what putting the code back to before
+     * it would touch (see Rewind.Code). Only to whoever opened it - it is their dialog.
+     *
+     * The setting is asked before the process: with `checkpoints` off nothing was ever kept, and raising a
+     * sleeping tab's process to be told so would cost a launch for an answer known here.
+     */
+    fun previewRewind(clientId: String, sessionId: String, uuid: String, asker: String = clientId) {
+        if (!Rewind.isUuid(uuid)) return
+
+        // The files are said from the project's folder, or from "~" past it - shorter in a dialog, and a
+        // path through somebody's home directory is not something to hand a phone (see RemoteFeed).
+        val answer = { code: Rewind.Code ->
+            emitTo(clientId, Rewind.previewJson(sessionId, uuid, Rewind.relativeTo(code, project.basePath)), asker)
+        }
+        if (!ClaudeConfig.fileCheckpointing(project.basePath, SettingSources.of(project))) {
+            answer(Rewind.Code.Off)
+            return
+        }
+
+        conversations.previewRewind(sessionId, uuid, answer)
+    }
+
+    /**
+     * Cut a conversation back to before one of the person's messages, and/or put the code back the way it
+     * was then - the panel's "Rewind to here" (see Rewind for what the CLI does with it).
+     *
+     * What the cut means here, beside the CLI's own memory:
+     * - **The journal is cut too**, from the message on (see SessionJournal.cutFrom), and the cut is said
+     *   to every client and written into the journal after it (`rewound`, with where the cut began). A window
+     *   that has the dropped part takes it off its feed; one rebuilt from the journal later never sees it.
+     * - **What was queued at the press goes.** It was written after the dropped messages and in answer to
+     *   them, and it would fire the moment the turn is over - into a conversation that no longer holds what
+     *   it answers. The dialog says so before the press. What is queued while the rewind is on its way was
+     *   written after the cut, and stays.
+     * - **The questions the stopped turn was asking are withdrawn**: the turn that asked them is gone.
+     * - **The files the code part put back are read again** by the IDE, the way an agent's own edits are
+     *   (see DiskRefresh): an editor showing the text that was just taken away is the one thing worse
+     *   than the rewind not happening. What is unsaved in an editor is saved first, as before any turn -
+     *   otherwise the restore and the editor fight over the file afterwards.
+     *
+     * The outcome goes to whoever pressed the button and nobody else: the message comes back into THEIR
+     * field (see the rewindOutcome message).
+     */
+    fun rewind(
+        clientId: String,
+        sessionId: String,
+        uuid: String,
+        lastSeen: String?,
+        conversation: Boolean,
+        files: Boolean,
+        asker: String = clientId,
+        /**
+         * The code put back under a fork the dialog has just opened (see SessionCommands, newSession): nobody
+         * is looking at the dialog any more, so a refusal is said in this tab's feed, on every client.
+         */
+        behindFork: Boolean = false,
+    ) {
+        if (!Rewind.isUuid(uuid)) return
+        if (!conversation && !files) return
+
+        val answer = { outcome: Rewind.Outcome -> emitTo(clientId, Rewind.outcomeJson(sessionId, uuid, outcome), asker) }
+
+        if (files && !ClaudeConfig.fileCheckpointing(project.basePath, SettingSources.of(project))) {
+            val off = Rewind.Outcome.Refused(Rewind.Refusal.CODE, Rewind.detailOf(Rewind.Code.Off))
+            if (behindFork) sendError(sessionId, Rewind.forkCodeError(off))
+            answer(off)
+            return
+        }
+        if (files) UnsavedEdits.flush(project)
+
+        // What is queued at the press was written after the messages the rewind drops, and about them - that
+        // goes with them. What is queued while the rewind is on its way (putting the files back takes seconds)
+        // was written after the cut, into the conversation that is left, and stays.
+        val queuedAtPress = if (conversation) queued.of(sessionId).map { it.id }.toSet() else emptySet()
+        if (conversation) rewinding.start(sessionId)
+        conversations.rewind(sessionId, uuid, lastSeen?.takeIf(Rewind::isUuid), conversation, files) { outcome ->
+            if (outcome is Rewind.Outcome.Done && outcome.conversation) cutBack(sessionId, uuid, queuedAtPress)
+            // Only the hold this rewind took: code put back alone took none, and a second rewind of the tab
+            // under way keeps its own (see RewindsUnderWay).
+            if (conversation) rewinding.end(sessionId)
+            if (outcome is Rewind.Outcome.Done && outcome.changed.isNotEmpty()) disk.reread(outcome.changed)
+            if (outcome is Rewind.Outcome.Refused) {
+                DiagnosticsLog.note(DiagnosticsLog.AGENT, "a rewind was refused (${outcome.refusal.wire}: ${outcome.detail.take(80)})")
+                if (behindFork) sendError(sessionId, Rewind.forkCodeError(outcome))
+            }
+            // What was held back for it goes now, if the conversation is free - a turn the cut stopped ends
+            // right after this answer, and its end sends it then. Not into a tab closed meanwhile.
+            if (tabs.contains(sessionId)) runQueued(sessionId)
+            answer(outcome)
+        }
+    }
+
+
+    /**
+     * Everything on this side that held the dropped part, made to agree with the CLI - see [rewind]. Runs
+     * before the turn the cut stopped is said to be over (see ClaudeSession.rewind), so what was queued at
+     * the press is gone by the time the idle status would fire the queue.
+     */
+    private fun cutBack(sessionId: String, uuid: String, queuedAtPress: Set<String>) {
+        sendQueue(sessionId, queued.removeAll(sessionId, queuedAtPress))
+        permissions.withdrawAll(sessionId)
+
+        // The cut and the entry that says so in one step under the journal's lock: a client judges by whether it
+        // holds anything numbered from where the cut began (see the rewound message in protocol.ts), and an
+        // entry slipped in between would be one it holds.
+        broadcastWith(sessionId) { journal -> Rewind.rewoundJson(sessionId, uuid, journal.cutFrom("\"uuid\":\"$uuid\"")) }
+        // The answer that was being printed belonged to the turn that is gone.
+        stream(sessionId).clear()
+
+        // The window holds less now, and how much less only the process can say.
+        usage.refreshContext(sessionId)
+    }
 
     /**
      * We interrupt the turn rather than cut down the process: the conversation must stay. We do not

@@ -52,6 +52,15 @@ internal object RemoteCommands {
         "sideQuestion",
         "sideQuestionCancel",
         /**
+         * Rewinding a conversation to one of the person's messages, and the dialog's question before it
+         * (see Rewind). No wider than `prompt` above: it changes what this same conversation remembers,
+         * which a message changes too, and the code part puts back only what the agent's own tools wrote -
+         * work a phone was already allowed to set going. The phone has the dialog at the message's three
+         * dots, where a quote and a fork already live.
+         */
+        "rewindPreview",
+        "rewind",
+        /**
          * Starting a conversation of one's own. Confirmed deliberately: a freshly started IDE has no
          * conversations at all, and a phone that cannot open one would show an empty project and be
          * useless precisely when it is wanted. It starts no more than sending a message does - that

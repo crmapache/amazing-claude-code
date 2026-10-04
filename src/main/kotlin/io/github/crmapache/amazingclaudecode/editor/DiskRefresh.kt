@@ -52,6 +52,14 @@ internal class DiskRefresh(
     }
 
     /**
+     * Files something other than the agent's stream says have changed - a rewind putting the code back
+     * (see ClaudeSessionHub.rewind). The same batches as the agent's own edits.
+     */
+    fun reread(paths: List<String>) {
+        paths.forEach(::queue)
+    }
+
+    /**
      * A file to re-read, once the ones around it have arrived too.
      *
      * In batches because edits come in bursts - a rename touches twenty files in as many seconds - and
@@ -81,7 +89,7 @@ internal class DiskRefresh(
         }
         if (paths.isEmpty()) return
 
-        runCatching { reread(paths) }
+        runCatching { refresh(paths) }
             .onFailure { thisLogger().warn("Couldn't re-read what the agent changed", it) }
     }
 
@@ -93,7 +101,7 @@ internal class DiskRefresh(
      * `/tmp` is not our business. A file that is new to it, though, may be new to the disk as well -
      * then its folder is what has to look again, and only a folder the IDE knows counts as one.
      */
-    private fun reread(paths: List<String>) {
+    private fun refresh(paths: List<String>) {
         val fs = LocalFileSystem.getInstance()
         val files = mutableListOf<VirtualFile>()
         val folders = mutableListOf<VirtualFile>()

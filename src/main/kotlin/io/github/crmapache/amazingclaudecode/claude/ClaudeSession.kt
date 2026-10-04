@@ -57,6 +57,14 @@ internal class ClaudeSession(
      * be raised as a fork again (see ClaudeSessions.switchAllTo).
      */
     val forkFrom: String? = null,
+    /**
+     * The message a fork stops short of: it carries the parent's conversation up to that message and
+     * nothing from it on (see TranscriptRewinds.anchorBefore). Null for a fork of the whole conversation.
+     *
+     * Readable from outside for the reason [forkFrom] is - a fork raised again before anybody spoke in it
+     * has to stop at the same place.
+     */
+    val forkBefore: String? = null,
     /** A past conversation being continued: it comes up with its own transcript. */
     resumeFrom: String? = null,
     /**
@@ -260,10 +268,8 @@ internal class ClaudeSession(
     var permissionMode: String? = permissionMode.ifEmpty { null }
         private set
 
-    /** Answers to control requests arrive mixed in with the conversation's events. */
-    private val awaitingControl = ConcurrentHashMap<String, Control>()
-
-    private class Control(val onResult: (JsonObject) -> Unit, val onFailure: (String) -> Unit)
+    /** Answers to control requests arrive mixed in with the conversation's events - see AwaitedControls. */
+    private val awaitingControl = AwaitedControls()
 
     /**
      * The side questions still out, by the name the client gave each one - see [askAside].
@@ -358,15 +364,31 @@ internal class ClaudeSession(
      */
     private var conversationEpoch = 0
 
-    fun sendPrompt(text: String, images: List<ImageAttachment> = emptyList(), context: String? = null) {
-        sendPrompt(text, images, context, repeat = false)
+    /**
+     * [uuid] is the name the message goes into the conversation under - made up by the client that sent
+     * it (see ClaudeSessionHub.deliverPrompt), and the one a rewind names it by later (see [rewind]). The
+     * CLI takes a client's uuid for its own line in the transcript, so the two are one and the same.
+     */
+    fun sendPrompt(
+        text: String,
+        images: List<ImageAttachment> = emptyList(),
+        context: String? = null,
+        uuid: String? = null,
+    ) {
+        sendPrompt(text, images, context, repeat = false, uuid = uuid)
     }
 
     /**
      * Whether the message went into the process. Outside this is not needed, but a resend tells by it
      * whether a turn has begun (see [resend]).
      */
-    private fun sendPrompt(text: String, images: List<ImageAttachment>, context: String?, repeat: Boolean): Boolean {
+    private fun sendPrompt(
+        text: String,
+        images: List<ImageAttachment>,
+        context: String?,
+        repeat: Boolean,
+        uuid: String?,
+    ): Boolean {
         // The process did not come up (onError has already said so) - the turn did not begin and cannot
         // begin. Not saying so separately means leaving the panel with the spinner it put up on the
         // send: the error message is in the feed while work still looks like it is happening.
@@ -394,12 +416,12 @@ internal class ClaudeSession(
         // of a turn is missing from that snapshot: no further turn begins, no later chain ever looks at
         // it, and the loss goes unnoticed forever - which is precisely the moment this whole check
         // exists for.
-        val delivery = if (watched) PromptDeliveries.Delivery(text, images, context, sentAt, repeat) else null
+        val delivery = if (watched) PromptDeliveries.Delivery(text, images, context, sentAt, repeat, uuid) else null
         delivery?.let(undelivered::watch)
 
         // We only wait for a report on what actually went out: a failed write has already been reported
         // to the panel as an error, and repeating it blindly serves nothing.
-        val sent = write(process, userMessage(text, images, context))
+        val sent = write(process, userMessage(text, images, context, uuid))
         if (!sent) delivery?.let { undelivered.stopWatching(listOf(it)) }
         if (sent && SessionTitle.isRename(text)) {
             // The person is naming the conversation right now, through the CLI: the tab's own name sent
@@ -835,6 +857,174 @@ internal class ClaudeSession(
     }
 
     /**
+     * What putting the code back to before [target] would touch - the rewind dialog's question, asked
+     * before anything is changed (see Rewind.Code). A `rewind_files` with `dry_run`: nothing is written.
+     */
+    fun previewRewind(target: String, onCode: (Rewind.Code) -> Unit) {
+        control(
+            Rewind.FILES,
+            onResult = { response -> onCode(Rewind.codeOf(response)) },
+            onFailure = { message -> onCode(Rewind.codeOfError(message)) },
+            watched = true,
+        ) {
+            put("user_message_id", target)
+            put("dry_run", true)
+        }
+    }
+
+    /**
+     * Cut the conversation back to before [target] - that message and everything after it leave the
+     * agent's memory - and/or put the files its tools changed since then back the way they were.
+     *
+     * The order is chosen so that a refusal touches nothing:
+     * - the code is checked first (a dry run), so a code part that cannot be done stops the whole thing
+     *   before a word is dropped;
+     * - the conversation is cut next - it is the part with refusals no dry run can foresee;
+     * - the files are put back last. Measured on 2.1.280: the copies survive the cut, so restoring them
+     *   after it works, while the other way round a refused cut would leave the code rolled back under a
+     *   conversation that still talks about it.
+     *
+     * A running turn is stopped by the cut itself (`interrupt_if_running`), and the CLI says nothing more
+     * about that turn - no `result` ever comes. So the turn is ended here, AFTER [onOutcome] has run:
+     * ending it says "idle", idle sends whatever was queued, and the queue belonged to the turn that was
+     * just thrown away (see ClaudeSessionHub.rewind).
+     *
+     * [lastSeen] is the newest message the asking client has on screen - a later one it has not seen
+     * stops the rewind rather than being dropped unread (see Rewind).
+     */
+    fun rewind(
+        target: String,
+        lastSeen: String?,
+        conversation: Boolean,
+        files: Boolean,
+        onOutcome: (Rewind.Outcome) -> Unit,
+    ) {
+        if (!conversation) {
+            // Code alone, under a conversation that carries on: not over a turn still writing files.
+            if (busy) {
+                onOutcome(Rewind.Outcome.Refused(Rewind.Refusal.BUSY, ""))
+                return
+            }
+            previewRewind(target) { code ->
+                if (code !is Rewind.Code.Ready) {
+                    onOutcome(Rewind.Outcome.Refused(Rewind.Refusal.CODE, Rewind.detailOf(code)))
+                    return@previewRewind
+                }
+                restoreFiles(target) { restored, detail ->
+                    onOutcome(
+                        if (restored) {
+                            Rewind.Outcome.Done(false, "", Rewind.Files.RESTORED, code.files)
+                        } else {
+                            Rewind.Outcome.Refused(Rewind.Refusal.CODE, detail)
+                        },
+                    )
+                }
+            }
+            return
+        }
+
+        if (!files) {
+            cut(target, lastSeen, onOutcome) { prefill, report ->
+                report(Rewind.Outcome.Done(true, prefill, Rewind.Files.SKIPPED, emptyList()))
+            }
+            return
+        }
+
+        previewRewind(target) { code ->
+            when (code) {
+                is Rewind.Code.Ready -> cut(target, lastSeen, onOutcome) { prefill, report ->
+                    restoreFiles(target) { restored, detail ->
+                        report(
+                            Rewind.Outcome.Done(
+                                conversation = true,
+                                prefill = prefill,
+                                files = if (restored) Rewind.Files.RESTORED else Rewind.Files.FAILED,
+                                changed = if (restored) code.files else emptyList(),
+                                filesDetail = detail,
+                            ),
+                        )
+                    }
+                }
+                // Nothing to put back after all - the conversation still goes, which is what was asked.
+                Rewind.Code.None -> cut(target, lastSeen, onOutcome) { prefill, report ->
+                    report(Rewind.Outcome.Done(true, prefill, Rewind.Files.SKIPPED, emptyList()))
+                }
+                else -> onOutcome(Rewind.Outcome.Refused(Rewind.Refusal.CODE, Rewind.detailOf(code)))
+            }
+        }
+    }
+
+    /**
+     * The conversation part. [then] gets the dropped message's text and the way to report the outcome -
+     * so the files step after a cut can report once its own answer is in. Reporting ends the stopped turn
+     * as well (see [rewind] for why after the report, and never before it).
+     */
+    private fun cut(
+        target: String,
+        lastSeen: String?,
+        onOutcome: (Rewind.Outcome) -> Unit,
+        attempt: Int = 0,
+        then: (prefill: String, report: (Rewind.Outcome) -> Unit) -> Unit,
+    ) {
+        control(
+            Rewind.CONVERSATION,
+            onResult = { response ->
+                when (val cut = Rewind.cutOf(response)) {
+                    // A message written into this running turn sits unread in the CLI, and the CLI will not cut
+                    // under it (see Rewind.waitsOnUnread). Stopped, the turn hands that message over as a turn of
+                    // its own - written after the target, it goes with the rest on the next attempt, which
+                    // stops that turn in its turn.
+                    is Rewind.Cut.Refused if busy && attempt < CUT_ATTEMPTS && Rewind.waitsOnUnread(response) -> {
+                        control("interrupt")
+                        AppExecutorUtil.getAppScheduledExecutorService().schedule(
+                            { cut(target, lastSeen, onOutcome, attempt + 1, then) },
+                            CUT_RETRY_MS,
+                            TimeUnit.MILLISECONDS,
+                        )
+                    }
+
+                    is Rewind.Cut.Refused -> onOutcome(Rewind.Outcome.Refused(cut.refusal, cut.detail))
+                    is Rewind.Cut.Done -> {
+                        // Nothing that was sent or asked inside the dropped part is waited for any more: a
+                        // message the delivery check would resend belongs to a turn that is gone, and so
+                        // does a question the agent was holding open.
+                        undelivered.forget()
+                        awaitingPermission.clear()
+
+                        then(cut.prefill) { outcome ->
+                            // Asked before the answer: the answer may send what was queued since the press
+                            // (see ClaudeSessionHub.rewind), and the turn that starts is not the one stopped.
+                            val stopped = busy
+                            onOutcome(outcome)
+                            if (stopped) endTurn()
+                        }
+                    }
+                }
+            },
+            onFailure = { message -> onOutcome(Rewind.Outcome.Refused(Rewind.Refusal.ofError(message), message)) },
+            watched = true,
+        ) {
+            put("target_message_uuid", target)
+            lastSeen?.let { put("last_seen_user_message_uuid", it) }
+            // Stopped and cut in one go - asking the person to press Stop first is a step that buys nothing.
+            put("interrupt_if_running", true)
+        }
+    }
+
+    /** The files part: true when the CLI put them back, or false with its own words. */
+    private fun restoreFiles(target: String, then: (Boolean, String) -> Unit) {
+        control(
+            Rewind.FILES,
+            onResult = { response ->
+                val restored = Rewind.restoredOf(response)
+                then(restored == null, restored.orEmpty())
+            },
+            onFailure = { message -> then(false, message) },
+            watched = true,
+        ) { put("user_message_id", target) }
+    }
+
+    /**
      * Restarting the conversation's process while keeping the transcript.
      *
      * For MCP's sake: there is no other way to reconnect a server - the CLI has no subcommand of its
@@ -850,8 +1040,12 @@ internal class ClaudeSession(
     fun restart(): Boolean {
         if (handler == null) return false
 
-        stop()
-        return start() != null
+        // The requests the old process leaves unanswered are answered once the next one is up: an answer
+        // that set the tab's queue going in between would raise a process of its own beside it.
+        val abandoned = takeDown()
+        val started = start() != null
+        answer(abandoned)
+        return started
     }
 
     /**
@@ -873,7 +1067,12 @@ internal class ClaudeSession(
 
     /** Stopping the conversation entirely: the process is taken down, the context is lost. */
     fun stop() {
-        val process = handler ?: return
+        answer(takeDown())
+    }
+
+    /** [stop] without answering the watched requests it leaves - returned instead, for [restart] to answer. */
+    private fun takeDown(): List<AwaitedControls.Control> {
+        val process = handler ?: return emptyList()
         stopRequested = true
         buried.add(process)
         handler = null
@@ -883,11 +1082,13 @@ internal class ClaudeSession(
         undelivered.forget()
         lines.reset()
         abandonAsides()
-        awaitingControl.clear()
+        val abandoned = awaitingControl.abandonWatched()
+        awaitingControl.dropUnwatched()
         // There is no longer anyone or anything to answer the hanging questions with: the process that
         // asked them is about to be gone.
         awaitingPermission.clear()
         process.destroyProcess()
+        return abandoned
     }
 
     override fun dispose() = stop()
@@ -897,7 +1098,8 @@ internal class ClaudeSession(
     /**
      * [id] is given from outside only by a caller that has to know it before the answer can arrive (see
      * [askAside]); [cancelOnTimeout] tells the CLI to stop working on a request we no longer wait for,
-     * which matters only for one that costs something while it runs.
+     * which matters only for one that costs something while it runs. A [watched] request is answered as
+     * failed (AwaitedControls.PROCESS_ENDED) when the process goes before answering it - see AwaitedControls.
      */
     private fun control(
         subtype: String,
@@ -906,6 +1108,7 @@ internal class ClaudeSession(
         id: String = UUID.randomUUID().toString(),
         timeoutSeconds: Long = CONTROL_TIMEOUT_SECONDS,
         cancelOnTimeout: Boolean = false,
+        watched: Boolean = false,
         request: JsonObjectBuilder.() -> Unit = {},
     ) {
         val process = handler ?: run {
@@ -914,14 +1117,14 @@ internal class ClaudeSession(
             return
         }
 
-        awaitingControl[id] = Control(onResult, onFailure)
+        awaitingControl.put(id, AwaitedControls.Control(onResult, onFailure, watched))
 
         // Without a timeout of its own a forgotten answer hangs this piece of the panel forever - the
         // same risk we already fixed for permissions, but here it concerns any control request: the
         // usage limits, a mode change, Stop.
         AppExecutorUtil.getAppScheduledExecutorService().schedule(
             {
-                awaitingControl.remove(id)?.let { control ->
+                awaitingControl.take(id)?.let { control ->
                     if (cancelOnTimeout) handler?.let { cancelControl(it, id) }
                     control.onFailure("$subtype timed out")
                 }
@@ -1007,9 +1210,24 @@ internal class ClaudeSession(
     private fun abandonAsides() {
         for ((id, aside) in asides) {
             if (!asides.remove(id, aside)) continue
-            awaitingControl.remove(aside.controlId)
-            runCatching { aside.onEnd(SideQuestion.Answer.Failed(SideQuestion.Reason.ENDED, "the process ended")) }
+            awaitingControl.take(aside.controlId)
+            runCatching { aside.onEnd(SideQuestion.Answer.Failed(SideQuestion.Reason.ENDED, AwaitedControls.PROCESS_ENDED)) }
                 .onFailure { thisLogger().warn("Side question handler failed", it) }
+        }
+    }
+
+    /**
+     * Watched control requests the process left unanswered, told they will not be answered (see
+     * AwaitedControls) - a rewind's dialog and its tab's queue wait on them. Off this thread, which may be
+     * the process listener's or the one stopping it, neither of which should run a tab's queue.
+     */
+    private fun answer(abandoned: List<AwaitedControls.Control>) {
+        if (abandoned.isEmpty()) return
+
+        AppExecutorUtil.getAppExecutorService().execute {
+            for (control in abandoned) {
+                runCatching { control.onFailure(AwaitedControls.PROCESS_ENDED) }.onFailure { thisLogger().warn("Control failure handler failed", it) }
+            }
         }
     }
 
@@ -1066,7 +1284,7 @@ internal class ClaudeSession(
             }.getOrNull()
 
             val id = response?.get("request_id")?.jsonPrimitive?.contentOrNull
-            val control = id?.let { awaitingControl.remove(it) } ?: return
+            val control = id?.let { awaitingControl.take(it) } ?: return
 
             // A slip inside a control answer's handler must not bring down the stream's parsing: it is
             // shared with the conversation's events, and an exception thrown from here takes with it the
@@ -1342,7 +1560,8 @@ internal class ClaudeSession(
         // failed to come up and a broken channel start no turn, while the panel would be left with a
         // spinner and a running counter over the text of the error, and there would be nothing left to
         // clear them with.
-        if (!sendPrompt(lost.text, lost.images, lost.context, repeat = true)) return
+        // Under the same name: it is the same message, and the card in the feed already carries that name.
+        if (!sendPrompt(lost.text, lost.images, lost.context, repeat = true, uuid = lost.uuid)) return
         onTurnStarted()
 
         // The repeat gets a chain of checks of its own right away rather than waiting for the end of a
@@ -1567,6 +1786,10 @@ internal class ClaudeSession(
                 }
         }
 
+        // Where a fork stops, worked out on its first launch only - afterwards it is a conversation of its
+        // own, continued by its own id like any other.
+        val fork = if (conversationId == null) forkPoint(executable) else ForkPoint(null, null)
+
         val commandLine = GeneralCommandLine(executable.absolutePath)
             .withParameters(
                 ClaudeLaunch.arguments(
@@ -1574,19 +1797,27 @@ internal class ClaudeSession(
                     effort = effort,
                     permissionMode = permissionMode,
                     conversationId = conversationId,
-                    forkFrom = forkFrom,
+                    forkFrom = fork.from,
                     allowBypassSwitch = ClaudeExecutable.supportsFlag(
                         executable,
                         ClaudeLaunch.ALLOW_BYPASS_FLAG,
                     ),
                     briefing = briefing,
                     settingSources = passedSources,
+                    forkAt = fork.at,
                 ),
             )
             .withWorkingDirectory(workingDirectory?.let { Path.of(it) })
             // Over the account's own map, never instead of it: what the conversation needs on top of
             // whose credential it opens lives in ClaudeLaunch, beside everything else decided at launch.
-            .withEnvironment(ClaudeLaunch.environment(environment))
+            .withEnvironment(
+                ClaudeLaunch.environment(
+                    environment,
+                    // The person's own `checkpoints` setting, read by the layers this project loads - a
+                    // stream ignores it unless asked (see ClaudeLaunch.CHECKPOINTS_VARIABLE).
+                    fileCheckpoints = ClaudeConfig.fileCheckpointing(workingDirectory, passedSources),
+                ),
+            )
             .withCharset(Charsets.UTF_8)
 
         val process = runCatching { OSProcessHandler(commandLine) }
@@ -1619,8 +1850,10 @@ internal class ClaudeSession(
 
                     handler = null
                     busy = false
-                    // The side questions it was answering will not be answered now (see abandonAsides).
+                    // The side questions it was answering will not be answered now (see abandonAsides),
+                    // and nor will the requests somebody watches (see AwaitedControls).
                     abandonAsides()
+                    answer(awaitingControl.abandonWatched())
                     // What was undelivered went missing along with the process: raising a new one for
                     // its sake is not what anyone expects from a conversation that has just crashed.
                     // About the crash itself the panel is told separately, below.
@@ -1657,6 +1890,48 @@ internal class ClaudeSession(
         renamedByCommand = false
         handler = process
         return process
+    }
+
+    /** What a fork's first launch is given - see [forkPoint]. [from] null raises a conversation of nothing. */
+    private data class ForkPoint(val from: String?, val at: String?)
+
+    /**
+     * The parent a fork comes up over, and the line of the parent's transcript it stops at.
+     *
+     * A fork of the whole conversation is the parent's id and nothing more. A fork from a message reads the
+     * parent's file for the line before that message (see TranscriptRewinds.anchorBefore) - by the uuid the
+     * message went in under, which the panel gave it. A fork from the very first message carries nothing
+     * at all: it comes up as a conversation of its own, and the message waits in its field.
+     *
+     * When the cut cannot be made - the message is not in the file, or this CLI does not know the flag that
+     * makes it - the fork carries the whole conversation, and the feed says so: a fork that quietly holds
+     * the turns the person forked to get away from is the one outcome worse than an explained one.
+     */
+    private fun forkPoint(executable: java.io.File): ForkPoint {
+        val parent = forkFrom ?: return ForkPoint(null, null)
+        val before = forkBefore ?: return ForkPoint(parent, null)
+
+        val transcript = ClaudeHistory.transcriptFile(workingDirectory, parent)
+        val anchor = transcript
+            ?.let { file -> runCatching { file.useLines { TranscriptRewinds.anchorBefore(it, before) } }.getOrNull() }
+            ?: TranscriptRewinds.Anchor.NotFound
+
+        return when (anchor) {
+            TranscriptRewinds.Anchor.Start -> ForkPoint(null, null)
+            is TranscriptRewinds.Anchor.At ->
+                if (ClaudeExecutable.knowsHiddenOption(executable, ClaudeLaunch.FORK_AT_FLAG)) {
+                    ForkPoint(parent, anchor.uuid)
+                } else {
+                    DiagnosticsLog.note(DiagnosticsLog.AGENT, "this claude cannot fork at a message: the fork carries the whole conversation")
+                    onError(FORK_WHOLE)
+                    ForkPoint(parent, null)
+                }
+            TranscriptRewinds.Anchor.NotFound -> {
+                DiagnosticsLog.note(DiagnosticsLog.AGENT, "the message a fork was cut at is not in the parent's transcript")
+                onError(FORK_WHOLE)
+                ForkPoint(parent, null)
+            }
+        }
     }
 
     /** The conversation's identifier: without it there is no resuming it after a restart. */
@@ -1712,8 +1987,10 @@ internal class ClaudeSession(
      * wrapped the way the CLI wraps its own notes to the model, each of them leaves it out by itself, and the
      * feed draws it as a line under the message rather than as something said (see feed/editorContext.ts).
      */
-    private fun userMessage(text: String, images: List<ImageAttachment>, context: String?): String = buildJsonObject {
+    private fun userMessage(text: String, images: List<ImageAttachment>, context: String?, uuid: String?): String = buildJsonObject {
         put("type", "user")
+        // The CLI files the message under this name rather than one of its own (see [sendPrompt]).
+        uuid?.let { put("uuid", it) }
         putJsonObject("message") {
             put("role", "user")
             putJsonArray("content") {
@@ -1758,6 +2035,20 @@ internal class ClaudeSession(
 
         /** How long any control request is waited for before we give up ourselves. */
         const val CONTROL_TIMEOUT_SECONDS = 20L
+
+        /**
+         * A cut refused over an unread message is asked again after the turn is stopped (see [cut]) - this many
+         * times, this far apart: the stopped turn's result and the turn the message becomes take a moment.
+         */
+        private const val CUT_ATTEMPTS = 3
+        private const val CUT_RETRY_MS = 1500L
+
+        /**
+         * A fork asked to stop at a message came up with the whole conversation instead - see [forkPoint].
+         * A code rather than a sentence: the panel words it in the person's language (see errorWords in
+         * webview/src/components/items/Rows.tsx).
+         */
+        const val FORK_WHOLE = "FORK_WHOLE"
 
         /** How long after a `/rename`'s result its name is read back from the transcript - see [readRename]. */
         const val RENAME_READ_DELAY_MS = 300L

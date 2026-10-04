@@ -125,6 +125,10 @@ const SHARED_WITH_ENGLISH: Record<string, Locale[]> = {
   'mobile.newSession.mode': ['fr'],
   'header.menu': ['pt-BR', 'fr'],
   'header.conversations': ['fr'],
+  // The rewind dialog's choice of what to put back: "Code" is the word in German and French, and so is
+  // "Conversation" in French.
+  'chrome.rewind.code': ['de', 'fr'],
+  'chrome.rewind.conversation': ['fr'],
   'remote.relay': ['es', 'pt-BR', 'de'],
   'feedback.kinds.bug.label': ['pt-BR', 'de', 'fr'],
   'feedback.kinds.idea.label': ['es'],

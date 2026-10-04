@@ -237,6 +237,20 @@ internal object ClaudeConfig {
         }
     }
 
+    /**
+     * Whether Claude Code keeps copies of the files its tools change - the `checkpoints` setting, read the
+     * way this screen reads it. A terminal's `/rewind` restores code by those copies; the panel's rewind
+     * does too, and asks for them at launch by this answer (see ClaudeLaunch.CHECKPOINTS_VARIABLE).
+     *
+     * On unless written off: that is the CLI's own default, and a file that cannot be read is not a "no".
+     */
+    fun fileCheckpointing(projectDirectory: String?, settingSources: String): Boolean = runCatching {
+        valueOf(SPECS.getValue(CHECKPOINTS), files(projectDirectory, settingSources)).first != "false"
+    }.getOrDefault(true)
+
+    /** The `/config` key of the setting above. */
+    private const val CHECKPOINTS = "checkpoints"
+
     /** The value in force and the layer it came from - null for a default or for the old global config. */
     private fun valueOf(spec: Spec, files: Files): Pair<String?, ClaudeSettings.Layer?> {
         val layers = when (spec.store) {

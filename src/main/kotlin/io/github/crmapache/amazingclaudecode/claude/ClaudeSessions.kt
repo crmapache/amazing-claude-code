@@ -159,6 +159,8 @@ internal class ClaudeSessions(
         images: List<ImageAttachment> = emptyList(),
         /** What the editor showed, for the agent alone - see ClaudeSession.userMessage. */
         context: String? = null,
+        /** The name the message goes in under - see ClaudeSession.sendPrompt. */
+        uuid: String? = null,
     ) {
         // Before anything is said into it: a move this tab was asked to make and has not made yet
         // happens now, so the words below are billed to the account the person chose (see
@@ -167,7 +169,7 @@ internal class ClaudeSessions(
         // And a restart it was asked for and has not made either - so that what is said below goes into
         // a process holding the servers as they stand now (see [applyPendingRestart]).
         applyPendingRestart(sessionId)
-        session(sessionId).sendPrompt(releasedRole(sessionId, text), images, context)
+        session(sessionId).sendPrompt(releasedRole(sessionId, text), images, context, uuid)
     }
 
     /**
@@ -220,7 +222,15 @@ internal class ClaudeSessions(
      * the fork of the conversation it continues without deciding anything about the next tab opened from
      * "+".
      */
-    fun branchFrom(parentId: String, branchId: String) {
+    fun branchFrom(
+        parentId: String,
+        branchId: String,
+        /**
+         * The parent's message the branch stops short of - everything before it, nothing from it on (see
+         * ClaudeSession.forkBefore). Null for the whole conversation.
+         */
+        before: String? = null,
+    ) {
         if (sessions.containsKey(branchId)) return
 
         val parent = sessions[parentId]
@@ -239,7 +249,8 @@ internal class ClaudeSessions(
         // everything else on this machine is on: that is the whole of the rule now, and a fork of a tab
         // launched last week was the last thing still quietly beating it.
 
-        sessions[branchId] = newSession(branchId, forkFrom = parent?.conversationId).also {
+        val from = parent?.conversationId
+        sessions[branchId] = newSession(branchId, forkFrom = from, forkBefore = before.takeIf { from != null }).also {
             Disposer.register(this, it)
         }
     }
@@ -500,6 +511,9 @@ internal class ClaudeSessions(
         // belongs to its parent: raised as an ordinary tab it would come up empty, which is the same
         // loss as a fork starting on the machine's defaults.
         val forkFrom = if (conversationId == null) session.forkFrom else null
+        // And it stops where it was asked to stop: carried whole, it would bring back the turns the person
+        // forked to get away from.
+        val forkBefore = if (conversationId == null) session.forkBefore else null
 
         val carried = SessionLaunch(
             // Clamped to what the account it is moving ONTO can actually run - see StartingChoice.clamp. Carried
@@ -515,7 +529,7 @@ internal class ClaudeSessions(
             close(sessionId)
             launches[sessionId] = carried
 
-            sessions[sessionId] = newSession(sessionId, forkFrom = forkFrom, resumeFrom = conversationId).also {
+            sessions[sessionId] = newSession(sessionId, forkFrom = forkFrom, resumeFrom = conversationId, forkBefore = forkBefore).also {
                 Disposer.register(this, it)
             }
         } finally {
@@ -706,6 +720,27 @@ internal class ClaudeSessions(
         onEnd: (SideQuestion.Answer) -> Unit,
     ) {
         awake(sessionId).askAside(id, question, history, onProgress, onEnd)
+    }
+
+    /**
+     * What restoring the code to before a message would put back - see ClaudeSession.previewRewind. A
+     * sleeping tab is woken for it: the answer is the process's, and the rewind it is the first step of
+     * needs the process anyway.
+     */
+    fun previewRewind(sessionId: String, target: String, onCode: (Rewind.Code) -> Unit) {
+        awake(sessionId).previewRewind(target, onCode)
+    }
+
+    /** Cut a conversation back and/or put its files back - see ClaudeSession.rewind. */
+    fun rewind(
+        sessionId: String,
+        target: String,
+        lastSeen: String?,
+        conversation: Boolean,
+        files: Boolean,
+        onOutcome: (Rewind.Outcome) -> Unit,
+    ) {
+        awake(sessionId).rewind(target, lastSeen, conversation, files, onOutcome)
     }
 
     /** Nothing to cancel in a conversation that is gone: its questions went with it, already answered as such. */
@@ -916,6 +951,12 @@ internal class ClaudeSessions(
     fun conversationIdOf(sessionId: String): String? = sessions[sessionId]?.conversationId
 
     /**
+     * The parent's message a fork not yet started stops short of (see ClaudeSession.forkBefore) - null once
+     * its conversation is born, when it no longer cuts anything.
+     */
+    fun forkBefore(sessionId: String): String? = sessions[sessionId]?.takeIf { it.conversationId == null }?.forkBefore
+
+    /**
      * The name the person gave the tab, into the conversation behind it - see ClaudeSession.rename.
      *
      * Without creating a conversation, unlike [session]: a tab nobody has written into has no transcript
@@ -1086,6 +1127,7 @@ internal class ClaudeSessions(
         sessionId: String,
         forkFrom: String?,
         resumeFrom: String? = null,
+        forkBefore: String? = null,
     ): ClaudeSession {
         /*
          * Whether the conversation raising this callback is still the one the tab holds.
@@ -1129,6 +1171,7 @@ internal class ClaudeSessions(
         return ClaudeSession(
             workingDirectory = workingDirectory,
             forkFrom = forkFrom,
+            forkBefore = forkBefore,
             resumeFrom = resumeFrom,
             model = model,
             effort = effort,

@@ -698,6 +698,42 @@
   color: var(--acc-fg);
 }
 
+/* Fork this tab's conversation - beside the cross and in its box (see Header). On every conversation's tab
+   and always, so that no tab's width depends on it; 4px from the cross, the two read as a pair of the
+   tab's own actions. */
+.tabForkButton {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-right: -3px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--acc-r-xs);
+  color: var(--acc-fg-faint);
+}
+
+.tabForkButton:hover {
+  background: var(--acc-line-strong);
+  color: var(--acc-fg);
+}
+
+/* Nothing to fork yet: the button keeps its place and its hint, and stops looking pressable. */
+.tabForkButtonOff {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tabForkButtonOff:hover {
+  background: none;
+  color: var(--acc-fg-faint);
+}
+
+.forkIcon {
+  flex: none;
+  width: 11px;
+  height: 11px;
+}
+
 .headerTools {
   display: flex;
   align-items: center;
@@ -975,6 +1011,12 @@
   color: var(--acc-fg);
 }
 
+/* Held, it does not answer the hand either - a disabled button gets that for free. */
+.confirmCancel[aria-disabled='true']:hover {
+  background: var(--acc-bg-control);
+  color: var(--acc-fg-dim);
+}
+
 .confirmAccept {
   background: var(--acc-bad);
   color: var(--acc-on-accent);
@@ -987,6 +1029,165 @@
 .confirmAccept:focus-visible {
   outline: 1px solid var(--acc-fg);
   outline-offset: 1px;
+}
+
+/* The buttons of a question that is waiting for its answer, or cannot be pressed yet - held with
+   aria-disabled too where the focus must stay on them (see RewindDialog). */
+.confirmCancel:disabled,
+.confirmCancel[aria-disabled='true'],
+.confirmAccept:disabled {
+  opacity: 0.45;
+  cursor: default;
+  filter: none;
+}
+
+/* --- The rewind dialog (see RewindDialog) ------------------------------------- */
+
+/* Wider than a yes-or-no question: it carries a choice and a list of files. Its buttons wrap rather than
+   overflow when the panel is dragged narrow - three of them, in ten languages. */
+.rewind {
+  width: min(340px, calc(100% - 24px));
+  max-height: calc(100% - var(--header-height) - 64px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.rewind .confirmActions {
+  flex-wrap: wrap;
+}
+
+.rewindLead {
+  font: 11.5px/1.5 var(--acc-font);
+  color: var(--acc-fg-body);
+}
+
+/* Three answers to one question as one capsule - the way the scenario screens draw theirs. A panel dragged
+   to its narrowest wraps the capsule rather than cutting a word in it: "Conve..." is not a choice. */
+.rewindChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  margin-top: 2px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-lg);
+  background: var(--acc-bg-sunken);
+}
+
+.rewindChoice {
+  flex: 1 1 auto;
+  min-height: var(--acc-hit);
+  padding: 4px 6px;
+  border-radius: var(--acc-r-sm);
+  color: var(--acc-fg-faint);
+  font: 11px var(--acc-font);
+  white-space: nowrap;
+}
+
+@media (hover: hover) {
+  .rewindChoice:hover:not(:disabled) {
+    color: var(--acc-fg-body);
+  }
+}
+
+.rewindChoiceOn {
+  background: var(--acc-bg-control);
+  color: var(--acc-fg);
+}
+
+.rewindCode {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rewindCodeHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font: 11px var(--acc-font);
+  color: var(--acc-fg-body);
+}
+
+.rewindStats {
+  display: flex;
+  gap: 6px;
+  font: 10.5px var(--acc-mono);
+  white-space: nowrap;
+}
+
+.rewindAdded {
+  color: var(--acc-ok-text);
+}
+
+.rewindRemoved {
+  color: var(--acc-bad-text);
+}
+
+.rewindFiles {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A path is the one thing here that can be longer than the dialog. The name stands first and keeps its
+   width, the folder after it gives way and is cut at its end; the whole path is in the hint. A file of the
+   agent's memory lives deep under "~", and cut at the end it showed nothing but folders. */
+.rewindFile,
+.rewindMore {
+  font: 10.5px/1.5 var(--acc-mono);
+  color: var(--acc-fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rewindFile {
+  display: flex;
+  gap: 8px;
+}
+
+.rewindFileName {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Basis 0: the folder takes only what the name left, and a name too long for the line takes it all. */
+.rewindFileFolder {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--acc-fg-faint);
+}
+
+.rewindMore {
+  color: var(--acc-fg-faint);
+}
+
+.rewindNote {
+  font: 10.5px/1.55 var(--acc-font);
+  color: var(--acc-fg-faint);
+}
+
+.rewindWarn {
+  font: 10.5px/1.5 var(--acc-font);
+  color: var(--acc-warn-light);
+}
+
+.rewindRefusal {
+  padding: 6px 8px;
+  border-radius: var(--acc-r-md);
+  background: var(--acc-bad-10);
+  color: var(--acc-bad-text);
+  font: 11px/1.5 var(--acc-font);
+  overflow-wrap: anywhere;
 }
 
 /* --- The bottom row -------------------------------------------------------- */

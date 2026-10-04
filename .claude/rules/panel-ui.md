@@ -5,6 +5,8 @@ paths:
   - "webview/src/feed/fieldEdits.ts"
   - "webview/src/feed/fieldEdits.test.ts"
   - "webview/src/hooks/useFieldHistory.ts"
+  - "webview/src/components/dialogKeys.ts"
+  - "webview/src/components/dialogKeys.test.ts"
   - "src/main/kotlin/io/github/crmapache/amazingclaudecode/webview/WebviewHost.kt"
 ---
 
@@ -33,3 +35,9 @@ paths:
   не позвать), формы MCP и плагинов, адрес релея, ключ Deepgram и путь к исполняемому файлу. Новое текстовое
   поле без хука - поле, где Cmd+Z отвечает чужой отменой. Крестик, опустошающий поле, идёт через ту же
   историю. DOM пишется раньше, чем состояние: React находит поле уже согласным и не трогает каретку.
+- **Enter в окне-вопросе жмёт ту кнопку, на которой фокус** (`useDialogKeys` в `components/dialogKeys.ts`, с
+  тестом; `Confirm`, `RewindDialog`). Раньше окно ловило Enter на уровне всей страницы и всегда отвечало главным
+  действием: дошёл табом до «Отмены» или кликнул по варианту, нажал Enter - и получил откат с перезаписью
+  файлов или удалённый сценарий. Главная кнопка в фокусе при открытии, так что быстрый Enter работает как
+  раньше. Escape по-прежнему закрывает вопрос и не доходит до панели, где он остановил бы ход. Новое окно-вопрос
+  берёт этот хук, а не свой перехват.

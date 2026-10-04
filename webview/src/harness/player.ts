@@ -2,6 +2,7 @@ import type {
   ClaudeConfigSetting,
   PaintedTerm,
   QueuedMessage,
+  RewindCode,
   SearchHit,
   ShellMessage,
   VoiceHotkey,
@@ -1169,6 +1170,59 @@ const answerQueue = (message: WebviewMessage): void => {
   }
 }
 
+/**
+ * The rewind dialog, answered the way ClaudeSessionHub answers it: the code part's preview a moment after
+ * the dialog opens, and the rewind itself after a pause the CLI really takes - the cut going out to every
+ * window first, then the outcome to the asker.
+ *
+ * What the preview says can be steered from the console, so every state of the dialog can be looked at:
+ * `window.__accHarnessRewindCode = { state: 'off' }` (or 'none', 'notTracked', 'noCheckpoint',
+ * `{ state: 'unavailable', detail: '…' }`), and `window.__accHarnessRewindRefuse = 'moved'` to have the next
+ * rewind refused for that reason. Unset, there are files to put back and the rewind goes through.
+ */
+const answerRewind = (message: WebviewMessage): void => {
+  if (message.type === 'rewindPreview') {
+    const code: RewindCode = window.__accHarnessRewindCode ?? {
+      state: 'ready',
+      files: [
+        'apps/web/src/cart/discount.ts',
+        'apps/web/src/cart/CartSummary.tsx',
+        'apps/web/src/cart/discount.test.ts',
+        // The agent's memory is written with the same edit tools, so it comes back too - said from "~".
+        '~/.claude/projects/-Users-dev-work-shop/memory/discount_rules.md',
+      ],
+      count: 4,
+      insertions: 48,
+      deletions: 11,
+    }
+    const { sessionId, uuid } = message
+    window.setTimeout(() => window.__accReceive?.({ type: 'rewindPreview', sessionId, uuid, code }), 350)
+    return
+  }
+
+  if (message.type !== 'rewind') return
+
+  const { sessionId, uuid, conversation, files } = message
+  const refusal = window.__accHarnessRewindRefuse
+  window.setTimeout(() => {
+    if (refusal) {
+      window.__accHarnessRewindRefuse = undefined
+      window.__accReceive?.({ type: 'rewindOutcome', sessionId, uuid, ok: false, reason: refusal })
+      return
+    }
+    if (conversation) window.__accReceive?.({ type: 'rewound', sessionId, uuid })
+    window.__accReceive?.({
+      type: 'rewindOutcome',
+      sessionId,
+      uuid,
+      ok: true,
+      conversation,
+      prefill: '',
+      files: files ? 'restored' : 'skipped',
+    })
+  }, 700)
+}
+
 const listenToPanel = () => {
   // A scenario replayed from the top reads its history from the top too. The counter is a module's own,
   // so without this the mark stayed dead after the pages ran out once, for the rest of the browser tab.
@@ -1368,6 +1422,7 @@ const listenToPanel = () => {
     if (message) answerScenarios(message)
     if (message) answerQueue(message)
     if (message) answerSound(message)
+    if (message) answerRewind(message)
   }
 
   window.dispatchEvent(new Event('acc:ready'))

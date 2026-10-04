@@ -161,6 +161,11 @@ export const tabAfterClosing = (
  *
  * `known` is the conversations the news names. This screen's own tabs - the statistics, the scenarios
  * hub, a run being watched - are on no such list and never will be, so they stand whatever it says.
+ *
+ * Nothing that stood here is left: the first tab the news names. That is the panel's very first list
+ * after a restart - the page draws the opening tab before the IDE has said a word, and the strip the IDE
+ * restored does not have it. Leaving the screen on a tab nobody has would show the restored strip with
+ * nothing selected in it.
  */
 export const tabAfterElsewhere = (
   before: Session[],
@@ -170,7 +175,7 @@ export const tabAfterElsewhere = (
 ): string => {
   const stands = (tab: string) => isPanelTab(tab) || known.includes(tab)
 
-  return stands(current) ? current : tabAfterClosing(before, panels, current, stands)
+  return stands(current) ? current : tabAfterClosing(before, panels, current, stands) || (known[0] ?? '')
 }
 
 /**

@@ -2445,6 +2445,15 @@
   overflow: hidden;
 }
 
+/* The rewind sheet's sentences stand under the quoted message, not out at the sheet's edge (see RewindSheet). */
+.rewindSheet {
+  padding: 0 var(--acc-sp-3);
+}
+
+.rewindSheet .selectedLine {
+  margin: 0 0 var(--acc-sp-3);
+}
+
 /* --- The tabs sheet -------------------------------------------------------- */
 
 .tabRow {

@@ -232,11 +232,22 @@ export interface UserItem {
   /** The pieces of output the message refers to. They are shown with it in the feed. */
   quotes: string[]
   /**
-   * The transcript's own name for this message - what a search hit is jumped to by (see feed/search.ts).
-   * Only a message read off the disk has one: the person's own live message is put into the feed at
-   * the press of Send, before the CLI has written it anywhere, so a hit on it is found by its text.
+   * The transcript's own name for this message - what a search hit is jumped to by (see feed/search.ts),
+   * and what a rewind names the message by (see feed/rewind.ts).
+   *
+   * A message read off the disk carries the transcript's. The person's own live message carries the one
+   * it was sent under: the panel names it on the press and the CLI takes that name for its own line (see
+   * ClaudeSession.sendPrompt), so the card has it before the CLI has written anything. Absent only on
+   * messages from before the panel named them, and on a remark that went to a plan card as its answer -
+   * those are not messages of the conversation at all.
    */
   uuid?: string
+  /**
+   * Written into a turn that was still running. The CLI does not make such a message a turn of its own: it
+   * hands it to the agent between two steps of the running one, so there is no clean "before" to cut the
+   * conversation back to - the rewind button stands disabled on it and says so (see UserCard).
+   */
+  steering?: boolean
   /**
    * What the editor showed when the message went, carried to the agent beside it (see EditorContext.kt) -
    * drawn as a line under the message, so what the agent was shown is on screen too. Read back out of the
@@ -577,8 +588,15 @@ export interface CheckpointItem {
    * What the mark says, when the words are the panel's. Set instead of `target` - see DetailLine.note
    * for why the panel's own prose is never stored in the feed.
    */
-  targetKey?: 'cleared' | 'earlier' | 'notKept' | 'notOnPhone'
+  targetKey?: CheckpointKey
 }
+
+/**
+ * The panel's own words for a mark. The first four are sentences; `forked` and `forkedAt` are worded around
+ * the parent's title, which stands in `target` (see CheckpointRow).
+ */
+export type CheckpointKey = 'cleared' | 'earlier' | 'notKept' | 'notOnPhone' | 'rewound' | 'forked' | 'forkedAt'
+
 
 /**
  * A command run by the panel itself through "!" - not a tool call by the agent but the person's trip to

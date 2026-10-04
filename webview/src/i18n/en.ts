@@ -1134,6 +1134,10 @@ export const en = {
     closeRun: 'Close this run',
     conversations: 'Conversations',
     newSession: 'New session',
+    /** The button beside "+": a fork of the conversation on screen, whole - see App.fork. */
+    fork: 'Fork this conversation: a new tab that carries on from here, while this one stays as it is',
+    /** The same button on a tab nobody has written into yet - there is no conversation to carry. */
+    forkEmpty: 'Nothing to fork yet: this tab has no conversation',
     /** The field a double click on a conversation's tab opens in place of its name. */
     renameTab: 'Rename conversation',
     menu: 'Menu',
@@ -1271,6 +1275,17 @@ export const en = {
           ? 'Back into the input field - but the pasted image cannot come with it, attach it again'
           : `Back into the input field - but the ${n} pasted images cannot come with it, attach them again`,
     },
+    /** The third button in the head of a message of one's own - it opens the rewind dialog (see RewindDialog). */
+    rewind: {
+      label: 'Rewind to here',
+      hint: 'Rewind to here: this message and everything after it leave the conversation',
+      /** On a message written while a turn was running: there is no clean point before it to go back to. */
+      steering: 'Written while Claude was working - rewind to the message that started that turn',
+    },
+    /** A fork asked to stop at a message came up with all of the parent instead - see ClaudeSession.forkPoint. */
+    forkWhole: "This fork couldn't be cut at the chosen message, so it carries the whole conversation.",
+    /** The code a fork was to take along, not put back - see FORK_CODE in feed/rewind.ts. */
+    forkCode: (why: string): string => `The fork is open, but the code here could not be put back: ${why}`,
     /**
      * The pin button in the corner of a message, and the strip it puts the message into (see
      * feed/pins.ts). `crowded` stands in for `add` on a button gone dead because three are pinned
@@ -1381,6 +1396,12 @@ export const en = {
        * ClaudeSessionHub.CatchUp).
        */
       notOnPhone: 'earlier messages are not shown on the phone',
+      /** Where a conversation was cut back to - the messages that stood below it are gone from it. */
+      rewound: 'rewound to here · what came after is no longer part of the conversation',
+      /** The first row of a fork: the parent's title, and that nothing done here reaches it. */
+      forked: (title: string): string => `continues ${title} · nothing here goes back`,
+      /** The same for a fork made from a message: it carries the parent only up to that point. */
+      forkedAt: (title: string): string => `continues ${title} up to the chosen message · nothing here goes back`,
     },
 
     compact: {
@@ -1553,6 +1574,51 @@ export const en = {
       editing: (key: string, button: string): string => `Being edited in the field · ${key} or ${button} puts it back here`,
     },
     selection: { quote: 'Quote', fork: 'Fork from here' },
+    /** The dialog behind the rewind button on a message of one's own - see RewindDialog. */
+    rewind: {
+      title: 'Rewind to this message',
+      lead: 'This message and everything after it leave the conversation. Its text comes back into the field.',
+      /** What to put back - the three the terminal's /rewind offers. */
+      what: 'Rewind',
+      conversation: 'Conversation',
+      code: 'Code',
+      both: 'Both',
+      codeLead: 'The code goes back to how it was before this message.',
+      checking: 'Checking what Claude changed since…',
+      files: (count: number): string => `${count} ${count === 1 ? 'file' : 'files'} changed since`,
+      more: (n: number): string => `and ${n} more`,
+      none: 'Claude changed no files since this message.',
+      off: 'Code is not kept: "Rewind code (checkpoints)" is off in the Claude Code settings.',
+      notTracked: 'Code is not kept for this conversation yet - its Claude Code was started without keeping copies of files.',
+      noCheckpoint: 'No copy of the code was kept when this message was sent.',
+      unavailable: (detail: string): string => `Claude Code can't restore the code here: ${detail}`,
+      queued: (n: number): string =>
+        n === 1 ? 'The queued message is dropped too.' : `The ${n} queued messages are dropped too.`,
+      running: 'The turn that is running stops.',
+      /** Code alone while a turn runs: the agent would go on changing the very files being put back. */
+      codeWhileRunning: 'Claude is still working - stop the turn before restoring code alone.',
+      forkWhileRunning: "While Claude works here, the code can't be put back alongside a fork - choose Conversation to fork without it, or stop the turn first.",
+      cancel: 'Cancel',
+      go: 'Rewind',
+      goCode: 'Restore code',
+      fork: 'In a new tab',
+      forkHint: 'Leave this tab as it is and open a fork without this message and what came after',
+      working: 'Rewinding…',
+      /** Why it did not happen - Rewind.Refusal. */
+      refused: {
+        busy: 'Claude is busy with something that cannot be stopped from here. Try again in a moment.',
+        gone: 'Claude no longer holds this message - a compaction folded it away. Only messages after the last compaction can be rewound to.',
+        moved: 'The conversation moved on while this was open - a message arrived that this window has not shown yet. Look again and retry.',
+        midCall: "This message sits inside a tool call and its answer, so the conversation can't be cut there.",
+        notSaved: "Claude Code couldn't record the rewind, so it didn't make it.",
+        unsupported: 'This version of Claude Code cannot rewind. Update Claude Code and try again.',
+        noProcess: "Claude Code couldn't be started for this conversation.",
+        ended: 'Claude Code stopped while the rewind was under way, so it is not known whether the cut was made. To see what the conversation holds now, open it again from the history.',
+        other: (detail: string): string => `Claude Code refused: ${detail}`,
+      },
+      /** The conversation went back, the code part did not - said in the feed, where the person is looking. */
+      filesFailed: (detail: string): string => `The conversation was rewound, but the code could not be restored: ${detail}`,
+    },
     streams: {
       main: 'main',
       background: 'bg',
@@ -2009,6 +2075,8 @@ export const en = {
       quote: 'Quote into my next message',
       fork: 'Fork from here',
       forkHint: 'A new conversation with everything up to this point.',
+      rewind: 'Rewind to here',
+      rewindHint: 'This message and everything after it leave the conversation.',
       copy: 'Copy',
       pin: 'Pin over the feed',
       unpin: 'Unpin',

@@ -154,6 +154,64 @@ export const scenariosCards: Scenario[] = [
 
 
   /**
+   * Rewinding to an earlier message (see RewindDialog and Rewind.kt): three turns, each with an edit, so the
+   * dialog has files to offer; the player plays the IDE's half (see answerRewind) - the preview, the cut
+   * going out to every window, the message coming back into the field. A message written into a running
+   * turn shows its rewind button dead, with the reason in its hint.
+   *
+   * Other states of the dialog are one line in the console away - see answerRewind in player.ts.
+   */
+  scenario('rewind', 'Rewind to an earlier message', 'cards', [
+    checkpoint('Three messages, each answered with an edit - every one has a rewind button', [
+      user('Add a discount line to the cart summary'),
+      wait(300),
+      ...textReply("I'll add a discount line under the subtotal."),
+      toolUse(
+        'Edit',
+        {
+          file_path: '/Users/you/demo-project/apps/web/src/cart/CartSummary.tsx',
+          old_string: '<Row label="Subtotal" value={subtotal} />',
+          new_string: '<Row label="Subtotal" value={subtotal} />\n<Row label="Discount" value={-discount} />',
+        },
+        'rw-1',
+      ),
+      toolResult('rw-1', 'The file apps/web/src/cart/CartSummary.tsx has been updated.'),
+      ...textReply('Done - the discount stands under the subtotal.'),
+      turnResult(6000),
+      wait(400),
+      user('Make the discount a percentage rather than a fixed amount'),
+      wait(300),
+      toolUse(
+        'Edit',
+        {
+          file_path: '/Users/you/demo-project/apps/web/src/cart/discount.ts',
+          old_string: 'return amount',
+          new_string: 'return subtotal * (percent / 100)',
+        },
+        'rw-2',
+      ),
+      toolResult('rw-2', 'The file apps/web/src/cart/discount.ts has been updated.'),
+      ...textReply('The discount is a percentage of the subtotal now.'),
+      turnResult(5000),
+      wait(400),
+      user('And round it to whole cents'),
+      wait(300),
+      ...textReply('Rounded with Math.round on the cents, and a test for 33.333%.'),
+      turnResult(4000),
+    ]),
+    checkpoint('A message written while Claude was working: its rewind button is dead and says why', [
+      wait(400),
+      user('Refactor the totals into one helper'),
+      wait(300),
+      ...textReply('Pulling subtotal, discount and tax into totals()…'),
+      user('keep the old helper exported for now'),
+      wait(300),
+      ...textReply('Kept `cartTotal` as a thin wrapper over the new helper.'),
+      turnResult(7000),
+    ]),
+  ]),
+
+  /**
    * What the editor shows goes with a message (see EditorContext.kt): the chip in the field's bottom row,
    * the press that leaves it out of one message, the line under a sent message, and the same line read back
    * out of a past conversation's transcript. The player plays the IDE's half by the message it would send.

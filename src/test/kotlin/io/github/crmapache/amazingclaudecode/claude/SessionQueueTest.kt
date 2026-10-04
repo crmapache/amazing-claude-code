@@ -71,6 +71,20 @@ class SessionQueueTest {
         assertEquals(listOf("q2"), ids(queue.of("main")))
     }
 
+    // A rewind drops what was waiting when it was pressed - written after the messages it cuts, and about
+    // them. A message queued while it was still on its way (the files take seconds) was written after the
+    // cut, into the conversation that is left, and goes.
+    @Test
+    fun `dropping the named messages keeps the ones queued since`() {
+        queue.add("main", entry("q1"))
+        queue.add("main", entry("q2"))
+        val atPress = queue.of("main").map { it.id }.toSet()
+        queue.add("main", entry("q3"))
+
+        assertEquals(listOf("q3"), ids(queue.removeAll("main", atPress)))
+        assertEquals(listOf("q3"), ids(queue.of("main")))
+    }
+
     @Test
     fun `an empty queue hands over nothing`() {
         assertNull(queue.take("main"))

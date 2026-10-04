@@ -82,6 +82,16 @@ interface HeaderProps {
   onCloseSession: (id: string) => void
   onNewSession: () => void
   /**
+   * Fork a tab's conversation, whole - the button on every conversation's tab, beside the cross (see
+   * App.fork). The panel's own tabs (the statistics, a scenario's run) hold no conversation and have none.
+   */
+  onFork?: (sessionId: string) => void
+  /**
+   * The tabs with a conversation to fork. The others keep the button, dimmed and saying why: it stands on
+   * every tab so that a tab's width never depends on it (see sessionTab).
+   */
+  forkable?: ReadonlySet<string>
+  /**
    * The tab order after a drag: put the group `groupId` before the group `beforeGroupId` (or at the end,
    * when there is none).
    *
@@ -364,6 +374,9 @@ const EMPTY_PANEL_TABS: PanelTab[] = []
 /** The same for a header nobody has called from. */
 const NO_CALLS: Record<string, TabCall> = {}
 
+/** And for a header that was told of no conversation to fork. */
+const NOTHING_FORKABLE: ReadonlySet<string> = new Set()
+
 /** Past this offset a press stops being a click and becomes a drag. */
 const DRAG_THRESHOLD_PX = 4
 
@@ -433,6 +446,21 @@ const dotTitle = (t: Dict): Record<SessionState, string> => ({
 })
 
 /**
+ * A branch: one line splitting in two - what a fork is. Drawn rather than typed: the fork glyph a fork's
+ * tab wears before its name comes out of the system's fallback font at a size of its own, and as a button
+ * beside the cross it read as a speck.
+ */
+const ForkIcon = () => (
+  <svg className={s.forkIcon} viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+    <circle cx="4.5" cy="3.5" r="1.6" />
+    <circle cx="11.5" cy="3.5" r="1.6" />
+    <circle cx="8" cy="12.5" r="1.6" />
+    <path d="M4.5 5.1v.9a2.2 2.2 0 0 0 2.2 2.2h2.6A2.2 2.2 0 0 0 11.5 6v-.9" />
+    <path d="M8 8.2v2.7" />
+  </svg>
+)
+
+/**
  * Three lines as a drawing rather than the "☰" character: the typographic version has a seat of its own
  * in the font and sits below the middle of its line - next to the branch (see BranchChip), whose centre
  * is honest, the difference read to the eye as an unpainted row. Drawn, the lines stand strictly in the
@@ -450,6 +478,8 @@ export const Header = ({
   onPickSession,
   onCloseSession,
   onNewSession,
+  onFork,
+  forkable = NOTHING_FORKABLE,
   onReorderGroups,
   onReorderTabs,
   onNameSession,
@@ -927,6 +957,25 @@ export const Header = ({
         ) : (
           <span className={s.tabTitle}>{session.title}</span>
         )}
+        {/* On the tab it forks, beside the cross: both are things done to this conversation. On every tab and
+            always: shown on the open tab alone, it widened the tab it came to and narrowed the one it left,
+            and a narrow strip jumped on every switch. A tab with nothing to fork keeps it dimmed, with a
+            hint saying why - aria-disabled rather than disabled, or the hint would never come up. */}
+        {onFork ? (
+          <button
+            type="button"
+            className={`${s.tabForkButton} ${forkable.has(session.id) ? '' : s.tabForkButtonOff}`}
+            aria-label={t.header.fork}
+            aria-disabled={forkable.has(session.id) ? undefined : true}
+            data-tooltip={forkable.has(session.id) ? t.header.fork : t.header.forkEmpty}
+            onClick={(event) => {
+              event.stopPropagation()
+              if (forkable.has(session.id)) onFork(session.id)
+            }}
+          >
+            <ForkIcon />
+          </button>
+        ) : null}
         <button
           type="button"
           className={s.tabClose}

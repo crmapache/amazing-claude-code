@@ -323,7 +323,10 @@ class SessionRegistryTest {
         assertEquals(listOf("a", "a-fork", ClaudeSessions.MAIN_SESSION, "b"), registry.tabs().map { it.id })
     }
 
-    /* The opening tab had nothing worth bringing back: it keeps its place at the front. */
+    /*
+     * A tab the order does not name is not sorted away: it keeps its place at the front. The opening tab no
+     * longer gets here - it is closed before a strip is put back (see ClaudeSessionHub.restoreTabs).
+     */
     @Test
     fun `a tab the order does not name stays in front`() {
         val registry = SessionRegistry()

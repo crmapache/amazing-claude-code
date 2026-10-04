@@ -33,6 +33,8 @@ internal class PromptDeliveries {
         val sentAt: Long,
         /** This is already a repeat: the same thing is not sent blindly a second time. */
         val repeat: Boolean,
+        /** The name the message went in under - a repeat goes in under the same one (see ClaudeSession.sendPrompt). */
+        val uuid: String? = null,
     )
 
     private val pending = mutableListOf<Delivery>()

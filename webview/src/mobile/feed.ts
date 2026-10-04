@@ -66,6 +66,17 @@ export interface MobileFeed {
    * that very moment (see outbox.ts), its echo arriving live just ahead of the restore that repeats it.
    */
   keptUpTo: number
+  /**
+   * The journal number of the latest entry this feed holds, a restore's held entries included - undefined
+   * while it holds none of them.
+   *
+   * What a rewind needs when the message it cut at is not on this phone (see the rewound message in
+   * protocol.ts): a phone handed the end of a conversation, rewound at the desk to a message older than that
+   * end, was handed part of the dropped stretch and drops it all; a phone that read the journal after the cut
+   * holds only what was kept, and drops nothing. Not [seq]: that one is what a reconnect asks to continue
+   * from, and outlives a feed replaced.
+   */
+  lastHeld?: number
 }
 
 /**
@@ -157,6 +168,10 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
   const at = message.at ?? now
   const seq = message.seq ?? feed.seq
 
+  // Counted as it arrives rather than as it is applied: a restore's entries are held, and they are what the
+  // feed will hold - see MobileFeed.lastHeld.
+  const lastHeld = message.seq ?? feed.lastHeld
+
   const collect = (action: PanelAction): MobileFeed => {
     if (feed.restoring) {
       // On screen already - it arrived live ahead of the restore that repeats it (see keptUpTo).
@@ -165,15 +180,15 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
       // Still arriving: held with the rest, and the clock of the wait moves with it. Its number waits with
       // it - see MobileFeed.seq.
       if (!restoreOverdue(feed, now)) {
-        return { ...feed, restoringSince: now, pending: [...feed.pending, { action, at, seq: message.seq }] }
+        return { ...feed, lastHeld, restoringSince: now, pending: [...feed.pending, { action, at, seq: message.seq }] }
       }
 
       // Nothing came for long enough that the closing half is not coming at all - see restoringSince.
       const settled = settleRestore(feed, now)
-      return { ...settled, seq: Math.max(settled.seq, seq), state: reducePanel(settled.state, action, at) }
+      return { ...settled, lastHeld, seq: Math.max(settled.seq, seq), state: reducePanel(settled.state, action, at) }
     }
 
-    return { ...feed, seq, loaded: true, state: reducePanel(feed.state, action, at) }
+    return { ...feed, lastHeld, seq, loaded: true, state: reducePanel(feed.state, action, at) }
   }
 
   switch (message.type) {
@@ -212,6 +227,8 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
         restoreCut: message.truncated === true,
         pending,
         keptUpTo: fresh ? 0 : feed.seq,
+        // A feed replaced holds none of what it held - see MobileFeed.lastHeld.
+        lastHeld: fresh ? undefined : feed.lastHeld,
       }
     }
 
@@ -245,6 +262,18 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
         steering: message.steering,
         // What the desk's editor showed when it was sent - the same line under the card as at the desk.
         ...(message.editor ? { editor: message.editor } : {}),
+        // The name it went into the conversation under - what a rewind from here names it by.
+        ...(message.uuid ? { uuid: message.uuid } : {}),
+      })
+
+    // The conversation was cut back - from the desk or from here (see the rewound message).
+    case 'rewound':
+      // Handed part of the dropped stretch, this feed holds only what came after the message - see lastHeld,
+      // as it stood before this entry.
+      return collect({
+        kind: 'rewound',
+        uuid: message.uuid,
+        all: message.fromSeq !== undefined && feed.lastHeld !== undefined && feed.lastHeld >= message.fromSeq,
       })
 
     case 'status':

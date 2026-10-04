@@ -118,6 +118,8 @@ interface FeedProps {
    * Absent on the phone: the field there is its own and holds plain text rather than the panel's tokens.
    */
   onReuse?: (item: UserItem) => void
+  /** Open the rewind dialog over a message of one's own - see UserCard.onRewind. Hand in a STABLE function. */
+  onRewind?: (item: UserItem) => void
   /**
    * A page of this conversation further back than the EARLIER mark - see historyPage in feed/build.ts.
    * Both screens want it: a tab opens a past conversation with its end rather than the whole of it (see
@@ -208,6 +210,7 @@ export const Feed = ({
   signIn,
   onSettingSources,
   onReuse,
+  onRewind,
   onLoadEarlier,
   userLabel,
   earlierPages,
@@ -835,6 +838,7 @@ export const Feed = ({
               signIn={signIn}
               onSettingSources={onSettingSources}
               onReuse={onReuse}
+              onRewind={onRewind}
               onLoadEarlier={onLoadEarlier}
               userLabel={userLabel}
               onPin={onPin}
@@ -904,6 +908,7 @@ interface ItemViewProps {
   /** The settings-sources screen - see FeedProps.onSettingSources. */
   onSettingSources?: () => void
   onReuse?: (item: UserItem) => void
+  onRewind?: (item: UserItem) => void
   onLoadEarlier?: () => void
   /** What stands over a sent message instead of "YOU" - see FeedProps.userLabel. */
   userLabel?: string
@@ -940,6 +945,7 @@ const ItemView = memo(({
   signIn,
   onSettingSources,
   onReuse,
+  onRewind,
   onLoadEarlier,
   userLabel,
   onPin,
@@ -961,6 +967,7 @@ const ItemView = memo(({
           userLabel={userLabel}
           onOpenLink={onOpenLink}
           onReuse={onReuse}
+          onRewind={onRewind}
           onPin={pin}
           pinned={pinned}
           pinsFull={pinsFull}

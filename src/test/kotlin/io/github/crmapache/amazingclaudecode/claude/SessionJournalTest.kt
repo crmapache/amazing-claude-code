@@ -277,4 +277,38 @@ class SessionJournalTest {
 
         assertEquals(50, journal.tail(0).entries.size)
     }
+
+    // A rewind cuts the journal from the message on (see ClaudeSessionHub.rewind): a window rebuilt from it
+    // later must not be handed the turns the conversation no longer has, and the numbering carries on.
+    @Test
+    fun `a cut takes the message and everything after it, and the numbers carry on`() {
+        val journal = SessionJournal()
+        journal.append("""{"type":"promptEcho","uuid":"u-1"}""", at = 1)
+        journal.append("""{"type":"agent","event":{"text":"one"}}""", at = 2)
+        journal.append("""{"type":"promptEcho","uuid":"u-2"}""", at = 3)
+        journal.append("""{"type":"agent","event":{"text":"two"}}""", at = 4)
+
+        // The cut says where it began, so a client can tell whether everything it holds came after it.
+        assertEquals(3L, journal.cutFrom(""""uuid":"u-2""""))
+        assertEquals(listOf(1L, 2L), journal.since(0).map { it.seq })
+
+        val next = journal.append("""{"type":"rewound","uuid":"u-2"}""", at = 5)
+        assertEquals(5, next.seq)
+        // A window that had the dropped part comes back with its number and is handed what took it away.
+        assertEquals(listOf(5L), journal.since(4).map { it.seq })
+    }
+
+    // The CLI cut at that message, so it was in the conversation; not in the journal, it is older than all
+    // of it - a page of the history read past the journal, or a head the journal let go of. Everything kept
+    // here came after it. Kept, it came back to every window opened later, under the mark of the rewind.
+    @Test
+    fun `a cut at a message older than the whole journal takes all of it`() {
+        val journal = SessionJournal()
+        journal.append("""{"type":"promptEcho","uuid":"u-5"}""", at = 1)
+        journal.append("""{"type":"agent","event":{"text":"five"}}""", at = 2)
+
+        assertEquals(1L, journal.cutFrom(""""uuid":"u-1""""))
+        assertEquals(0, journal.size())
+        assertEquals(3, journal.append("""{"type":"rewound","uuid":"u-1"}""", at = 3).seq)
+    }
 }

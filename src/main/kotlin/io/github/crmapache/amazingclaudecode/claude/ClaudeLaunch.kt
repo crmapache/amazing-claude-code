@@ -94,8 +94,37 @@ internal object ClaudeLaunch {
      * The one-off runs are deliberately not given this: rewriting a draft, searching with a model and
      * writing a scenario all start with --tools "" and have no task list to keep (see ClaudeCli).
      */
-    fun environment(account: Map<String, String>): Map<String, String> =
-        account + mapOf(TODO_TOOLS_VARIABLE to "1")
+    fun environment(account: Map<String, String>, fileCheckpoints: Boolean = false): Map<String, String> =
+        account + mapOf(TODO_TOOLS_VARIABLE to "1") +
+            (if (fileCheckpoints) mapOf(CHECKPOINTS_VARIABLE to "1") else emptyMap())
+
+    /**
+     * The CLI's switch for keeping copies of the files its tools change, in a launch like the panel's.
+     *
+     * A terminal keeps them by the `checkpoints` setting (`fileCheckpointingEnabled`, on unless turned off)
+     * and rewinds code by them with `/rewind`. A streaming launch ignores that setting altogether and keeps
+     * nothing unless this is set - measured on 2.1.280: without it `rewind_files` answers "File rewinding
+     * is not enabled." and no copy is ever written. So the panel passes the person's own setting on rather
+     * than deciding anything: on when it is on, which is the default, and absent when they turned it off
+     * (see ClaudeConfig.fileCheckpointing). The copies live under the CLI's own folder, exactly where a
+     * terminal puts them.
+     *
+     * Read once, when the process comes up: a setting changed while a conversation is open reaches it at
+     * its next process, the way the CLI itself reads the variable.
+     */
+    const val CHECKPOINTS_VARIABLE = "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"
+
+    /**
+     * Where a fork stops: it carries the parent's conversation up to and including this line of its
+     * transcript, and nothing after it (see TranscriptRewinds.anchorBefore).
+     *
+     * A flag the CLI does not list in its help - the way its own SDK forks "from here" - so whether a
+     * particular CLI knows it is asked differently from the listed ones (see
+     * ClaudeExecutable.knowsHiddenOption). Measured on 2.1.280: `--resume parent --fork-session` with this
+     * comes up as a new conversation holding only what came before the line, the uuids of what it kept
+     * unchanged, and nothing of the rest in its file.
+     */
+    const val FORK_AT_FLAG = "--resume-session-at"
 
     /** How a line of ours joins the CLI's own system prompt instead of replacing it. */
     const val BRIEFING_FLAG = "--append-system-prompt"
@@ -249,6 +278,11 @@ internal object ClaudeLaunch {
          * [oneLine] like everything else and must carry no quotation marks - see the rule above.
          */
         briefing: String = PANEL_BRIEFING,
+        /**
+         * The last line of the parent's transcript a fork carries - see [FORK_AT_FLAG]. Read only with
+         * [forkFrom], and passed only for a CLI that knows the flag.
+         */
+        forkAt: String? = null,
     ): List<String> = buildList {
         add("--print")
         // Without --verbose the event stream is not handed over at all; that is the CLI's own demand.
@@ -285,8 +319,12 @@ internal object ClaudeLaunch {
         when {
             // Continuing our own conversation after the process was restarted.
             conversationId != null -> addAll(listOf("--resume", conversationId))
-            // A branch's first launch: copy the parent's transcript, but under a new number.
-            forkFrom != null -> addAll(listOf("--resume", forkFrom, "--fork-session"))
+            // A branch's first launch: copy the parent's transcript, but under a new number - and only as
+            // far as the point it was forked at, when it was forked at one.
+            forkFrom != null -> {
+                addAll(listOf("--resume", forkFrom, "--fork-session"))
+                forkAt?.let { addAll(listOf(FORK_AT_FLAG, it)) }
+            }
         }
     }
 }
