@@ -152,17 +152,27 @@
 /* The top gap used to come from the first group's caption. With the captions gone the list would
    otherwise start flush against the header. */
 .levelRoot {
+  display: flex;
+  flex-direction: column;
+  overflow-y: hidden;
   padding-top: 13px;
   padding-bottom: 14px;
 }
 
 .levelRootHeld {
   transform: translateX(-22%);
-  overflow-y: hidden;
 }
 
 .levelRootShown {
   transform: translateX(0);
+}
+
+/* Only the entries and the advertisement scroll; the version keeps its place at the foot of the menu. */
+.rootContent {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* The detail is opaque: the root is still underneath it, and through a transparent screen the two lists
@@ -556,6 +566,7 @@
 }
 
 .footer {
+  flex: none;
   margin: 16px 12px 0;
   padding-top: 12px;
   border-top: 1px solid var(--acc-line);

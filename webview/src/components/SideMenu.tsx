@@ -562,114 +562,115 @@ export const SideMenu = ({
 
         <div className={s.stage}>
           <div
-            ref={root}
             className={`${s.level} ${s.levelRoot} ${inDetail ? s.levelRootHeld : s.levelRootShown}`}
             // Nothing under the detail screen is reachable by keyboard either: the eye sees one screen,
             // and Tab has to agree with it.
             inert={inDetail}
           >
-            <div className={s.rows}>
-              <Row
-                icon="history"
-                iconClass={s.rowIconHistory}
-                label={t.menu.rows.history.label}
-                sub={t.menu.rows.history.sub}
-                value={summary.history === null ? '' : String(summary.history)}
-                onClick={() => onPick('history')}
-              />
-              <Row
-                icon="mcp"
-                iconClass={s.rowIconMcp}
-                label={t.menu.rows.mcp.label}
-                sub={t.menu.rows.mcp.sub}
-                value={summary.mcp ? `${summary.mcp.connected}/${summary.mcp.total}` : ''}
-                // The count is worth a dot of its own only when everything is up: "4/5" in the same grey
-                // as the rest says nothing about whether that is fine.
-                valueTone={
-                  summary.mcp && summary.mcp.connected === summary.mcp.total && summary.mcp.total > 0
-                    ? VALUE_OK
-                    : undefined
-                }
-                onClick={() => onPick('mcp')}
-              />
-              <Row
-                icon="plugins"
-                iconClass={s.rowIconPlugins}
-                label={t.menu.rows.plugins.label}
-                sub={t.menu.rows.plugins.sub}
-                value={summary.plugins === null ? '' : String(summary.plugins)}
-                onClick={() => onPick('plugins')}
-              />
-              <Row
-                icon="accounts"
-                // Tinted like remote below rather than fixed like the rest, and for the same reason: the
-                // colour answers "is this working" from across the panel, without being read.
-                iconStyle={TONE_ICON[summary.accounts.tone]}
-                label={t.menu.rows.accounts.label}
-                sub={t.menu.rows.accounts.sub}
-                value={summary.accounts.label}
-                valueTone={TONE_VALUE[summary.accounts.tone]}
-                onClick={() => onPick('accounts')}
-              />
-              {/* A row like the ones above it, not the tinted card it used to be. The card carried a whole
-                  sentence about the state and stood three lines tall for it - in a list whose every other
-                  entry says its piece in one. What the sentence explained is on the screen behind the row;
-                  what is worth knowing without opening it is the state itself, and that fits where the
-                  other rows keep their counts. */}
-              <Row
-                icon="remote"
-                iconStyle={TONE_ICON[summary.remote.tone]}
-                label={t.menu.rows.remote.label}
-                sub={t.menu.rows.remote.sub}
-                value={summary.remote.label}
-                valueTone={TONE_VALUE[summary.remote.tone]}
-                onClick={() => onPick('remote')}
-              />
-              {/* Not a screen of the menu but a tab of the strip: the row opens that tab and the menu
-                  closes behind it (see the note on onOpenStatistics). It stands down here with the
-                  settings rather than up with the history because it is read now and then, not worked in. */}
-              <Row
-                icon="statistics"
-                iconClass={s.rowIconStatistics}
-                label={t.menu.rows.statistics.label}
-                sub={t.menu.rows.statistics.sub}
-                value={summary.statistics}
-                onClick={onOpenStatistics}
-              />
-              {/* The plugin's own two, last before the version in the footer: the settings configure the
-                  plugin and the feedback is about it, so neither belongs among the rows above. */}
-              <Row
-                icon="settings"
-                iconClass={s.rowIconSettings}
-                label={t.menu.rows.settings.label}
-                sub={t.menu.rows.settings.sub}
-                value=""
-                onClick={() => onPick('settings')}
-              />
-              <Row
-                icon="feedback"
-                iconClass={s.rowIconFeedback}
-                label={t.menu.rows.feedback.label}
-                sub={t.menu.rows.feedback.sub}
-                value=""
-                onClick={() => onPick('feedback')}
-              />
-            </div>
+            <div ref={root} className={s.rootContent}>
+              <div className={s.rows}>
+                <Row
+                  icon="history"
+                  iconClass={s.rowIconHistory}
+                  label={t.menu.rows.history.label}
+                  sub={t.menu.rows.history.sub}
+                  value={summary.history === null ? '' : String(summary.history)}
+                  onClick={() => onPick('history')}
+                />
+                <Row
+                  icon="mcp"
+                  iconClass={s.rowIconMcp}
+                  label={t.menu.rows.mcp.label}
+                  sub={t.menu.rows.mcp.sub}
+                  value={summary.mcp ? `${summary.mcp.connected}/${summary.mcp.total}` : ''}
+                  // The count is worth a dot of its own only when everything is up: "4/5" in the same grey
+                  // as the rest says nothing about whether that is fine.
+                  valueTone={
+                    summary.mcp && summary.mcp.connected === summary.mcp.total && summary.mcp.total > 0
+                      ? VALUE_OK
+                      : undefined
+                  }
+                  onClick={() => onPick('mcp')}
+                />
+                <Row
+                  icon="plugins"
+                  iconClass={s.rowIconPlugins}
+                  label={t.menu.rows.plugins.label}
+                  sub={t.menu.rows.plugins.sub}
+                  value={summary.plugins === null ? '' : String(summary.plugins)}
+                  onClick={() => onPick('plugins')}
+                />
+                <Row
+                  icon="accounts"
+                  // Tinted like remote below rather than fixed like the rest, and for the same reason: the
+                  // colour answers "is this working" from across the panel, without being read.
+                  iconStyle={TONE_ICON[summary.accounts.tone]}
+                  label={t.menu.rows.accounts.label}
+                  sub={t.menu.rows.accounts.sub}
+                  value={summary.accounts.label}
+                  valueTone={TONE_VALUE[summary.accounts.tone]}
+                  onClick={() => onPick('accounts')}
+                />
+                {/* A row like the ones above it, not the tinted card it used to be. The card carried a whole
+                    sentence about the state and stood three lines tall for it - in a list whose every other
+                    entry says its piece in one. What the sentence explained is on the screen behind the row;
+                    what is worth knowing without opening it is the state itself, and that fits where the
+                    other rows keep their counts. */}
+                <Row
+                  icon="remote"
+                  iconStyle={TONE_ICON[summary.remote.tone]}
+                  label={t.menu.rows.remote.label}
+                  sub={t.menu.rows.remote.sub}
+                  value={summary.remote.label}
+                  valueTone={TONE_VALUE[summary.remote.tone]}
+                  onClick={() => onPick('remote')}
+                />
+                {/* Not a screen of the menu but a tab of the strip: the row opens that tab and the menu
+                    closes behind it (see the note on onOpenStatistics). It stands down here with the
+                    settings rather than up with the history because it is read now and then, not worked in. */}
+                <Row
+                  icon="statistics"
+                  iconClass={s.rowIconStatistics}
+                  label={t.menu.rows.statistics.label}
+                  sub={t.menu.rows.statistics.sub}
+                  value={summary.statistics}
+                  onClick={onOpenStatistics}
+                />
+                {/* The plugin's own two, last before the version in the footer: the settings configure the
+                    plugin and the feedback is about it, so neither belongs among the rows above. */}
+                <Row
+                  icon="settings"
+                  iconClass={s.rowIconSettings}
+                  label={t.menu.rows.settings.label}
+                  sub={t.menu.rows.settings.sub}
+                  value=""
+                  onClick={() => onPick('settings')}
+                />
+                <Row
+                  icon="feedback"
+                  iconClass={s.rowIconFeedback}
+                  label={t.menu.rows.feedback.label}
+                  sub={t.menu.rows.feedback.sub}
+                  value=""
+                  onClick={() => onPick('feedback')}
+                />
+              </div>
 
-            {/* An advertisement standing where one can be walked past: at the foot of a menu, under
-                everything the menu is actually opened for. The card itself is shared with the voice
-                screen, which carries the other one (see AuthorCard). */}
-            <div className={`${s.rows} ${s.authorRows}`}>
-              <AuthorCard
-                title={t.menu.author.title}
-                body={t.menu.author.body}
-                heart
-                shot={snakeinHero}
-                name={AUTHOR_PRODUCT}
-                tagline={t.menu.author.tagline}
-                url={AUTHOR_URL}
-                onOpenLink={onOpenLink}
-              />
+              {/* An advertisement standing where one can be walked past: at the foot of a menu, under
+                  everything the menu is actually opened for. The card itself is shared with the voice
+                  screen, which carries the other one (see AuthorCard). */}
+              <div className={`${s.rows} ${s.authorRows}`}>
+                <AuthorCard
+                  title={t.menu.author.title}
+                  body={t.menu.author.body}
+                  heart
+                  shot={snakeinHero}
+                  name={AUTHOR_PRODUCT}
+                  tagline={t.menu.author.tagline}
+                  url={AUTHOR_URL}
+                  onOpenLink={onOpenLink}
+                />
+              </div>
             </div>
 
             <div className={s.footer}>
