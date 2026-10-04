@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.20] - 2026-10-04
+
+- Fixed: closing a project could show "Already disposed" in IDE Internal Errors. Pending panel updates now finish before the browser and its timers are released, and late updates are ignored.
+- Fixed: opening the panel at IDE startup could show an internal error about proxy settings. The settings now load before the embedded browser starts.
+
 ## [0.13.19] - 2026-10-04
 
 - Fixed: the plugin name and version in the menu sat below its contents and could disappear from view in a short window. They now stay at the bottom of the menu while its contents scroll above them.
@@ -880,7 +885,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.19...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.20...HEAD
+[0.13.20]: https://github.com/crmapache/amazing-claude-code/compare/0.13.19...0.13.20
 [0.13.19]: https://github.com/crmapache/amazing-claude-code/compare/0.13.18...0.13.19
 [0.13.18]: https://github.com/crmapache/amazing-claude-code/compare/0.13.17...0.13.18
 [0.13.17]: https://github.com/crmapache/amazing-claude-code/compare/0.13.16...0.13.17
