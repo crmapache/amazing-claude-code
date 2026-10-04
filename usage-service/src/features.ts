@@ -164,6 +164,7 @@ export const SCREENS: Record<Product, Record<string, string>> = {
     ...SHARED_SCREENS,
     accounts: 'Codex accounts',
     codexConfig: 'Codex settings',
+    newChatContext: 'New chats: context window',
   },
 }
 
@@ -197,6 +198,7 @@ export const SETTINGS: Record<Product, Record<string, string>> = {
   acx: {
     ...SHARED_SETTINGS,
     executable: 'Path to Codex',
+    new_chat: 'New chats: model, effort, context window or mode',
     codex_config: 'Codex settings',
     project_trust: 'Project trust',
   },

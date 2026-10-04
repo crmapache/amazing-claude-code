@@ -147,6 +147,7 @@ describe("holding a day's names to its plugin's lists", () => {
       project_trust: 3,
       'screen:claudeConfig': 1,
       'screen:codexConfig': 1,
+      'screen:newChatContext': 2,
       'setting:claude_config': 1,
       'setting:codex_config': 1,
       'setting:project_trust': 1,
@@ -158,6 +159,7 @@ describe("holding a day's names to its plugin's lists", () => {
       voice: 1,
       project_trust: 3,
       'screen:codexConfig': 1,
+      'screen:newChatContext': 2,
       'setting:codex_config': 1,
       'setting:project_trust': 1,
     })

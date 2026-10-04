@@ -47,7 +47,7 @@ describe('the two plugins', () => {
     })
     expect(apart(SCREENS.acc, SCREENS.acx)).toEqual({
       missingHere: ['claudeConfig', 'settingSources'],
-      notInPlugin: ['codexConfig'],
+      notInPlugin: ['codexConfig', 'newChatContext'],
     })
     expect(apart(SETTINGS.acc, SETTINGS.acx)).toEqual({
       missingHere: ['claude_config', 'setting_sources'],
@@ -77,6 +77,8 @@ describe('the two plugins', () => {
     expect(isKnownFeature('acc', 'project_trust')).toBe(false)
     expect(isKnownFeature('acx', 'screen:codexConfig')).toBe(true)
     expect(isKnownFeature('acc', 'screen:codexConfig')).toBe(false)
+    expect(isKnownFeature('acx', 'screen:newChatContext')).toBe(true)
+    expect(isKnownFeature('acc', 'screen:newChatContext')).toBe(false)
     expect(isKnownFeature('acx', 'setting:claude_config')).toBe(false)
     // An id that only exists on every object, not on the list.
     expect(isKnownFeature('acc', 'constructor')).toBe(false)
