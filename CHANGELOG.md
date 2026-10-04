@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.19] - 2026-10-04
+
+- Fixed: the plugin name and version in the menu sat below its contents and could disappear from view in a short window. They now stay at the bottom of the menu while its contents scroll above them.
+
 ## [0.13.18] - 2026-10-03
 
 - Added: rewind a conversation to one of your own messages from the panel or a paired phone. "Rewind to here" removes that message and everything after it from Claude's memory and puts its text back in the input field; choose the conversation, the code, or both, or open the earlier point in a new tab while leaving this one alone. When Claude Code has kept copies of the files, the dialog first shows what would be restored. A turn that is still running stops, queued messages from the discarded part are dropped, and the panel, phone, history and search all show the same shortened conversation. Messages folded into an earlier compaction cannot be rewound to.
@@ -876,7 +880,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.18...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.19...HEAD
+[0.13.19]: https://github.com/crmapache/amazing-claude-code/compare/0.13.18...0.13.19
 [0.13.18]: https://github.com/crmapache/amazing-claude-code/compare/0.13.17...0.13.18
 [0.13.17]: https://github.com/crmapache/amazing-claude-code/compare/0.13.16...0.13.17
 [0.13.16]: https://github.com/crmapache/amazing-claude-code/compare/0.13.15...0.13.16
