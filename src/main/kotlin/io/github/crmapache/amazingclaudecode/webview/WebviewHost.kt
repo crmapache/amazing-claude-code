@@ -12,6 +12,7 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
 import com.intellij.util.Alarm
+import com.intellij.util.net.ProxySettings
 import java.awt.Cursor
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -152,6 +153,7 @@ internal class WebviewHost(
     private val onMessage: (String) -> Unit,
 ) : Disposable {
 
+    private val lifetime = WebviewLifetime()
     private val browser = createBrowser()
 
     private val fromWebview = JBCefJSQuery.create(browser as JBCefBrowserBase)
@@ -173,37 +175,27 @@ internal class WebviewHost(
      */
     private val flushLock = Any()
 
-    // Created in init rather than here: their parent is this very object, and before init it is not yet
-    // in the disposable tree.
+    // Created in init after their lifetime has been registered in the disposable tree.
     private val flushAlarm: Alarm
     private val healAlarm: Alarm
     private val hoverAlarm: Alarm
 
     /** When a whole frame was last asked to be redrawn - see [heal]. */
-    @Volatile
     private var lastHealAt = 0L
-
-    /**
-     * The host is gone: the panel was closed along with the project - see [dispose].
-     *
-     * Volatile, because it is asked about from other threads: an agent's event arrives on a background
-     * one, while the panel is closed on the interface thread.
-     */
-    @Volatile
-    private var disposed = false
 
     val component: JComponent get() = browser.component
 
     init {
         Disposer.register(parentDisposable, this)
-        Disposer.register(this, browser)
-        Disposer.register(this, fromWebview)
+        Disposer.register(this, lifetime)
+        Disposer.register(lifetime, browser)
+        Disposer.register(lifetime, fromWebview)
 
-        flushAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, this)
-        healAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, this)
+        flushAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, lifetime)
+        healAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, lifetime)
         // An alarm of its own rather than healAlarm's: they cancel each other's requests, and a mouse
         // moving over a panel that is streaming events would keep pushing the settled frame away.
-        hoverAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, this)
+        hoverAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, lifetime)
 
         // Both listeners are the same object: moving over the panel lights something up, leaving it puts
         // that something out, and each of those is a frame that has to reach the IDE (see
@@ -232,7 +224,7 @@ internal class WebviewHost(
                  */
                 override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
                     if (frame?.isMain != true) return
-                    synchronized(outbox) { pageReady = false }
+                    lifetime.ifAlive { synchronized(outbox) { pageReady = false } }
                 }
 
                 override fun onLoadEnd(browser: CefBrowser, frame: CefFrame, httpStatusCode: Int) {
@@ -249,7 +241,7 @@ internal class WebviewHost(
         thisLogger().info("Webview renders offscreen: ${browser.isOffScreenRendering}")
 
         WebviewResources.register()
-        browser.loadURL(startUrl())
+        lifetime.ifAlive { browser.loadURL(startUrl()) }
     }
 
     /**
@@ -338,21 +330,20 @@ internal class WebviewHost(
      * many full interface repaints. As a batch they turn into one.
      */
     fun send(json: String) {
-        // An agent's event may arrive on a background thread (processTerminated, for instance) after the
-        // panel has been closed and this host disposed together with its flushAlarm - then there is
-        // nothing to schedule a request into, and the platform would complain "Already disposed".
-        if (disposed) return
-
-        synchronized(outbox) {
-            outbox.addLast(json)
-            if (!pageReady || flushScheduled) return
-            flushScheduled = true
+        lifetime.ifAlive {
+            synchronized(outbox) {
+                outbox.addLast(json)
+                if (!pageReady || flushScheduled) return@ifAlive
+                flushScheduled = true
+            }
+            flushAlarm.addRequest(::flush, FLUSH_DELAY_MS)
         }
-        flushAlarm.addRequest(::flush, FLUSH_DELAY_MS)
     }
 
     /** Open the browser's developer tools - there is no debugging the interface otherwise. */
-    fun openDevTools() = browser.openDevtools()
+    fun openDevTools() {
+        lifetime.ifAlive { browser.openDevtools() }
+    }
 
     /**
      * Set the cursor the page asks for.
@@ -385,28 +376,28 @@ internal class WebviewHost(
         val component = browser.component
         val predefined = Cursor.getPredefinedCursor(type)
         ApplicationManager.getApplication().invokeLater {
-            // The page's message and this call are a whole event apart: by now the panel may have been
-            // closed with its tab, or the project closed along with it, and there is no one left to dress
-            // up.
-            if (disposed) return@invokeLater
-
-            component.cursor = predefined
-            // By the same trick the platform's own ThreeComponentsSplitter divider uses: component.cursor
-            // alone is not always enough over the window's glass pane - that pane is what answers for
-            // what is seen above a component while the mouse moves across it.
-            //
-            // Asked for through IdeGlassPaneUtil, and the failure caught rather than avoided. It answers
-            // a component outside a window by throwing ("Component must be visible in order to find glass
-            // pane for it"), and outside a window is a perfectly ordinary state here: the panel is hidden,
-            // moved elsewhere in the interface or closed altogether while the page's last cursor message
-            // is still on its way. That exception is worth swallowing, not routing around - looking the
-            // pane up by hand instead ("component.rootPane?.glassPane as? IdeGlassPane") found nothing in
-            // the ordinary case as well, and the hand over every button in the panel disappeared with it.
-            //
-            // No pane means there is nothing to ask, and the cursor set on the component itself above is
-            // enough until the panel is visible again.
-            val pane = runCatching { IdeGlassPaneUtil.find(component) }.getOrNull() ?: return@invokeLater
-            pane.setCursor(predefined, this)
+            lifetime.ifAlive {
+                // The page's message and this call are a whole event apart: by now the panel may have been
+                // closed with its tab, or the project closed along with it, and there is no one left to dress
+                // up.
+                component.cursor = predefined
+                // By the same trick the platform's own ThreeComponentsSplitter divider uses: component.cursor
+                // alone is not always enough over the window's glass pane - that pane is what answers for
+                // what is seen above a component while the mouse moves across it.
+                //
+                // Asked for through IdeGlassPaneUtil, and the failure caught rather than avoided. It answers
+                // a component outside a window by throwing ("Component must be visible in order to find glass
+                // pane for it"), and outside a window is a perfectly ordinary state here: the panel is hidden,
+                // moved elsewhere in the interface or closed altogether while the page's last cursor message
+                // is still on its way. That exception is worth swallowing, not routing around - looking the
+                // pane up by hand instead ("component.rootPane?.glassPane as? IdeGlassPane") found nothing in
+                // the ordinary case as well, and the hand over every button in the panel disappeared with it.
+                //
+                // No pane means there is nothing to ask, and the cursor set on the component itself above is
+                // enough until the panel is visible again.
+                val pane = runCatching { IdeGlassPaneUtil.find(component) }.getOrNull() ?: return@ifAlive
+                pane.setCursor(predefined, this)
+            }
         }
     }
 
@@ -419,8 +410,10 @@ internal class WebviewHost(
      * which Swing knows nothing about.
      */
     fun focus() {
-        browser.component.requestFocusInWindow()
-        browser.cefBrowser.setFocus(true)
+        lifetime.ifAlive {
+            browser.component.requestFocusInWindow()
+            browser.cefBrowser.setFocus(true)
+        }
     }
 
     /**
@@ -434,81 +427,87 @@ internal class WebviewHost(
      */
     fun setZoom(scale: Double) {
         if (scale <= 0) return
-        browser.zoomLevel = scale
+        lifetime.ifAlive { browser.zoomLevel = scale }
     }
 
     /**
-     * The host has been closed. We note it ourselves rather than ask the platform later: it can only be
-     * asked about that in a deprecated way, while an object's own answer to "am I still alive?" is right
-     * here - and it is the first to know.
+     * Release queued messages after the lifetime has stopped callbacks and the resources are gone.
      */
     override fun dispose() {
-        disposed = true
+        synchronized(outbox) {
+            pageReady = false
+            flushScheduled = false
+            outbox.clear()
+        }
     }
 
     private fun installBridge() {
-        // The interface sends through window.__accSend and receives through window.__accReceive, which it
-        // declares itself. Readiness is announced with an event: the page may have rendered before the
-        // bridge was in place.
-        // __accChunk gathers a batch that arrived in parts (see receiveCalls): the parts come in order
-        // over the same channel, so they are glued in arrival order, without numbering. The buffer lives
-        // in the page itself and disappears with it - an unsent tail after a reload has nothing to glue
-        // itself to.
-        val bridge = """
-            window.__accSend = function (payload) {
-                ${fromWebview.inject("payload")}
-            };
-            window.__accLost = function (reason, expected, got) {
-                window.__accParts = null;
-                // One broken batch, one word about it. Every part after the one that went missing arrives
-                // to a buffer that is no longer there and would say so again - three warnings in the log
-                // and three lines in the ring buffer for a single mishap, pushing out the very context the
-                // buffer is kept for. The next batch to begin at its first part says its own piece.
-                if (window.__accLostSaid) return;
-                window.__accLostSaid = true;
-                if (window.__accSend) {
-                    window.__accSend(JSON.stringify({
-                        type: 'channelLoss', reason: reason, expected: expected, got: got
-                    }));
-                }
-            };
-            window.__accChunk = function (part, index, total) {
-                if (index === 0) {
-                    window.__accParts = [];
-                    window.__accLostSaid = false;
-                }
-                var parts = window.__accParts;
-                if (!parts || parts.length !== index) {
-                    window.__accLost('order', parts ? parts.length : -1, index);
-                    return;
-                }
-                parts.push(part);
-                if (index + 1 < total) return;
-                window.__accParts = null;
-                var joined = parts.join('');
-                var batch;
-                try {
-                    batch = JSON.parse(joined);
-                } catch (error) {
-                    window.__accLost('parse', total, joined.length);
-                    return;
-                }
-                if (window.__accReceive) window.__accReceive(batch);
-            };
-            window.dispatchEvent(new Event('acc:ready'));
-        """.trimIndent()
+        val installed = lifetime.ifAlive {
+            // The interface sends through window.__accSend and receives through window.__accReceive, which it
+            // declares itself. Readiness is announced with an event: the page may have rendered before the
+            // bridge was in place.
+            // __accChunk gathers a batch that arrived in parts (see receiveCalls): the parts come in order
+            // over the same channel, and their numbers let the page detect a missing part. The buffer lives
+            // in the page itself and disappears with it - an unsent tail after a reload has nothing to glue
+            // itself to.
+            val bridge = """
+                window.__accSend = function (payload) {
+                    ${fromWebview.inject("payload")}
+                };
+                window.__accLost = function (reason, expected, got) {
+                    window.__accParts = null;
+                    // One broken batch, one word about it. Every part after the one that went missing arrives
+                    // to a buffer that is no longer there and would say so again - three warnings in the log
+                    // and three lines in the ring buffer for a single mishap, pushing out the very context the
+                    // buffer is kept for. The next batch to begin at its first part says its own piece.
+                    if (window.__accLostSaid) return;
+                    window.__accLostSaid = true;
+                    if (window.__accSend) {
+                        window.__accSend(JSON.stringify({
+                            type: 'channelLoss', reason: reason, expected: expected, got: got
+                        }));
+                    }
+                };
+                window.__accChunk = function (part, index, total) {
+                    if (index === 0) {
+                        window.__accParts = [];
+                        window.__accLostSaid = false;
+                    }
+                    var parts = window.__accParts;
+                    if (!parts || parts.length !== index) {
+                        window.__accLost('order', parts ? parts.length : -1, index);
+                        return;
+                    }
+                    parts.push(part);
+                    if (index + 1 < total) return;
+                    window.__accParts = null;
+                    var joined = parts.join('');
+                    var batch;
+                    try {
+                        batch = JSON.parse(joined);
+                    } catch (error) {
+                        window.__accLost('parse', total, joined.length);
+                        return;
+                    }
+                    if (window.__accReceive) window.__accReceive(batch);
+                };
+                window.dispatchEvent(new Event('acc:ready'));
+            """.trimIndent()
 
-        browser.cefBrowser.executeJavaScript(bridge, browser.cefBrowser.url, 0)
+            browser.cefBrowser.executeJavaScript(bridge, browser.cefBrowser.url, 0)
 
-        synchronized(outbox) { pageReady = true }
+            synchronized(outbox) { pageReady = true }
+        }
+        if (!installed) return
+        // Do not take flushLock while holding the lifetime lock: flush takes them in the reverse order.
         flush()
     }
 
     /**
      * Hand the page everything that has accumulated.
      *
-     * The batch is limited by message count: a past conversation's replay arrives all at once, and the
-     * interface finds it easier to parse in portions rather than whole. The remainder travels as the
+     * The batch is limited by weight and message count: a past conversation's replay arrives all at once,
+     * and the interface finds it easier to parse in portions rather than whole. The remainder travels as the
      * next batch within the same trip, without extra waiting. The string's own length is handled by
      * receiveCalls - it is what cuts it into parts.
      */
@@ -520,7 +519,7 @@ internal class WebviewHost(
                     if (!pageReady || outbox.isEmpty()) return
                     batchOf(outbox)
                 }
-                deliver(batch)
+                if (!lifetime.ifAlive { deliver(batch) }) return
             }
         }
     }
@@ -548,13 +547,13 @@ internal class WebviewHost(
      * of "until you touch the panel", and on a quiet panel this work does not happen at all.
      */
     private fun heal() {
-        if (disposed) return
+        lifetime.ifAlive {
+            val now = System.currentTimeMillis()
+            if (now - lastHealAt >= HEAL_PERIOD_MS) repaintWhole()
 
-        val now = System.currentTimeMillis()
-        if (now - lastHealAt >= HEAL_PERIOD_MS) repaintWhole()
-
-        healAlarm.cancelAllRequests()
-        healAlarm.addRequest(::repaintWhole, HEAL_SETTLE_MS)
+            healAlarm.cancelAllRequests()
+            healAlarm.addRequest(::repaintWhole, HEAL_SETTLE_MS)
+        }
     }
 
     /**
@@ -574,10 +573,10 @@ internal class WebviewHost(
      * a cursor that is long gone.
      */
     private fun scheduleHoverFrame() {
-        if (disposed) return
-
-        hoverAlarm.cancelAllRequests()
-        hoverAlarm.addRequest(::repaintWhole, HOVER_SETTLE_MS)
+        lifetime.ifAlive {
+            hoverAlarm.cancelAllRequests()
+            hoverAlarm.addRequest(::repaintWhole, HOVER_SETTLE_MS)
+        }
     }
 
     /**
@@ -585,11 +584,13 @@ internal class WebviewHost(
      * may have been left torn since last time.
      */
     fun repaintWhole() {
-        lastHealAt = System.currentTimeMillis()
-        if (browser.isOffScreenRendering) browser.cefBrowser.invalidate()
-        // One invalidate does not fix everything: the band may have stayed in the frame the IDE already
-        // holds on its side. repaint() is safe from any thread.
-        browser.component.repaint()
+        lifetime.ifAlive {
+            lastHealAt = System.currentTimeMillis()
+            if (browser.isOffScreenRendering) browser.cefBrowser.invalidate()
+            // One invalidate does not fix everything: the band may have stayed in the frame the IDE already
+            // holds on its side. repaint() is safe from any thread.
+            browser.component.repaint()
+        }
     }
 
     /** Vite's dev server address, if the panel was asked to load from it rather than from the plugin's resources. */
@@ -615,7 +616,10 @@ internal class WebviewHost(
     internal companion object {
 
         /** Whether this IDE can show the embedded browser the panel lives in. */
-        fun isSupported(): Boolean = JBCefApp.isSupported()
+        fun isSupported(): Boolean {
+            loadProxySettings()
+            return JBCefApp.isSupported()
+        }
 
         /**
          * The address with the theme added to its query - after a query the address may already have (a
@@ -628,23 +632,25 @@ internal class WebviewHost(
             return "$head${separator}theme=$theme${url.substring(fragment)}"
         }
 
+        private fun createBrowser(): JBCefBrowser {
+            loadProxySettings()
+            return JBCefBrowser.createBuilder()
+                .setOffScreenRendering(false)
+                .build()
+        }
+
         /**
-         * A proxy settings warm-up used to stand here, reading them in advance and by the ordinary route.
+         * Read proxy settings before JCEF's static initializer can be the first to create their services.
          *
-         * It worked around someone else's breakage: while raising the embedded browser, JCEF read the
-         * IDE's proxy inside its class's static initializer, and the platform forbids creating services
-         * in such initializers - it answered the very first read with an error in "IDE Internal Errors",
-         * with our plugin in the title, although none of that code is ours. The warm-up created the same
-         * service in advance from ordinary code, and there was nothing left to complain about.
-         *
-         * The platform has fixed it: in current builds its browser does not touch the proxy settings from
-         * the initializer at all. The workaround is gone, and with it went the only reference here to a
-         * class closed to plugins - because of which the marketplace's verifier marked the version as
-         * problematic. Verified live: the panel opened at the very start of the IDE (the case where the
-         * error used to be caught) comes up without a single error entry.
+         * The error still occurs in WebStorm 2026.2.3: HttpConfigurable creates ProxyMigrationService
+         * under JBCefApp.Holder, where the platform forbids service creation. Reading the configuration
+         * through the public ProxySettings API initializes it from ordinary code. Merely getting the
+         * ProxySettings service leaves the configuration lazy, and the old JBCefProxySettings entry point
+         * is internal API that the marketplace's verifier rejects.
          */
-        private fun createBrowser(): JBCefBrowser = JBCefBrowser.createBuilder()
-            .setOffScreenRendering(false)
-            .build()
+        private fun loadProxySettings() {
+            runCatching { ProxySettings.getInstance().getProxyConfiguration() }
+                .onFailure { thisLogger().warn("Could not read the IDE proxy settings up front", it) }
+        }
     }
 }
