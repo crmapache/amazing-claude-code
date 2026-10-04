@@ -9,6 +9,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.18] - 2026-10-03
+
+- Added: rewind a conversation to one of your own messages from the panel or a paired phone. "Rewind to here" removes that message and everything after it from Claude's memory and puts its text back in the input field; choose the conversation, the code, or both, or open the earlier point in a new tab while leaving this one alone. When Claude Code has kept copies of the files, the dialog first shows what would be restored. A turn that is still running stops, queued messages from the discarded part are dropped, and the panel, phone, history and search all show the same shortened conversation. Messages folded into an earlier compaction cannot be rewound to.
+- Added: every conversation tab now has its own fork button, so a complete copy can be opened without typing a command or selecting text. A new empty tab keeps the button in place but clearly says there is nothing to fork yet.
+- Fixed: "Fork from here" copied the entire conversation, including the later turns it promised to leave behind. A fork made from selected text, a message or the rewind dialog now starts at the chosen point, says which conversation and point it continues, and keeps that point if the IDE restarts before the first message. Forking from a paired phone now opens a real fork rather than an empty conversation.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.17] - 2026-10-03
 
 - Fixed: a long answer opened again from the history was cut short, often the last one of the conversation, with "... 21237 more characters are not kept in the panel's history" in place of its end. The same answer had been shown whole while Claude was writing it. To keep a page of history light, every long piece of text in it was cut to its first eight thousand characters, and that meant Claude's answers too, along with your own long messages and long plans. Now only what the tools returned is cut, such as a file read whole or a long build log, which a card shows as a short preview anyway. Everything you and Claude wrote comes back from the history in full, however long.
@@ -869,7 +876,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.17...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.18...HEAD
+[0.13.18]: https://github.com/crmapache/amazing-claude-code/compare/0.13.17...0.13.18
 [0.13.17]: https://github.com/crmapache/amazing-claude-code/compare/0.13.16...0.13.17
 [0.13.16]: https://github.com/crmapache/amazing-claude-code/compare/0.13.15...0.13.16
 [0.13.15]: https://github.com/crmapache/amazing-claude-code/compare/0.13.14...0.13.15
