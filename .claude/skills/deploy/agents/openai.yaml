@@ -1,0 +1,5 @@
+interface:
+  display_name: "Deploy"
+  short_description: "Проверка и выпуск новой версии проекта"
+policy:
+  allow_implicit_invocation: false
