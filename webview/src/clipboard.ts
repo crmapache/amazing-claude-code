@@ -128,6 +128,8 @@ export const installClipboardBridge = (): (() => void) => {
  */
 const onCopy = (event: ClipboardEvent): void => {
   if (!bridged()) return
+  // The copy button's own selection (see copySelection): that text has already gone to the IDE.
+  if (copyingOwn) return
 
   const own = selection()
   const text = event.clipboardData?.getData('text/plain') || own.text
@@ -378,20 +380,32 @@ const fileFromDataUrl = (url: string): File | null => {
 const CLIPBOARD_API_TIMEOUT_MS = 300
 
 /**
- * navigator.clipboard is not always present in the IDE's embedded browser (JCEF) - and, worse than an
- * ordinary refusal, it may not reject with an error but hang without an answer for good (verified live:
- * a plain await never sees either success or refusal). The button meanwhile reported success (the tick)
- * at once, waiting for nothing at all. document.execCommand is already used in the panel for other
- * operations and works reliably there, so it is an honest fallback when the modern API is unavailable,
- * failed, or stays silent longer than is reasonable. "Success" now means exactly success rather than
- * merely a call.
+ * The copy button's way into the clipboard: the browser's own copy of a selection first, the modern
+ * Clipboard API only if that fails.
+ *
+ * The other way round was the rule until a phone pasted "Subject:%20Your%20three%20bug%20reports%0A%0AHi,"
+ * into Gmail. WebKit on iOS writes the API's text as an object of its own, and iOS offers that object as
+ * a link as well whenever the text parses as one - and any text that opens with a word and a colon does:
+ * "Subject:" reads as a scheme, like "mailto:". An editor that takes a link before text (Gmail; WebKit's
+ * own editing among them) then pastes the link, every space and line break percent-encoded, while
+ * Telegram, which takes text, pastes it right. A copied selection is plain text and nothing else.
+ * Measured in the iOS simulator through a real WKWebView, copying "Subject: ...": `writeText` and a copy
+ * event's `setData` both left `public.url` on the pasteboard and pasted as `subject:%20...`; a selection
+ * copied out of a read-only field left `public.utf8-plain-text` alone and pasted as written.
+ *
+ * The modern API stays as the spare. In the IDE's embedded browser (JCEF) it is not always present, and,
+ * worse than an ordinary refusal, it may hang without an answer for good (verified live) - hence the
+ * time limit on it. "Success" means exactly success rather than merely a call: the button's tick is the
+ * only answer a person gets.
  */
 export const copyToClipboard = async (text: string): Promise<boolean> => {
   // Apart from both browser routes: on Linux the embedded browser's clipboard is connected to nothing,
   // and both of them put the text where nobody can reach it afterwards - neither the editor nor a
-  // neighbouring application (see clipboard.ts). This button slips past the shared copy interception
-  // because the modern Clipboard API raises no copy event.
+  // neighbouring application (see clipboard.ts). The selection below raises a copy event, and the
+  // shared interception steps aside for it (see copyingOwn): this stays the one copy sent to the IDE.
   const bridged = writeClipboard(text)
+
+  if (copySelection(text)) return true
 
   if (navigator.clipboard?.writeText) {
     // .catch straight on the promise itself - otherwise, rejecting later than the timeout has already
@@ -405,13 +419,53 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
     if ((await Promise.race([write, timeout])) === 'done') return true
   }
 
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.select()
-  const ok = document.execCommand('copy')
-  document.body.removeChild(textarea)
-  return ok || bridged
+  return bridged
+}
+
+/** True for the moment the copy button's own selection is being copied - see copySelection and onCopy. */
+let copyingOwn = false
+
+/**
+ * The text selected in a field nobody sees, and copied the way a person copies a selection.
+ *
+ * Read-only, so a phone does not raise its keyboard for it, and sixteen pixels, so iOS does not zoom the
+ * page in on it. The field takes the focus and the page's selection for that one moment, and both are put
+ * back: the copy is also pressed in the middle of writing a message - a path in backticks clicked while
+ * the caret stands mid-sentence - and the next letter must land where the caret was, not at the start of
+ * the field.
+ */
+const copySelection = (text: string): boolean => {
+  const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  const selection = document.getSelection()
+  const ranges = selection
+    ? Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index))
+    : []
+
+  const field = document.createElement('textarea')
+  field.value = text
+  field.setAttribute('readonly', '')
+  field.setAttribute('aria-hidden', 'true')
+  Object.assign(field.style, { position: 'fixed', top: '0', left: '0', opacity: '0', fontSize: '16px' })
+  document.body.appendChild(field)
+
+  let copied = false
+  copyingOwn = true
+  try {
+    field.select()
+    field.setSelectionRange(0, text.length)
+    copied = document.execCommand('copy')
+  } catch {
+    copied = false
+  } finally {
+    copyingOwn = false
+  }
+
+  field.remove()
+  focused?.focus({ preventScroll: true })
+  if (selection && ranges.length > 0) {
+    selection.removeAllRanges()
+    for (const range of ranges) selection.addRange(range)
+  }
+
+  return copied
 }

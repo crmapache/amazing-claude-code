@@ -108,7 +108,16 @@ internal object PromptDelivery {
         }
 
     /** Something sent whose record we are looking for in the conversation: what went out and when. */
-    internal data class Sent(val text: String, val sentAt: Long)
+    internal data class Sent(
+        val text: String,
+        val sentAt: Long,
+        /**
+         * What the editor showed, sent as a block of its own beside the text (see ClaudeSession.userMessage).
+         * A message taken into a running turn is recorded with the two blocks run together into one - see
+         * [sameMessage].
+         */
+        val context: String? = null,
+    )
 
     /**
      * What a look into the conversation was able to tell us.
@@ -164,7 +173,6 @@ internal object PromptDelivery {
 
     /** Parsing the conversation file's lines - apart from the disk, so a test can check it. */
     internal fun match(lines: Sequence<String>, sent: List<Sent>): Map<Int, Landing> {
-        val wanted = sent.map { it.text.trim() }
         val matched = mutableMapOf<Int, Landing>()
 
         for (line in lines) {
@@ -186,8 +194,8 @@ internal object PromptDelivery {
 
                 // Close the earliest matching wait: records in the file run in time order, sends in the
                 // list do too, so the first record goes to the first send, the second to the second.
-                val index = wanted.indices.firstOrNull { i ->
-                    i !in matched && wanted[i] == trimmed && at >= sent[i].sentAt - CLOCK_SLACK_MS
+                val index = sent.indices.firstOrNull { i ->
+                    i !in matched && sameMessage(trimmed, sent[i]) && at >= sent[i].sentAt - CLOCK_SLACK_MS
                 } ?: continue
 
                 matched[index] = record.landing
@@ -195,6 +203,26 @@ internal object PromptDelivery {
         }
 
         return matched
+    }
+
+    /**
+     * Whether a record's text is this send.
+     *
+     * Word for word - or word for word followed by what the editor showed. A message that starts a turn is
+     * written with the editor's note as a block of its own, and its first block matches the text alone. A
+     * message taken into a running turn is written as a `queued_command` whose blocks the CLI has run
+     * together into one, the note after the text (measured on 2.1.280). Compared whole, that record never
+     * matched: every message sent from the desk into a running turn with the editor shared was judged lost
+     * and sent a second time once the turn was over, lighting "running" over a finished conversation and
+     * giving the agent the same words twice. Caught on a message written over a permission card, which
+     * always goes in mid-turn (see SessionPermissions.answeredInChat).
+     */
+    private fun sameMessage(record: String, sent: Sent): Boolean {
+        val text = sent.text.trim()
+        if (record == text) return true
+
+        val context = sent.context?.trim().orEmpty()
+        return context.isNotEmpty() && record.startsWith(text) && record.removePrefix(text).trim() == context
     }
 
     /** One record of a person's message: how it got into the conversation, and what it said. */

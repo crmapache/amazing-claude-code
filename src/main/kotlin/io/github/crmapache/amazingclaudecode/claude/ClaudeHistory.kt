@@ -151,6 +151,22 @@ internal object ClaudeHistory {
         page(workingDirectory, id, before = null, pageSize = OPENING_PAGE_MESSAGES, maxChars = OPENING_PAGE_CHARS)
 
     /**
+     * The end of what a fork not born yet carries - its source up to the line the fork ends on, and the seam
+     * after it (see ForkLineage.unborn). What a fork's tab opens with the moment it is made: the fork is the
+     * same conversation going on, and its feed shows what its agent will remember.
+     */
+    fun forkOpening(workingDirectory: String?, origin: ForkOrigin): Page =
+        page(lineages(workingDirectory).unborn(origin), before = null, pageSize = OPENING_PAGE_MESSAGES, maxChars = OPENING_PAGE_CHARS)
+
+    /** A page of the same, further back than [before] - see [earlier] for the sizes. */
+    fun forkEarlier(workingDirectory: String?, origin: ForkOrigin, before: String?, local: Boolean): Page =
+        if (local) {
+            page(lineages(workingDirectory).unborn(origin), before, pageSize = OPENING_PAGE_MESSAGES, maxChars = OPENING_PAGE_CHARS)
+        } else {
+            page(lineages(workingDirectory).unborn(origin), before, maxChars = MAX_PHONE_PAGE_BYTES, weigh = ::utf8Bytes)
+        }
+
+    /**
      * A page further back than [before], sized for whoever asked.
      *
      * [local] means the IDE's own panel: its channel into the page is ours to manage, while a phone's
@@ -200,14 +216,54 @@ internal object ClaudeHistory {
         lines.filter { line -> line.startsWith("{") && REPLAYABLE.any { mark -> line.contains(mark) } }
 
     /** One candidate line in the shape the feed draws, or null when it draws nothing after all. */
-    internal fun replayLine(line: String): String? =
-        commandOutput(line) ?: line.takeIf { it.contains(MESSAGE) || it.contains(REPLY) }?.let(::normalizeContent)
+    internal fun replayLine(line: String): String? {
+        // A fork's seam is the panel's own line and travels as it is (see ForkOrigin.seamLine).
+        if (ForkOrigin.isSeam(line)) return line
+        // The summary a compaction hands the model is a message in the person's name on disk - and never was
+        // one on screen: the live feed draws the compaction as its mark (see [compaction]).
+        if (line.contains(COMPACT_SUMMARY)) return null
+        compaction(line)?.let { return it }
+        return commandOutput(line) ?: line.takeIf { it.contains(MESSAGE) || it.contains(REPLY) }?.let(::normalizeContent)
+    }
+
+    /**
+     * A compaction's boundary, turned into the event the live stream announced it with.
+     *
+     * The live feed draws a compaction as its mark with its figures ("compacted 51.2k of context into a 5.8k
+     * summary"), from the `compact_boundary` event. On disk the same boundary is a system line with the figures
+     * under other names (`compactMetadata`, camel case), and the history used to drop it as a line that draws
+     * nothing - while the summary under it, filed as the person's message, stood in the feed as a wall of the
+     * person's "words". A compacted conversation opened from the history, or inherited by a fork, showed that
+     * instead of the mark. null when this line is not a boundary.
+     */
+    internal fun compaction(line: String): String? {
+        if (!line.contains(COMPACTED)) return null
+        val payload = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull() ?: return null
+        if (payload["type"]?.jsonPrimitive?.contentOrNull != "system") return null
+        if (payload["subtype"]?.jsonPrimitive?.contentOrNull != "compact_boundary") return null
+
+        val meta = payload["compactMetadata"] as? JsonObject
+        return buildJsonObject {
+            put("type", "system")
+            put("subtype", "compact_boundary")
+            payload["uuid"]?.let { put("uuid", it) }
+            putJsonObject("compact_metadata") {
+                meta?.get("trigger")?.let { put("trigger", it) }
+                meta?.get("preTokens")?.let { put("pre_tokens", it) }
+                meta?.get("postTokens")?.let { put("post_tokens", it) }
+                meta?.get("durationMs")?.let { put("duration_ms", it) }
+            }
+        }.toString()
+    }
 
     private const val MESSAGE = "\"type\":\"user\""
     private const val REPLY = "\"type\":\"assistant\""
     private const val COMMAND = "\"subtype\":\"local_command\""
+    private const val SEAM = "\"type\":\"${ForkOrigin.SEAM_TYPE}\""
+    private const val COMPACTED = "\"subtype\":\"compact_boundary\""
+    private const val COMPACT_SUMMARY = "\"isCompactSummary\":true"
 
-    private val REPLAYABLE = listOf(MESSAGE, REPLY, COMMAND)
+    private val REPLAYABLE = listOf(MESSAGE, REPLY, COMMAND, SEAM, COMPACTED)
 
     /** What a command the CLI ran itself printed - the wrapping the transcript keeps it in. */
     private const val STDOUT_TAG = "<local-command-stdout>"
@@ -307,6 +363,8 @@ internal object ClaudeHistory {
      * of a page and nothing else - the boundary between pages is a uuid either way.
      */
     internal fun drawsOwnRow(line: String): Boolean {
+        // A fork's seam and a compaction: marks of their own in the feed.
+        if (ForkOrigin.isSeam(line) || line.contains(COMPACTED)) return true
         // A tool call's result: a message from the person by shape only, and on screen not a row but the
         // closing of one that already stands.
         if (line.contains(TOOL_RESULT)) return false
@@ -456,42 +514,98 @@ internal object ClaudeHistory {
         pageSize: Int = PAGE_MESSAGES,
         maxChars: Int = MAX_PAGE_CHARS,
         weigh: (String) -> Int = String::length,
-    ): Page {
-        val file = transcriptFile(workingDirectory, id) ?: return Page(emptyList(), null)
+    ): Page = lineages(workingDirectory).page(id, before, pageSize, maxChars, weigh)
 
-        // The window is cut out of the raw lines, and only the lines it kept are looked into. Every line
-        // before the boundary used to be parsed - twice, for the command output and for the shape of the
-        // content - and shortened, only to be thrown away by the window a moment later. On a working day's
-        // transcript of fifty megabytes that was seconds for one page, and a jump to a search hit above
-        // what the tab holds asks for its pages one after another: the veil stood over the feed for as
-        // long as it took to read the whole file that many times over. Told by their shape alone, the
-        // lines cost a pass of string checks; the parsing is paid for a page's worth of them.
-        // A file already known to be rewound skips the pass that would only find that out (see below): a live
-        // conversation's pages come one after another, and each used to read the whole file three times.
-        val first = if (TranscriptRewinds.known(file)) {
+    /** Where a project's transcripts and forks are looked up - apart from the disk, so a test can hand its own. */
+    internal class Lineages(
+        private val transcript: (String) -> File?,
+        private val origins: (String) -> ForkOrigin?,
+    ) {
+        fun unborn(origin: ForkOrigin): ForkLineage.Lineage = ForkLineage.unborn(origin, transcript, origins)
+
+        /**
+         * A page of conversation [id], read across what it inherited when the page reaches past its own
+         * transcript (see ForkLineage).
+         *
+         * Its own transcript first, alone: nearly every page is cut out of it, and reaching into a source costs a
+         * pass over the source's file. Only a page that climbed to the top of its own file - or was asked for by a
+         * line its own file does not hold, one of the source's - is read again across the whole lineage.
+         */
+        fun page(
+            id: String,
+            before: String?,
+            pageSize: Int = PAGE_MESSAGES,
+            maxChars: Int = MAX_PAGE_CHARS,
+            weigh: (String) -> Int = String::length,
+        ): Page {
+            val own = ForkLineage.own(id, transcript, origins) ?: return Page(emptyList(), null)
+            val first = tailAcross(own, before, pageSize, id)
+            if (first.window.reached && (first.window.moreAbove || !ForkLineage.inherits(id, transcript, origins))) {
+                return pageOut(first, pageSize, maxChars, weigh)
+            }
+
+            val whole = ForkLineage.of(id, transcript, origins)?.let { tailAcross(it, before, pageSize, id) } ?: first
+            return pageOut(whole, pageSize, maxChars, weigh)
+        }
+    }
+
+    /** The disk's answers to [Lineages] - the CLI's folder for this project and this machine's book of forks. */
+    private fun lineages(workingDirectory: String?): Lineages {
+        val book = ForkBook(workingDirectory)
+        return Lineages({ transcriptFile(workingDirectory, it) }, book::origin)
+    }
+
+    /**
+     * A page out of [lineage] - its own transcript, or that and the transcripts it inherited from.
+     *
+     * The window is cut out of the raw lines, and only the lines it kept are looked into. Every line
+     * before the boundary used to be parsed - twice, for the command output and for the shape of the
+     * content - and shortened, only to be thrown away by the window a moment later. On a working day's
+     * transcript of fifty megabytes that was seconds for one page, and a jump to a search hit above
+     * what the tab holds asks for its pages one after another: the veil stood over the feed for as
+     * long as it took to read the whole file that many times over. Told by their shape alone, the
+     * lines cost a pass of string checks; the parsing is paid for a page's worth of them.
+     */
+    internal fun page(
+        lineage: ForkLineage.Lineage,
+        before: String?,
+        pageSize: Int = PAGE_MESSAGES,
+        maxChars: Int = MAX_PAGE_CHARS,
+        weigh: (String) -> Int = String::length,
+    ): Page = pageOut(tailAcross(lineage, before, pageSize, "a fork"), pageSize, maxChars, weigh)
+
+    /**
+     * The window of [lineage], read the way it has to be.
+     *
+     * A file already known to be rewound skips the pass that would only find that out (see below): a live
+     * conversation's pages come one after another, and each used to read the whole file three times.
+     *
+     * A conversation that was rewound is read once more, without what the rewind took out (see
+     * TranscriptRewinds): the CLI leaves the dropped turns in the file, and a conversation reopened
+     * from here would otherwise bring back exactly what the person rewound to be rid of. Only such a
+     * file pays for the second pass, and its cuts are read on from where the last reading stopped. A
+     * mark always stands after what it cut, so a page asked for by a boundary has met every mark that
+     * matters to it before the boundary stopped the pass.
+     */
+    private fun tailAcross(lineage: ForkLineage.Lineage, before: String?, pageSize: Int, label: String): Tail {
+        val nothing = Tail(Window(emptyList(), moreAbove = false), identity = "")
+
+        val first = if (lineage.stretches.any { TranscriptRewinds.known(it.file) }) {
             null
         } else {
-            runCatching { file.useLines { lines -> tailOf(lines, before, pageSize) } }
-                .onFailure { thisLogger().warn("Failed to page conversation $id", it) }
-                .getOrDefault(Tail(Window(emptyList(), moreAbove = false), identity = ""))
+            runCatching { ForkLineage.read(lineage, cuts = false) { lines -> tailOf(lines, before, pageSize) } }
+                .onFailure { thisLogger().warn("Failed to page conversation $label", it) }
+                .getOrDefault(nothing)
         }
+        if (first != null && !first.rewound) return first
 
-        // A conversation that was rewound is read once more, without what the rewind took out (see
-        // TranscriptRewinds): the CLI leaves the dropped turns in the file, and a conversation reopened
-        // from here would otherwise bring back exactly what the person rewound to be rid of. Only such a
-        // file pays for the second pass, and its cuts are read on from where the last reading stopped. A
-        // mark always stands after what it cut, so a page asked for by a boundary has met every mark that
-        // matters to it before the boundary stopped the pass.
-        val scanned = if (first != null && !first.rewound) {
-            first
-        } else {
-            runCatching {
-                val cut = TranscriptRewinds.cutLines(file)
-                file.useLines { lines -> tailOf(TranscriptRewinds.alive(lines, cut), before, pageSize) }
-            }
-                .onFailure { thisLogger().warn("Failed to page rewound conversation $id", it) }
-                .getOrDefault(first ?: Tail(Window(emptyList(), moreAbove = false), identity = ""))
-        }
+        return runCatching { ForkLineage.read(lineage, cuts = true) { lines -> tailOf(lines, before, pageSize) } }
+            .onFailure { thisLogger().warn("Failed to page rewound conversation $label", it) }
+            .getOrDefault(first ?: nothing)
+    }
+
+    /** The page itself, sliced out of a window that has already met its boundary. */
+    private fun pageOut(scanned: Tail, pageSize: Int, maxChars: Int, weigh: (String) -> Int): Page {
         val prepared = scanned.window.lines.mapNotNull(::replayLine).map(::shortened)
 
         // The boundary has already done its work inside the window, so the slicing is asked for the
@@ -524,7 +638,12 @@ internal object ClaudeHistory {
     internal fun shortened(line: String): String = JournalTrim.trim(line, HISTORY_ENTRY_CHARS, HISTORY_STRING_CHARS)
 
     /** The stretch of a transcript one page can be cut out of - see [windowOf]. */
-    internal data class Window(val lines: List<String>, val moreAbove: Boolean)
+    internal data class Window(
+        val lines: List<String>,
+        val moreAbove: Boolean,
+        /** The boundary asked for was met - or none was asked for. A page of a fork asked for by its source's line has to look there (see Lineages.page). */
+        val reached: Boolean = true,
+    )
 
     /**
      * The lines a page may come out of, and whether the conversation goes on above them.
@@ -561,9 +680,13 @@ internal object ClaudeHistory {
         var weight = 0L
         var run = false
         var dropped = false
+        var reached = before == null
 
         for (line in lines) {
-            if (before != null && uuidOf(line) == before) break
+            if (before != null && uuidOf(line) == before) {
+                reached = true
+                break
+            }
 
             val draws = drawsOwnRow(line)
             if (!draws && run) kept.last().add(line) else kept.addLast(mutableListOf(line))
@@ -592,7 +715,7 @@ internal object ClaudeHistory {
         val window = kept.flatten().toMutableList()
         while (dropped && window.isNotEmpty() && uuidOf(window.first()) == null) window.removeAt(0)
 
-        return Window(window, dropped)
+        return Window(window, dropped, reached)
     }
 
     /** How many messages past a page the window leaves for the slicing to step back into. */

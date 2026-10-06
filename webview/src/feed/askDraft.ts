@@ -113,6 +113,30 @@ export const answersOf = (
 ): { question: string; answer: string }[] =>
   questions.map((question) => ({ question: question.title, answer: answerFor(question, draft) }))
 
+/**
+ * What an answer travels as - one shape for the desk and the phone.
+ *
+ * The pairs the agent's call takes back (the key is the question's text, see the askAnswer message), and
+ * the same as text for when nobody is left waiting and it goes on as an ordinary message. The text is a
+ * question with its answer, the pairs apart by an empty line: answers alone in a row read as nothing - a
+ * "Only the multi-line one" means something only under the question it answers, and one call may hold up
+ * to six. The phone used to send the bare labels joined by commas, so the same answer reached the agent
+ * in two shapes depending on where it was given.
+ *
+ * A question left without an answer is left out: there is nothing in it to send.
+ */
+export const askReply = (
+  answers: { question: string; answer: string }[],
+): { answered: { question: string; answer: string }[]; answers: Record<string, string>; text: string } => {
+  const answered = answers.filter((entry) => entry.answer.trim().length > 0)
+
+  return {
+    answered,
+    answers: Object.fromEntries(answered.map((entry) => [entry.question, entry.answer])),
+    text: answered.map((entry) => `${entry.question}\n${entry.answer}`).join('\n\n'),
+  }
+}
+
 /** Whether there is something to send: every question has been answered. */
 export const askAnswered = (questions: AskQuestion[], draft: AskDraft): boolean =>
   questions.length > 0 && questions.every((question) => answerFor(question, draft).length > 0)

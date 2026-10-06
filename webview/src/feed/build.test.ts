@@ -8,6 +8,7 @@ import type { AgentEvent, AgentRateLimitEvent } from '../protocol'
 import { contextOf, contextUsage, initialPanelState, reducePanel, spokenAnswer, type PanelState } from './build'
 import type {
   AskItem,
+  CheckpointItem,
   CompactItem,
   FindingsItem,
   LimitItem,
@@ -4255,5 +4256,54 @@ describe('a conversation cut back by a rewind', () => {
     const twice = reducePanel(once, { kind: 'rewound', uuid: 'missing' }, NOW)
 
     expect(twice.items.filter((item) => item.kind === 'checkpoint')).toHaveLength(1)
+  })
+})
+
+/**
+ * A fork's seam: where its own part begins. The IDE puts it among the lines it plays and pages (see
+ * ForkLineage in the plugin), and the feed draws it wherever it arrives - so it stands between the
+ * inherited history and the fork's own messages however the history is cut into pages.
+ */
+describe('a fork\'s seam', () => {
+  const NOW = 1_700_000_000_000
+  const seam = (cut: boolean): AgentEvent => ({ type: 'fork_seam', source: 'conversation-1', title: 'Checkout', cut })
+  const marks = (state: PanelState) => state.items.filter((item): item is CheckpointItem => item.kind === 'checkpoint')
+
+  it('is the fork\'s mark, naming the original and saying how it was made', () => {
+    const whole = reducePanel(initialPanelState, { kind: 'agent', event: seam(false), replay: true }, NOW)
+    const cut = reducePanel(initialPanelState, { kind: 'agent', event: seam(true), replay: true }, NOW)
+
+    expect(marks(whole)).toMatchObject([{ chip: 'FORK', target: 'Checkout', targetKey: 'forked', source: 'conversation-1' }])
+    expect(marks(cut)[0]?.targetKey).toBe('forkedAt')
+  })
+
+  it('stands under what the fork carries and above what is said in it', () => {
+    let state = initialPanelState
+    for (const event of [textEvent('inherited answer'), seam(false)]) {
+      state = reducePanel(state, { kind: 'agent', event, replay: true }, NOW)
+    }
+    state = reducePanel(state, { kind: 'replayFinished', cursor: 'u1' }, NOW)
+    state = reducePanel(state, { kind: 'agent', event: textEvent('the fork\'s own answer') }, NOW)
+
+    const order = state.items
+      .filter((item) => item.kind === 'text' || (item.kind === 'checkpoint' && item.chip === 'FORK'))
+      .map((item) => (item.kind === 'checkpoint' ? 'SEAM' : (item as TextItem).source))
+    expect(order).toEqual(['inherited answer', 'SEAM', 'the fork\'s own answer'])
+  })
+
+  it('stands in its place inside a page of older messages', () => {
+    const below = reducePanel(initialPanelState, { kind: 'agent', event: textEvent('the fork\'s own answer') }, NOW)
+    const withMark = { ...below, oldestEventUuid: 'own-1' }
+
+    const state = reducePanel(
+      withMark,
+      { kind: 'historyPage', entries: [textEvent('inherited answer'), seam(true)], before: 'own-1', cursor: 'u0' },
+      NOW,
+    )
+
+    const order = state.items
+      .filter((item) => item.kind === 'text' || (item.kind === 'checkpoint' && item.chip === 'FORK'))
+      .map((item) => (item.kind === 'checkpoint' ? 'SEAM' : (item as TextItem).source))
+    expect(order).toEqual(['inherited answer', 'SEAM', 'the fork\'s own answer'])
   })
 })

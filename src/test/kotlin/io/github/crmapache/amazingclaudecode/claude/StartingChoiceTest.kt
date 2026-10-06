@@ -156,4 +156,59 @@ class StartingChoiceTest : BasePlatformTestCase() {
         assertEquals("sonnet", StartingChoice.model(requested = "opus"))
         assertEquals("low", StartingChoice.effort(requested = "low"))
     }
+
+    /**
+     * A tab opened with a choice of its own - a phone's new chat - is drawn by that choice before its first
+     * message, and what it is drawn by is what it is born with (see ClaudeSessions.planned). Reported from
+     * Windows: a model added by hand, chosen for a new chat on a phone, appeared nowhere until the first
+     * answer - "default" on the phone, the setting at the desk - and read as a model that cannot be started.
+     */
+    fun testALaunchedTabIsShownWhatItIsBornWith() {
+        working("pro")
+        accounts.noteModels("pro", setOf("default", "sonnet"))
+        ClaudePreferences.customModels = listOf("glm-4.6")
+        ClaudePreferences.newTabModel = "sonnet"
+
+        var model = "unborn"
+        var effort = "unborn"
+        val sessions = ClaudeSessions(
+            workingDirectory = null,
+            parentDisposable = testRootDisposable,
+            onEvent = { _, _ -> },
+            onError = { _, _ -> },
+            onFinished = {},
+            onBorn = { _, bornEffort, bornModel, _ ->
+                effort = bornEffort
+                model = bornModel
+            },
+        )
+        sessions.rememberLaunch("phone", SessionLaunch(model = "glm-4.6", effort = "low", mode = "acceptEdits"))
+
+        val planned = sessions.planned("phone")
+        assertEquals("glm-4.6", planned?.model)
+        assertEquals("low", planned?.effort)
+        assertEquals("acceptEdits", planned?.mode)
+
+        // Brought into being the way born() does it - no process, the effort it already had.
+        sessions.setEffort("phone", "low", remember = false)
+
+        assertEquals(planned?.model, model)
+        assertEquals(planned?.effort, effort)
+        // Born, the choice is spent: from here the conversation itself answers.
+        assertNull(sessions.planned("phone"))
+    }
+
+    /** A tab with no choice of its own has nothing to announce: the setting already draws it, and rightly. */
+    fun testATabWithoutAChoiceHasNothingPlanned() {
+        val sessions = ClaudeSessions(
+            workingDirectory = null,
+            parentDisposable = testRootDisposable,
+            onEvent = { _, _ -> },
+            onError = { _, _ -> },
+            onFinished = {},
+            onBorn = { _, _, _, _ -> },
+        )
+
+        assertNull(sessions.planned("plain"))
+    }
 }

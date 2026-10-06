@@ -12,6 +12,8 @@ paths:
   - "src/test/kotlin/io/github/crmapache/amazingclaudecode/claude/PermissionModesTest.kt"
   - "webview/src/components/CustomModels.tsx"
   - "webview/src/components/StatusBar.tsx"
+  - "webview/src/mobile/facts.ts"
+  - "webview/src/mobile/facts.test.ts"
 ---
 
 ## MODEL, EFFORT и MODE принадлежат разговору, а не окну
@@ -206,6 +208,12 @@ paths:
   стороне IDE нельзя: сообщение `models` может не прийти никогда, и список уехал бы вместе с ним.
 - **Телефону `setCustomModels` запрещён** (`RemoteCommands.DENIED`), но сам список ему отдаётся: модель
   добавляют на той машине, чей CLI с ней запустится.
+- **Телефону список едет ещё и инвентарём машины** (`customModels` в `RemoteAgent.inventoryBody`, рядом с
+  каталогом `models` и `prefs`). Одного факта проекта не хватало: у проекта, закрытого за столом, фактов нет
+  вовсе, и новый чат с телефона предлагал все модели Claude Code, кроме той, которую обслуживает провайдер
+  этой машины (отчёт с Windows, 0.13.20). Факт остаётся и читается первым (`customModelsOf` в
+  `mobile/facts.ts`, с тестом): для открытого проекта он живой, а инвентарь свеж ровно на последний стук
+  (25 секунд). Нет поля в инвентаре - значит, плагин старше него, и ответом остаётся факт.
 - Проверить без IDE: харнесс - меню MODEL, строка «Add a model…», экран, добавить и убрать; плеер
   отвечает на `setCustomModels` тем же `customModels`, что и оболочка. Дописанная модель обязана
   появиться и в подсказке `/model`.

@@ -207,9 +207,10 @@ internal class ClaudeSessions(
     }
 
     /**
-     * A branch off another conversation: the branch gets its whole transcript and an identifier of its
-     * own. Continuing in the branch leaves the parent untouched, and if the parent has never answered
-     * yet, there is nothing to branch off - we start an ordinary conversation.
+     * A branch off another conversation: the branch gets its transcript as it stands at this moment - to
+     * the end, or to the message it was cut at (see ForkOrigin) - and an identifier of its own. Continuing
+     * in the branch leaves the parent untouched, and if the parent has never answered yet, there is nothing
+     * to branch off - we start an ordinary conversation.
      *
      * It starts on what the PARENT runs on - its model, its effort, its permission mode - rather than on
      * what the settings hold. The two disagree more often than it seems: every selector writes the
@@ -227,9 +228,11 @@ internal class ClaudeSessions(
         branchId: String,
         /**
          * The parent's message the branch stops short of - everything before it, nothing from it on (see
-         * ClaudeSession.forkBefore). Null for the whole conversation.
+         * ForkOrigin.resolve). Null for the whole conversation.
          */
         before: String? = null,
+        /** The parent's name, for the seam in the branch's feed (see ForkOrigin.title). */
+        title: String = "",
     ) {
         if (sessions.containsKey(branchId)) return
 
@@ -249,8 +252,46 @@ internal class ClaudeSessions(
         // everything else on this machine is on: that is the whole of the rule now, and a fork of a tab
         // launched last week was the last thing still quietly beating it.
 
-        val from = parent?.conversationId
-        sessions[branchId] = newSession(branchId, forkFrom = from, forkBefore = before.takeIf { from != null }).also {
+        sessions[branchId] = newSession(branchId, origin = originOf(parent, title, before)).also {
+            Disposer.register(this, it)
+        }
+    }
+
+    /**
+     * Where a branch off [parent] forks from - worked out when first asked (see ClaudeSession.origin), which is
+     * a moment after the press, on the thread playing the inherited history into the tab.
+     *
+     * A parent that is itself a fork nobody has spoken in yet has no transcript of its own: everything it holds
+     * is its source's, up to its line, and a branch of it is a branch of that source - the whole of it at that
+     * same line, or cut at a message inside it. A parent with neither a transcript nor a source has nothing to
+     * branch off, and the branch starts an ordinary conversation.
+     */
+    private fun originOf(parent: ClaudeSession?, title: String, before: String?): Lazy<ForkOrigin.Resolved?> {
+        if (parent == null) return lazyOf(null)
+
+        return lazy {
+            val book = ForkBook(workingDirectory)
+            val transcript = { id: String -> ClaudeHistory.transcriptFile(workingDirectory, id) }
+            val own = parent.conversationId?.takeIf { transcript(it) != null }
+            val inherited = if (own == null) parent.forkOrigin else null
+
+            when {
+                own != null -> ForkOrigin.resolve(transcript, book::origin, own, title, before)
+                inherited == null -> null
+                before == null -> ForkOrigin.Resolved(inherited)
+                else -> ForkOrigin.resolve(transcript, book::origin, inherited.source, inherited.title, before)
+            }
+        }
+    }
+
+    /**
+     * A fork not born yet, brought back with its tab after a restart - the same fork, ending on the same line
+     * (see TabMemory.Tab.forkOrigin), whatever has become of the tab it was made from.
+     */
+    fun restoreFork(sessionId: String, origin: ForkOrigin) {
+        if (sessions.containsKey(sessionId)) return
+
+        sessions[sessionId] = newSession(sessionId, origin = lazyOf(ForkOrigin.Resolved(origin))).also {
             Disposer.register(this, it)
         }
     }
@@ -279,7 +320,7 @@ internal class ClaudeSessions(
             roleStillHeld.add(sessionId)
         }
 
-        sessions[sessionId] = newSession(sessionId, forkFrom = null, resumeFrom = conversationId).also {
+        sessions[sessionId] = newSession(sessionId, resumeFrom = conversationId).also {
             Disposer.register(this, it)
         }
     }
@@ -508,12 +549,11 @@ internal class ClaudeSessions(
             ?.takeIf { ClaudeHistory.transcriptFile(workingDirectory, it) != null }
 
         // A fork nobody has spoken in yet has no transcript of its own, and everything it is about
-        // belongs to its parent: raised as an ordinary tab it would come up empty, which is the same
-        // loss as a fork starting on the machine's defaults.
-        val forkFrom = if (conversationId == null) session.forkFrom else null
-        // And it stops where it was asked to stop: carried whole, it would bring back the turns the person
-        // forked to get away from.
-        val forkBefore = if (conversationId == null) session.forkBefore else null
+        // belongs to its source: raised as an ordinary tab it would come up empty, which is the same
+        // loss as a fork starting on the machine's defaults. And it ends where it was made to end: carried
+        // whole, it would bring back the turns the person forked to get away from, and turns its feed
+        // never showed.
+        val origin = if (conversationId == null) session.forkOrigin else null
 
         val carried = SessionLaunch(
             // Clamped to what the account it is moving ONTO can actually run - see StartingChoice.clamp. Carried
@@ -529,7 +569,11 @@ internal class ClaudeSessions(
             close(sessionId)
             launches[sessionId] = carried
 
-            sessions[sessionId] = newSession(sessionId, forkFrom = forkFrom, resumeFrom = conversationId, forkBefore = forkBefore).also {
+            sessions[sessionId] = newSession(
+                sessionId,
+                origin = lazyOf(origin?.let { ForkOrigin.Resolved(it) }),
+                resumeFrom = conversationId,
+            ).also {
                 Disposer.register(this, it)
             }
         } finally {
@@ -951,10 +995,16 @@ internal class ClaudeSessions(
     fun conversationIdOf(sessionId: String): String? = sessions[sessionId]?.conversationId
 
     /**
-     * The parent's message a fork not yet started stops short of (see ClaudeSession.forkBefore) - null once
-     * its conversation is born, when it no longer cuts anything.
+     * Where this tab's conversation forks from (see ForkOrigin) - worked out now if nobody has yet, so not for a
+     * thread that must not read files; null for a tab that is no fork.
      */
-    fun forkBefore(sessionId: String): String? = sessions[sessionId]?.takeIf { it.conversationId == null }?.forkBefore
+    fun forkOrigin(sessionId: String): ForkOrigin? = sessions[sessionId]?.forkOrigin
+
+    /** The same, only when it is known already - see ClaudeSession.forkOriginIfKnown. */
+    fun forkOriginIfKnown(sessionId: String): ForkOrigin? = sessions[sessionId]?.forkOriginIfKnown
+
+    /** The fork was to stop at a message its source does not hold, and carries the whole conversation instead. */
+    fun forkMissed(sessionId: String): Boolean = sessions[sessionId]?.forkMissed == true
 
     /**
      * The name the person gave the tab, into the conversation behind it - see ClaudeSession.rename.
@@ -1055,6 +1105,28 @@ internal class ClaudeSessions(
     }
 
     /**
+     * What a tab opened with a choice of its own will start on, while it has not started yet - the model
+     * and the effort worked out the way its birth works them out (see [newSession]), the mode as chosen.
+     * Null for a tab with no such choice, and for one already started: past its birth [model] and [effort]
+     * are the answer, and the choice is spent.
+     *
+     * Asked so that such a tab is drawn by its choice from the first second. Until its first message it was
+     * drawn by the setting at the desk and by "default" on the phone: a conversation started from a phone on
+     * a model added by hand showed every model but that one, and read as "a custom model cannot be started
+     * from the phone" (reported from Windows, 0.13.20) - while the process, once raised, came up on it.
+     */
+    fun planned(sessionId: String): SessionLaunch? {
+        val launch = launches[sessionId] ?: return null
+        val account = ClaudeAccounts.getInstance().currentId
+
+        return SessionLaunch(
+            model = StartingChoice.model(account, requested = launch.model),
+            effort = StartingChoice.effort(account, requested = launch.effort),
+            mode = launch.mode,
+        )
+    }
+
+    /**
      * The model catalogue from a live conversation. Asking a sleeping one is pointless: the answer
      * comes from the process itself, and raising one for a list is not worth it - there is a one-off
      * lightweight ping for that (see ClaudeControlPing).
@@ -1120,14 +1192,13 @@ internal class ClaudeSessions(
 
     /** The process comes up lazily: an empty tab should start nothing. */
     private fun session(sessionId: String): ClaudeSession = sessions.getOrPut(sessionId) {
-        newSession(sessionId, forkFrom = null).also { Disposer.register(this, it) }
+        newSession(sessionId).also { Disposer.register(this, it) }
     }
 
     private fun newSession(
         sessionId: String,
-        forkFrom: String?,
+        origin: Lazy<ForkOrigin.Resolved?> = lazyOf(null),
         resumeFrom: String? = null,
-        forkBefore: String? = null,
     ): ClaudeSession {
         /*
          * Whether the conversation raising this callback is still the one the tab holds.
@@ -1170,8 +1241,8 @@ internal class ClaudeSessions(
 
         return ClaudeSession(
             workingDirectory = workingDirectory,
-            forkFrom = forkFrom,
-            forkBefore = forkBefore,
+            origin = origin,
+            onForked = { conversationId, fork -> ForkBook(workingDirectory).remember(conversationId, fork) },
             resumeFrom = resumeFrom,
             model = model,
             effort = effort,

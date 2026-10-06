@@ -1078,8 +1078,9 @@ export const ko: Dict = {
       notOnPhone: '이전 메시지는 휴대폰으로 보내지 않아요',
       loadEarlier: '이전 메시지 불러오기',
       rewound: '여기로 되감았어요 · 그 뒤에 있던 것은 더 이상 대화에 없어요',
-      forked: (title) => `${title}에서 이어짐 · 여기서 한 일은 그쪽으로 돌아가지 않아요`,
-      forkedAt: (title) => `${title}의 고른 메시지까지 이어짐 · 여기서 한 일은 그쪽으로 돌아가지 않아요`,
+      forked: (title) => `${title}에서 나온 새 브랜치 · 아래 내용은 여기에만 남아요`,
+      forkedAt: (title) => `${title}의 고른 지점에서 나온 새 브랜치 · 아래 내용은 여기에만 남아요`,
+      openSource: '원래 대화 열기',
     },
 
     compact: {
@@ -1504,6 +1505,7 @@ export const ko: Dict = {
       questionOf: (n, total) => `질문 ${n}/${total}`,
       nothingWaiting: '여기서 기다리는 건 이제 없어요.',
       openConversation: '대화 열기',
+      nextQuestion: '다음 질문',
       allowOnce: '이번만 허용',
       deny: '거절',
     },

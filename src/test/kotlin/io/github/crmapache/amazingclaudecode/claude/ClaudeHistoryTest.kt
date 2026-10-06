@@ -1035,6 +1035,31 @@ class ClaudeHistoryTest {
         assertTrue(read <= 2, "read $read lines to hand over one")
     }
 
+    // A compaction on disk is a system line with its figures in camel case, and the summary for the model is a
+    // message in the person's name. The history hands over the boundary as the live stream announced it - the feed
+    // draws its mark from that - and leaves the summary out, as the live feed never showed it.
+    @Test
+    fun `a compaction comes back as its mark, and its summary for the model does not come back at all`() {
+        val lines = sequenceOf(
+            """{"parentUuid":null,"logicalParentUuid":"r1","isSidechain":false,"type":"system","subtype":"compact_boundary","content":"Conversation compacted","uuid":"cb","compactMetadata":{"trigger":"manual","preTokens":51204,"durationMs":24598,"postTokens":5778,"preservedSegment":{"headUuid":"r1"}}}""",
+            """{"parentUuid":"cb","isSidechain":false,"type":"user","isVisibleInTranscriptOnly":true,"isCompactSummary":true,"message":{"role":"user","content":"This session is being continued from a previous conversation."},"uuid":"sum"}""",
+            """{"parentUuid":"sum","isSidechain":false,"type":"user","message":{"role":"user","content":"Next"},"uuid":"u2"}""",
+        )
+
+        val replayed = ClaudeHistory.replayable(lines).toList()
+
+        assertEquals(2, replayed.size)
+        val boundary = Json.parseToJsonElement(replayed[0]).jsonObject
+        assertEquals("compact_boundary", boundary["subtype"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("cb", boundary["uuid"]?.jsonPrimitive?.contentOrNull)
+        val meta = boundary["compact_metadata"]!!.jsonObject
+        assertEquals("manual", meta["trigger"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("51204", meta["pre_tokens"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("5778", meta["post_tokens"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("24598", meta["duration_ms"]?.jsonPrimitive?.contentOrNull)
+        assertTrue(replayed[1].contains("Next"))
+    }
+
     // A rewind leaves its dropped turns in the file (see TranscriptRewinds). A pass that met its mark says
     // so, and the page and the count are read again without them - a file without a mark is read once.
     @Test

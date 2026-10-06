@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { LinkedText } from './LinkedText'
 import { modelLabel } from '../../catalog'
 import { compactProgress } from '../../feed/compact'
@@ -75,16 +75,39 @@ export const ThinkRow = ({ item, open, onToggle }: { item: ThinkItem; open: bool
  * one that names a genuine gap rather than a moment in the conversation (FORK, CLEAR). A tap fetches the
  * next page of what came before it; the row stays a plain mark until there is something to fetch with.
  */
-export const CheckpointRow = ({ item, onLoadEarlier }: { item: CheckpointItem; onLoadEarlier?: () => void }) => {
+export const CheckpointRow = ({
+  item,
+  onLoadEarlier,
+  onOpenConversation,
+}: {
+  item: CheckpointItem
+  onLoadEarlier?: () => void
+  /** Opens a conversation by its id - what the original's name in a fork's seam does (see ForkSeamEvent). */
+  onOpenConversation?: (conversationId: string, title: string) => void
+}) => {
   const t = useT()
   // A mark the panel worded itself says it in today's language; one carrying the conversation's own
   // words (a compaction's summary) says them as they are. A fork's mark is both: the panel's sentence
-  // around the parent's title, which is the conversation's (see CheckpointKey).
-  const target =
-    item.targetKey === 'forked' || item.targetKey === 'forkedAt'
-      ? t.feed.checkpoint[item.targetKey](item.target)
-      : item.targetKey
-        ? t.feed.checkpoint[item.targetKey]
+  // around the original's title, which is the conversation's (see CheckpointKey) - and the title in it is
+  // a way back to the original, wherever the sentence of the language puts it.
+  const key = item.targetKey
+  const source = item.source
+  const target: ReactNode =
+    key === 'forked' || key === 'forkedAt'
+      ? source && onOpenConversation
+        ? aroundTitle(t.feed.checkpoint[key], (
+            <button
+              type="button"
+              className={s.checkpointLink}
+              data-tooltip={t.feed.checkpoint.openSource}
+              onClick={() => onOpenConversation(source, item.target)}
+            >
+              {item.target}
+            </button>
+          ))
+        : t.feed.checkpoint[key](item.target)
+      : key
+        ? t.feed.checkpoint[key]
         : item.target
 
   return onLoadEarlier ? (
@@ -105,6 +128,24 @@ export const CheckpointRow = ({ item, onLoadEarlier }: { item: CheckpointItem; o
     </div>
   )
 }
+
+/**
+ * A sentence worded around a title, with the title replaced by [title] - wherever the language puts it. The
+ * dictionary's function is asked with a mark no title contains, and the sentence is cut at it.
+ */
+const aroundTitle = (sentence: (title: string) => string, title: ReactNode): ReactNode => {
+  const [before, ...after] = sentence(TITLE_MARK).split(TITLE_MARK)
+  return (
+    <>
+      {before}
+      {title}
+      {after.join('')}
+    </>
+  )
+}
+
+/** Stands in for a title while a sentence is cut around it - see [aroundTitle]. */
+const TITLE_MARK = '\u0000'
 
 /** How often the compaction bar grows: more often serves nothing, the curve is gentle as it is. */
 const COMPACT_TICK_MS = 500

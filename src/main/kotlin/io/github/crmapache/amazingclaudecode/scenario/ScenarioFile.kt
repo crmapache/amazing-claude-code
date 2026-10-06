@@ -23,7 +23,7 @@ import java.nio.file.StandardOpenOption
  * file should make the screen say - that belongs to whoever owns the list (see ScheduleStore, QueueStore),
  * because it differs for each of them and it is the part worth testing.
  */
-internal class ScenarioFile(private val file: File) {
+internal class ScenarioFile(internal val file: File) {
 
     /** What the file had to say when it was asked. */
     internal sealed interface Stored {

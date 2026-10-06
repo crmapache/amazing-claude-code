@@ -1366,6 +1366,22 @@ const applyAgentEvent = (
       return applySystem(state, event, now, replay)
 
     /**
+     * Where a fork's own part begins: everything above is what it inherited, everything below was said in it
+     * alone. The IDE puts it in its place among the lines it plays and pages (see ForkLineage in the plugin),
+     * so it stands right in a tab just forked, after a restart, in a fork opened from the history and on a
+     * phone - wherever the page holding it happens to arrive.
+     */
+    case 'fork_seam':
+      return push(state, (id) => ({
+        id,
+        kind: 'checkpoint',
+        chip: 'FORK',
+        target: event.title,
+        targetKey: event.cut ? 'forkedAt' : 'forked',
+        source: event.source,
+      }))
+
+    /**
      * The subscription limit. The event arrives in ordinary life too - with a "let through" status - and
      * even a refusal does not always mean the work has stopped, so what lands in the feed is decided by
      * rateLimitState rather than by the status alone.

@@ -1393,6 +1393,36 @@
   color: var(--acc-fg-dim);
 }
 
+/* A ticked option of a question that takes several. Louder than a picked choice elsewhere on the phone
+   (.choiceOptionPicked): here the tap no longer moves on, so the mark is all that says it took - and the
+   faint tint alone did not read as a tick on a phone screen in daylight. */
+.buttonOptionOn {
+  border-color: var(--acc-accent);
+  background: var(--acc-accent-12);
+}
+
+.buttonOptionOn .buttonOptionLabel {
+  display: flex;
+  align-items: center;
+  color: var(--acc-accent);
+}
+
+.buttonOptionOn .buttonOptionLabel::after {
+  content: '✓';
+  margin-left: auto;
+  padding-left: var(--acc-sp-2);
+}
+
+/* The answer in one's own words, in the place of the Other option it opened from. Paired with .input,
+   which comes later in this file and would otherwise win back its one-line pill shape. */
+.input.ownAnswer {
+  min-height: 96px;
+  padding: 10px 16px;
+  border-radius: var(--acc-r-md, 8px);
+  resize: none;
+  line-height: 1.5;
+}
+
 /* --- Pairing ------------------------------------------------------------------ */
 
 .pairingNote {

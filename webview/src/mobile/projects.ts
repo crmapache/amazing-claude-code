@@ -129,6 +129,11 @@ export interface Inventory {
   caps?: string[]
   models?: ModelInfo[]
   prefs?: SessionLaunch
+  /**
+   * The models added by hand at that desk - a machine-wide setting, beside the catalogue rather than only
+   * a fact of an open project (see customModelsOf in facts.ts). Absent from an IDE older than the field.
+   */
+  customModels?: string[]
 }
 
 /** What a conversation's mark says about it - the panel's own five states (see sessionState there). */

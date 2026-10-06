@@ -230,7 +230,7 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
                     title = field("title"),
                     quote = field("quote"),
                     // And only as far as the message it was forked before, when it names one (see
-                    // ClaudeSession.forkBefore).
+                    // ForkOrigin.resolve).
                     before = before,
                     // Chosen in the request rather than taken from the settings - which is what a client
                     // with no selectors of its own has to do (see SessionLaunch). The panel sends none of

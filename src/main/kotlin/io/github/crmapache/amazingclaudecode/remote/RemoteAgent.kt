@@ -1346,6 +1346,13 @@ internal class RemoteAgent : Disposable {
                 put("effort", StartingChoice.effort())
                 put("mode", ClaudePreferences.mode)
             }
+            // And the models added by hand, beside the catalogue and for the same reason: the setting is
+            // the machine's, not a project's. Told only as a fact of an open project, it never reached
+            // the new chat of a project closed at the desk - that screen showed every model Claude Code
+            // offers and not the one this machine's provider actually serves (reported from Windows).
+            // The fact stays: for a project that is open it is live, while this is as fresh as the
+            // last knock (see customModelsOf on the phone).
+            putJsonArray("customModels") { ClaudePreferences.customModels.forEach { add(it) } }
             putJsonArray("projects") {
                 for ((key, attachment) in projects) {
                     if (attachment.project.isDisposed) continue

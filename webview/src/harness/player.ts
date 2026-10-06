@@ -888,6 +888,41 @@ const answerResume = (message: WebviewMessage): void => {
 }
 
 /**
+ * A fork just made: the IDE plays what it carries into its tab and puts the seam under it (see
+ * ClaudeSessionHub.replayFork). The harness has no transcripts to read, so it plays a short stand-in for
+ * the inherited end - enough to see the seam stand between it and the fork's own messages, its name open
+ * the original (answered like a pick from the history, see answerResume) and the mark above ask for more.
+ */
+const answerFork = (message: WebviewMessage): void => {
+  if (message.type !== 'newSession' || message.kind !== 'branch') return
+
+  const source = `harness-original-${message.parentId ?? 'main'}`
+  const uuid = (line: number): string => `f-${message.sessionId}-${line}`
+
+  const line = (event: unknown): void => {
+    window.__accReceive?.({ type: 'agent', sessionId: message.sessionId, event, replay: true } as never)
+  }
+
+  setTimeout(() => {
+    line({
+      type: 'user',
+      uuid: uuid(1),
+      message: { role: 'user', content: [{ type: 'text', text: 'Can the discount line move above the subtotal?' }] },
+    })
+    line({
+      type: 'assistant',
+      uuid: uuid(2),
+      message: {
+        content: [{ type: 'text', text: 'It can, but then the tax reads as part of the discount. I would leave it where it is.' }],
+      },
+    })
+    line({ type: 'fork_seam', source, title: 'the original chat', cut: Boolean(message.before) })
+
+    window.__accReceive?.({ type: 'replayFinished', sessionId: message.sessionId, cursor: uuid(1) } as never)
+  }, 200)
+}
+
+/**
  * The search, answered by the harness (see SearchDesk on the IDE's side for the real thing).
  *
  * Two corpora. The showcase's past conversations are given a few messages each, so "all chats" and the
@@ -1414,6 +1449,7 @@ const listenToPanel = () => {
     if (message) answerHistoryPage(message)
     if (message) answerAgentTranscript(message)
     if (message) answerResume(message)
+    if (message) answerFork(message)
     if (message) answerImprove(message)
     if (message) answerVoice(message)
     if (message) answerSearch(message)

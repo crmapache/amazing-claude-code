@@ -589,6 +589,8 @@ export interface CheckpointItem {
    * for why the panel's own prose is never stored in the feed.
    */
   targetKey?: CheckpointKey
+  /** A fork's seam: the conversation it was forked from, which the parent's name in the mark opens. */
+  source?: string
 }
 
 /**

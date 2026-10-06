@@ -1078,8 +1078,9 @@ export const zh: Dict = {
       notOnPhone: '更早的消息不会发到手机上',
       loadEarlier: '加载更早的消息',
       rewound: '回退到这里 · 之后的内容已不再属于对话',
-      forked: (title) => `接续 ${title} · 这里的一切不会回到那边`,
-      forkedAt: (title) => `接续 ${title}，到所选消息为止 · 这里的一切不会回到那边`,
+      forked: (title) => `从 ${title} 分出的新分支 · 以下内容只留在这里`,
+      forkedAt: (title) => `从 ${title} 的所选位置分出的新分支 · 以下内容只留在这里`,
+      openSource: '打开原始对话',
     },
 
     compact: {
@@ -1511,6 +1512,7 @@ export const zh: Dict = {
       questionOf: (n, total) => `第 ${n} 个问题，共 ${total} 个`,
       nothingWaiting: '这里没有需要你处理的事情了。',
       openConversation: '打开对话',
+      nextQuestion: '下一个问题',
       allowOnce: '这次允许',
       deny: '拒绝',
     },

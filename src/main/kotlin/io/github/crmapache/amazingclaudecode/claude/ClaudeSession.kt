@@ -49,22 +49,21 @@ internal data class ImageAttachment(val mediaType: String, val data: String)
 internal class ClaudeSession(
     private val workingDirectory: String?,
     /**
-     * The conversation this one branches off. A branch gets the parent's whole transcript and an
-     * identifier of its own, so continuing inside it leaves the parent untouched.
+     * Where this conversation forks from - the conversation it branches off and the line of it it ends on
+     * (see ForkOrigin). A branch gets that much of the other transcript and an identifier of its own, so
+     * continuing inside it leaves the other one untouched.
      *
-     * Readable from outside for one reason: a fork nobody has spoken in yet owes its whole conversation
-     * to this parent and to nothing else, so a tab replaced under it - an account chosen, say - has to
-     * be raised as a fork again (see ClaudeSessions.switchAllTo).
+     * Worked out once, against the source's transcript, by whoever asks first: the hub right after the fork
+     * is made, while it plays what the fork inherited into the tab, or the first launch if a message beat
+     * it there. Lazy rather than computed by the caller because the caller is the thread a panel talks on,
+     * and the source may be a working day's transcript.
      */
-    val forkFrom: String? = null,
+    private val origin: Lazy<ForkOrigin.Resolved?> = lazyOf(null),
     /**
-     * The message a fork stops short of: it carries the parent's conversation up to that message and
-     * nothing from it on (see TranscriptRewinds.anchorBefore). Null for a fork of the whole conversation.
-     *
-     * Readable from outside for the reason [forkFrom] is - a fork raised again before anybody spoke in it
-     * has to stop at the same place.
+     * The fork's conversation has been born under this identifier - see ForkBook, which keeps what only this
+     * moment knows: which conversation it came from, and where its own part begins.
      */
-    val forkBefore: String? = null,
+    private val onForked: (conversationId: String, origin: ForkOrigin) -> Unit = { _, _ -> },
     /** A past conversation being continued: it comes up with its own transcript. */
     resumeFrom: String? = null,
     /**
@@ -1488,7 +1487,7 @@ internal class ClaudeSession(
         // One pass over the file for the whole list at once: re-reading the conversation once per
         // waiting message is megabytes of reading over nothing.
         val lookup = PromptDelivery
-            .arrived(workingDirectory, conversation, pending.map { PromptDelivery.Sent(it.text, it.sentAt) })
+            .arrived(workingDirectory, conversation, pending.map { PromptDelivery.Sent(it.text, it.sentAt, it.context) })
 
         // We could not look into the conversation at all - it is locked, it has just been rotated, or it
         // is not on disk yet. That says nothing about the messages, and treating it as "they are not
@@ -1721,9 +1720,6 @@ internal class ClaudeSession(
 
     private fun start(): OSProcessHandler? {
         stopRequested = false
-        // What this launch is asking to continue - checked against what actually comes up (see
-        // [rememberConversation]).
-        continuing = conversationId
         // The previous process may have said things of its own before dying - that has nothing to do
         // with the new one, and explaining its future crash with someone else's words is dishonest.
         synchronized(diagnostics) { diagnostics.clear() }
@@ -1786,9 +1782,21 @@ internal class ClaudeSession(
                 }
         }
 
-        // Where a fork stops, worked out on its first launch only - afterwards it is a conversation of its
-        // own, continued by its own id like any other.
-        val fork = if (conversationId == null) forkPoint(executable) else ForkPoint(null, null)
+        // A fork comes up off its source until its own conversation is on disk - afterwards it is a
+        // conversation of its own, continued by its own id like any other. By the disk rather than by the id:
+        // the CLI names a conversation the moment its process comes up, and a fork raised and put away again
+        // before anybody spoke in it (the MCP screen wakes a process, the idle sweep puts it back) has an id
+        // and no transcript - asked to resume that, the CLI refuses to start at all.
+        val unborn = forkOrigin?.takeIf {
+            conversationId?.let { id -> ClaudeHistory.transcriptFile(workingDirectory, id) } == null
+        }
+        val fork = unborn?.let { forkLaunch(executable, it) } ?: ForkPoint(null, null)
+        val resumed = conversationId.takeIf { unborn == null }
+        forkLaunched = unborn
+
+        // What this launch is asking to continue - checked against what actually comes up (see
+        // [rememberConversation]).
+        continuing = resumed
 
         val commandLine = GeneralCommandLine(executable.absolutePath)
             .withParameters(
@@ -1796,7 +1804,7 @@ internal class ClaudeSession(
                     model = model,
                     effort = effort,
                     permissionMode = permissionMode,
-                    conversationId = conversationId,
+                    conversationId = resumed,
                     forkFrom = fork.from,
                     allowBypassSwitch = ClaudeExecutable.supportsFlag(
                         executable,
@@ -1892,46 +1900,53 @@ internal class ClaudeSession(
         return process
     }
 
-    /** What a fork's first launch is given - see [forkPoint]. [from] null raises a conversation of nothing. */
+    /** What a fork's first launch is given - see [forkLaunch]. [from] null raises a conversation of nothing. */
     private data class ForkPoint(val from: String?, val at: String?)
 
     /**
-     * The parent a fork comes up over, and the line of the parent's transcript it stops at.
+     * Where this conversation forks from (see [origin]) - null for one that is no fork.
      *
-     * A fork of the whole conversation is the parent's id and nothing more. A fork from a message reads the
-     * parent's file for the line before that message (see TranscriptRewinds.anchorBefore) - by the uuid the
-     * message went in under, which the panel gave it. A fork from the very first message carries nothing
-     * at all: it comes up as a conversation of its own, and the message waits in its field.
-     *
-     * When the cut cannot be made - the message is not in the file, or this CLI does not know the flag that
-     * makes it - the fork carries the whole conversation, and the feed says so: a fork that quietly holds
-     * the turns the person forked to get away from is the one outcome worse than an explained one.
+     * Readable from outside for one reason: a fork nobody has spoken in yet owes its whole conversation to
+     * its source, so a tab replaced under it - an account chosen, say - has to be raised as the same fork
+     * again (see ClaudeSessions.moveTo), and the tab remembers it across a restart (see TabMemory.Tab).
      */
-    private fun forkPoint(executable: java.io.File): ForkPoint {
-        val parent = forkFrom ?: return ForkPoint(null, null)
-        val before = forkBefore ?: return ForkPoint(parent, null)
+    val forkOrigin: ForkOrigin?
+        get() = repinned ?: origin.value?.origin
 
-        val transcript = ClaudeHistory.transcriptFile(workingDirectory, parent)
-        val anchor = transcript
-            ?.let { file -> runCatching { file.useLines { TranscriptRewinds.anchorBefore(it, before) } }.getOrNull() }
-            ?: TranscriptRewinds.Anchor.NotFound
+    /** [forkOrigin] when it has been worked out already, without working it out - for a thread that must not read files. */
+    val forkOriginIfKnown: ForkOrigin?
+        get() = repinned ?: if (origin.isInitialized()) origin.value?.origin else null
 
-        return when (anchor) {
-            TranscriptRewinds.Anchor.Start -> ForkPoint(null, null)
-            is TranscriptRewinds.Anchor.At ->
-                if (ClaudeExecutable.knowsHiddenOption(executable, ClaudeLaunch.FORK_AT_FLAG)) {
-                    ForkPoint(parent, anchor.uuid)
-                } else {
-                    DiagnosticsLog.note(DiagnosticsLog.AGENT, "this claude cannot fork at a message: the fork carries the whole conversation")
-                    onError(FORK_WHOLE)
-                    ForkPoint(parent, null)
-                }
-            TranscriptRewinds.Anchor.NotFound -> {
-                DiagnosticsLog.note(DiagnosticsLog.AGENT, "the message a fork was cut at is not in the parent's transcript")
-                onError(FORK_WHOLE)
-                ForkPoint(parent, null)
-            }
-        }
+    /** The message the fork was to stop at was not found, and it carries the whole conversation (see ForkOrigin.resolve). */
+    val forkMissed: Boolean
+        get() = origin.value?.missed == true
+
+    /** The origin as a CLI too old to cut actually forked it - see [forkLaunch]. */
+    @Volatile
+    private var repinned: ForkOrigin? = null
+
+    /** A fork launched and not yet named by its process - see [rememberConversation]. */
+    @Volatile
+    private var forkLaunched: ForkOrigin? = null
+
+    /**
+     * The source a fork comes up over, and the line of it the fork ends on - both fixed when the fork was made
+     * (see ForkOrigin), for the whole conversation as much as for a cut one.
+     *
+     * A fork that carries nothing comes up as a conversation of its own. A CLI that does not know the flag that
+     * cuts (see ClaudeExecutable.knowsHiddenOption) carries the source whole as it stands NOW, and the feed is
+     * told so when a cut was asked for: a fork that quietly holds the turns the person forked to get away from
+     * is the one outcome worse than an explained one. Its seam then moves to where the source really ended.
+     */
+    private fun forkLaunch(executable: java.io.File, origin: ForkOrigin): ForkPoint {
+        val at = origin.at ?: return ForkPoint(null, null)
+        if (ClaudeExecutable.knowsHiddenOption(executable, ClaudeLaunch.FORK_AT_FLAG)) return ForkPoint(origin.source, at)
+
+        DiagnosticsLog.note(DiagnosticsLog.AGENT, "this claude cannot fork at a line: the fork carries the whole conversation")
+        if (origin.cut) onError(ForkOrigin.WHOLE)
+        val leaf = ClaudeHistory.transcriptFile(workingDirectory, origin.source)?.let(ForkOrigin::leafOf)
+        repinned = origin.copy(cut = false, at = leaf ?: at)
+        return ForkPoint(origin.source, null)
     }
 
     /** The conversation's identifier: without it there is no resuming it after a restart. */
@@ -1976,6 +1991,13 @@ internal class ClaudeSession(
         continuing = null
 
         conversationId = started
+
+        // A fork's conversation is born: what it came from is put down by its id, for the seam and for what
+        // its transcript does not hold (see ForkBook). Once per launch - the id comes in every event.
+        forkLaunched?.let { launched ->
+            forkLaunched = null
+            onForked(started, repinned ?: launched)
+        }
     }
 
     /**
@@ -2042,13 +2064,6 @@ internal class ClaudeSession(
          */
         private const val CUT_ATTEMPTS = 3
         private const val CUT_RETRY_MS = 1500L
-
-        /**
-         * A fork asked to stop at a message came up with the whole conversation instead - see [forkPoint].
-         * A code rather than a sentence: the panel words it in the person's language (see errorWords in
-         * webview/src/components/items/Rows.tsx).
-         */
-        const val FORK_WHOLE = "FORK_WHOLE"
 
         /** How long after a `/rename`'s result its name is read back from the transcript - see [readRename]. */
         const val RENAME_READ_DELAY_MS = 300L

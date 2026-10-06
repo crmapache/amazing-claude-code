@@ -1398,10 +1398,15 @@ export const en = {
       notOnPhone: 'earlier messages are not shown on the phone',
       /** Where a conversation was cut back to - the messages that stood below it are gone from it. */
       rewound: 'rewound to here · what came after is no longer part of the conversation',
-      /** The first row of a fork: the parent's title, and that nothing done here reaches it. */
-      forked: (title: string): string => `continues ${title} · nothing here goes back`,
-      /** The same for a fork made from a message: it carries the parent only up to that point. */
-      forkedAt: (title: string): string => `continues ${title} up to the chosen message · nothing here goes back`,
+      /**
+       * Where a fork's own part begins - above it what it inherited, below it what was said in it alone: the
+       * original's title, and that nothing below reaches it.
+       */
+      forked: (title: string): string => `new branch from ${title} · what follows stays in this branch`,
+      /** The same for a fork made at a chosen point: it carries the original only up to there. */
+      forkedAt: (title: string): string => `new branch from ${title} at the chosen point · what follows stays in this branch`,
+      /** The hint over the original's name in a fork's mark - the name opens that conversation. */
+      openSource: 'Open the original conversation',
     },
 
     compact: {
@@ -1946,6 +1951,7 @@ export const en = {
       questionOf: (n: number, total: number): string => `Question ${n} of ${total}`,
       nothingWaiting: 'Nothing is waiting for you here any more.',
       openConversation: 'Open the conversation',
+      nextQuestion: 'Next question',
       allowOnce: 'Allow once',
       deny: 'Deny',
     },

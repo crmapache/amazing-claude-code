@@ -53,9 +53,16 @@ internal class TabMemory(
         /** The tab it was forked from, if it was and that tab is kept too - see [restorable]. */
         val parentId: String?,
         /**
-         * The parent's message a fork not yet started is cut short of (see ClaudeSession.forkBefore) - kept
-         * with it, or the first message after a restart forked the parent whole: the turns "In a new tab" and
-         * "Fork from here" were pressed to leave behind, and the waiting message said a second time.
+         * Where the fork in this tab comes from and the line it ends on (see ForkOrigin) - kept with it, or the
+         * first message after a restart forked the parent whole: the turns "In a new tab" and "Fork from here"
+         * were pressed to leave behind, the waiting message said a second time, and a feed showing one thing
+         * while the agent remembered another. Self-contained: the tab it was made from need not come back.
+         */
+        val forkOrigin: ForkOrigin? = null,
+        /**
+         * What an older panel kept instead of [forkOrigin]: the parent's message the fork was cut short of. Read
+         * so that such a fork still comes back cut, and worked out against the parent then (see
+         * ClaudeSessionHub.restoreTabs).
          */
         val forkBefore: String? = null,
         val title: String,
@@ -194,6 +201,7 @@ internal class TabMemory(
                     addJsonObject {
                         put("id", tab.id)
                         tab.parentId?.let { put("parentId", it) }
+                        tab.forkOrigin?.let { put("forkOrigin", it.json()) }
                         tab.forkBefore?.let { put("forkBefore", it) }
                         put("title", tab.title)
                         put("titleSource", tab.titleSource)
@@ -221,6 +229,7 @@ internal class TabMemory(
                 Tab(
                     id = id,
                     parentId = tab.string("parentId").takeIf { it.isNotEmpty() },
+                    forkOrigin = ForkOrigin.decode(tab["forkOrigin"] as? JsonObject),
                     forkBefore = tab.string("forkBefore").takeIf { it.isNotEmpty() },
                     title = tab.string("title"),
                     titleSource = tab.string("titleSource").ifEmpty { SessionSnapshot.TITLE_DEFAULT },
@@ -238,10 +247,11 @@ internal class TabMemory(
         /**
          * The tabs worth bringing back, in their order, and the one to show.
          *
-         * A tab comes back for one of three reasons: it held a conversation, something was being written
-         * in it, or the person named it by hand - a tab set up for a job before a word of it was said is
-         * as much the person's work as a draft is. A tab with none of these is an empty "New chat", and
-         * bringing back a strip of those restores nothing anybody lost.
+         * A tab comes back for one of four reasons: it held a conversation, it is a fork (which shows what
+         * it carries before a word is said in it), something was being written in it, or the person named it
+         * by hand - a tab set up for a job before a word of it was said is as much the person's work as a
+         * draft is. A tab with none of these is an empty "New chat", and bringing back a strip of those
+         * restores nothing anybody lost.
          *
          * Whether the conversation's transcript is still on disk is not asked here: finding it can take a
          * process on a WSL project (see ClaudeHome), and this runs while the panel is being built. It is
@@ -249,14 +259,16 @@ internal class TabMemory(
          *
          * A fork whose parent is not coming back stands on its own: its conversation is its own either
          * way, and a group headed by a tab that is not there is a group nothing on the strip can show. Its
-         * point to cut at goes with the parent - it names one of the parent's messages.
+         * origin stays - it names the source's conversation, not the parent's tab - while an older panel's
+         * point to cut at goes with the parent: it names one of the parent's messages and needs the parent
+         * to be worked out against.
          */
         fun restorable(state: State): State {
             val kept = ArrayList<Tab>()
 
             for (tab in state.tabs) {
                 val named = tab.titleSource == SessionSnapshot.TITLE_USER
-                if (tab.conversationId == null && !hasDraft(tab.draft) && !named) continue
+                if (tab.conversationId == null && tab.forkOrigin == null && !hasDraft(tab.draft) && !named) continue
 
                 val parent = tab.parentId?.takeIf { parent -> kept.any { it.id == parent } }
                 kept += tab.copy(parentId = parent, forkBefore = tab.forkBefore.takeIf { parent != null })

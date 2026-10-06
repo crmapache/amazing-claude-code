@@ -97,6 +97,8 @@ interface ThreadProps {
    * while an answer is still on its way (see useEarlierPages, which owns both).
    */
   onLoadEarlier?: () => void
+  /** Opens the original of a fork, by its name in the fork's seam - see FeedProps.onOpenConversation. */
+  onOpenConversation?: (conversationId: string, title: string) => void
   /** How many answers about earlier pages have arrived - see PanelState.earlierPages. */
   earlierPages: number
   onDecide: () => void
@@ -183,6 +185,7 @@ export const Thread = ({
   onStop,
   onStopTask,
   onLoadEarlier,
+  onOpenConversation,
   earlierPages,
   onDecide,
   onBack,
@@ -405,6 +408,7 @@ export const Thread = ({
             onPin={onPin}
             earlierPages={earlierPages}
             onLoadEarlier={onLoadEarlier}
+            onOpenConversation={onOpenConversation}
             focus={focus}
             onFocused={onFocused}
             paint={paint}

@@ -13,7 +13,7 @@ import type {
 import { ClockContext } from '../hooks/useNow'
 import { asideQuestion, NO_THREAD, sideHistory, sideThread, type SideAction, type SideExchange, type SideThread } from '../feed/side'
 import { planDecisionOf, useCardState } from '../hooks/useCardState'
-import { applyFact, emptyFacts, factsFor, isFact, liveRunsOf, type ProjectFacts } from './facts'
+import { applyFact, customModelsOf, emptyFacts, factsFor, isFact, liveRunsOf, type ProjectFacts } from './facts'
 import { shelfHome, type RepositoryChoice, type ShelfChoice } from './scenarios'
 import { CALM_VIVID_FULL } from '../calmColors'
 import { useCalmColors } from '../hooks/useCalmColors'
@@ -61,6 +61,7 @@ import { clipboardMessage } from '../feed/tokens'
 import { forkPointAfter, forkTakesCode, lastSeenUuid, type RewindChoice } from '../feed/rewind'
 import { usageOf, type UsageFacts } from '../feed/usage'
 import { NARROW, ROOMY } from './images'
+import type { PhoneAsk } from './askSteps'
 import { chatHits, rowOf } from '../feed/search'
 import type {
   PaintedTerm,
@@ -273,14 +274,15 @@ export const App = () => {
   const [pins, setPins] = useState<Record<string, readonly string[]>>({})
 
   /**
-   * The questions of one call answered so far, by the call that asked them (see screens/Decision).
+   * What has been picked and written into one call's questions so far, by the call that asked them (see
+   * screens/Decision and askSteps).
    *
    * Here rather than in that screen for the reason the panel keeps its own outside the card: a phone
    * answers one question at a time, and the screen is taken down by everything ordinary - a step back to
    * the conversation, a look at the task list. Six questions answered down to the last one, gone because
    * somebody checked what the agent was doing.
    */
-  const [askAnswers, setAskAnswers] = useState<Record<string, Record<string, string>>>({})
+  const [askDrafts, setAskDrafts] = useState<Record<string, PhoneAsk>>({})
 
   /**
    * The three screens about the machine, by the IDE they were asked of.
@@ -1062,7 +1064,7 @@ export const App = () => {
     if (message.type === 'askResolved') {
       cards.answerAsk(message.id)
       // Answered - here, at the desk, or taken back by the agent: what was gathered has nowhere to go.
-      setAskAnswers((held) => {
+      setAskDrafts((held) => {
         if (held[message.id] === undefined) return held
 
         const next = { ...held }
@@ -2604,7 +2606,6 @@ export const App = () => {
 
     if (screen.at === 'scenarioEditor') {
       const at = screen
-      const held = facts[`${at.agentId}:${at.projectKey}`]
 
       return (
         <div className={m.screen}>
@@ -2620,7 +2621,7 @@ export const App = () => {
             }
             repositories={repositories}
             models={inventories[at.agentId]?.models ?? null}
-            customModels={held?.customModels ?? []}
+            customModels={customModelsOf(facts, inventories[at.agentId]?.customModels, at.agentId, at.projectKey)}
             onChange={(draft) => setEdit((current) => (current ? { ...current, draft } : current))}
             onShelf={(shelf) => {
               const keep = (chosen: ShelfChoice) =>
@@ -2689,7 +2690,6 @@ export const App = () => {
 
     if (screen.at === 'scenarioCard') {
       const at = screen
-      const held = facts[`${at.agentId}:${at.projectKey}`]
       // The editor's own draft, which is where the card lives: walking back to it must find the change.
       if (!edit?.draft) return list
 
@@ -2700,7 +2700,7 @@ export const App = () => {
             stageId={at.stageId}
             cardId={at.cardId}
             models={inventories[at.agentId]?.models ?? null}
-            customModels={held?.customModels ?? []}
+            customModels={customModelsOf(facts, inventories[at.agentId]?.customModels, at.agentId, at.projectKey)}
             onChange={(draft) => setEdit((current) => (current ? { ...current, draft } : current))}
             onBack={back}
           />
@@ -2745,7 +2745,7 @@ export const App = () => {
           <NewSession
             project={project}
             models={inventory?.models ?? null}
-            customModels={customModelsOf(facts, screen.agentId, screen.projectKey)}
+            customModels={customModelsOf(facts, inventories[screen.agentId]?.customModels, screen.agentId, screen.projectKey)}
             prefs={inventory?.prefs ?? EMPTY_LAUNCH}
             busy={opening !== null && opening.error === ''}
             error={opening?.error ?? ''}
@@ -2828,9 +2828,9 @@ export const App = () => {
               title={entry?.title ?? 'A conversation'}
               project={entry?.projectName ?? ''}
               // The answers gathered so far are kept here, so stepping back into the conversation and
-              // returning does not start the questions over - see askAnswers.
-              answers={askAnswers}
-              onAnswers={setAskAnswers}
+              // returning does not start the questions over - see askDrafts.
+              answers={askDrafts}
+              onAnswers={setAskDrafts}
               onDecide={(id, decision) =>
                 command(screen.agentId, screen.projectKey, { type: 'permissionDecision', id, decision })
               }
@@ -2851,6 +2851,14 @@ export const App = () => {
                   text,
                 })
               }
+              // Closed here at once rather than when the IDE says so, as at the desk: the card is gone from
+              // this screen the moment it is pressed, and the person is taken to the conversation to say
+              // it there - which is what the press was for.
+              onDismissAsk={(id) => {
+                cards.answerAsk(id)
+                command(screen.agentId, screen.projectKey, { type: 'askDismiss', sessionId: screen.sessionId, id })
+                setScreen({ ...screen, at: 'thread' })
+              }}
               onOpenThread={() => setScreen({ ...screen, at: 'thread' })}
               onBack={back}
             />
@@ -2973,6 +2981,11 @@ export const App = () => {
             }
             earlierPages={feed.state.earlierPages}
             onLoadEarlier={loadEarlier}
+            // The original of a fork, on the machine this conversation lives on - opened the way the history
+            // opens one (see openPast): the tab already holding it, else a tab of its own.
+            onOpenConversation={(conversationId, title) =>
+              openPast(screen.agentId, screen.projectKey, { id: conversationId, title, updatedAt: 0, messages: 0 })
+            }
             onDecide={() => setScreen({ ...screen, at: 'decide' })}
             onBack={back}
             onTasks={() => setScreen({ ...screen, at: 'tasks' })}
@@ -3109,7 +3122,7 @@ export const App = () => {
       {sheet === 'run' && onThread && (
         <RunSheet
           models={inventories[onThread.agentId]?.models ?? null}
-          customModels={customModelsOf(facts, onThread.agentId, onThread.projectKey)}
+          customModels={customModelsOf(facts, inventories[onThread.agentId]?.customModels, onThread.agentId, onThread.projectKey)}
           model={feed.state.model ?? ''}
           effort={feed.state.effort ?? ''}
           mode={feed.state.permissionMode ?? ''}
@@ -3357,16 +3370,6 @@ const vividOf = (facts: Record<string, ProjectFacts>, screen: Screen): number | 
   return facts[key]?.calmVivid ?? Object.values(facts).find((fact) => fact.calmVivid !== undefined)?.calmVivid
 }
 
-/**
- * The models added by hand on the machine this project belongs to (see CustomModels.tsx).
- *
- * Asked of that machine alone, unlike the language and the colour mode above: those are about the person
- * and any answer will do, while a model is about a Claude Code - a name added on one machine says nothing
- * about what another one can launch, and offering it would be offering a turn that dies on its first
- * message.
- */
-const customModelsOf = (facts: Record<string, ProjectFacts>, agentId: string, projectKey: string): string[] =>
-  facts[`${agentId}:${projectKey}`]?.customModels ?? []
 
 /** Where the put-away conversations are remembered on this device - see the note on the state. */
 const HIDDEN_KEY = 'hiddenChats'

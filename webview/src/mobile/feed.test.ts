@@ -825,3 +825,29 @@ describe('the phone building a conversation', () => {
     })
   })
 })
+
+describe('the phone and the permission mode', () => {
+  // The phone dropped the message altogether, so its chip went on naming the mode a conversation was born
+  // in after the desk had moved it - and a chat started from here on a mode of its own showed none.
+  it('takes a mode applied at the desk', () => {
+    const feed = apply([message({ type: 'mode', sessionId: 'main', mode: 'acceptEdits', applied: true })])
+
+    expect(feed.state.permissionMode).toBe('acceptEdits')
+  })
+
+  it('keeps the mode in force over a refusal, and says nothing about it', () => {
+    const feed = apply([
+      message({ type: 'mode', sessionId: 'main', mode: 'acceptEdits', applied: true }),
+      message({ type: 'mode', sessionId: 'main', mode: 'auto', applied: false, error: 'not on this model' }),
+    ])
+
+    expect(feed.state.permissionMode).toBe('acceptEdits')
+    expect(feed.state.items.some((item) => item.kind === 'error')).toBe(false)
+  })
+
+  it('reads the CLI\'s "default" as the panel\'s own name for it', () => {
+    const feed = apply([message({ type: 'mode', sessionId: 'main', mode: 'default', applied: true })])
+
+    expect(feed.state.permissionMode).toBe('manual')
+  })
+})

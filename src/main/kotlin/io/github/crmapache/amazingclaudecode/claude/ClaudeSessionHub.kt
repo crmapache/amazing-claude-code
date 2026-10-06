@@ -26,6 +26,7 @@ import io.github.crmapache.amazingclaudecode.stats.StatsCollector
 import io.github.crmapache.amazingclaudecode.usage.UsageReporter
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.JsonObject
@@ -326,6 +327,13 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      */
     private val losing = Any()
 
+    /**
+     * Forks whose inherited history is still being played into their tab - see [replayFork]. A message
+     * written into such a tab waits for the end of it (see [deliverPrompt]): put into the journal first, it
+     * would stand above the history it answers, and the seam under it.
+     */
+    private val forkOpenings = ConcurrentHashMap<String, CountDownLatch>()
+
     init {
         // Where the CLI keeps its files for this project is a process to find out on a WSL project, and
         // the history, the settings and the hint all ask it soon: paid now, off every thread anybody
@@ -493,9 +501,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
             // And what it works at: the effort is told by nobody but us (see [changeEffort]), so a client
             // joining now has no other way to learn it. A conversation that has not started yet says
-            // nothing here - there is nothing to say, and the setting is the honest answer for it.
+            // nothing here - the setting is the honest answer for it - unless it was opened with a choice
+            // of its own, and then that choice is (see [plannedMessages]).
             conversations.effort(sessionId)?.let { batch += effortMessage(sessionId, it) }
             conversations.model(sessionId)?.let { batch += modelMessage(sessionId, it) }
+            batch += plannedMessages(sessionId)
             conversations.conversationIdOf(sessionId)?.let { batch += conversationMessage(sessionId, it) }
             batch += accountMessage(sessionId, conversations.accountOf(sessionId))
         }
@@ -1023,7 +1033,17 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // whole per-conversation business exists to avoid.
         if (opened && !launch.isEmpty) conversations.rememberLaunch(id, launch)
 
-        if (opened && parentId != null) conversations.branchFrom(parentId, id, before)
+        if (opened && parentId != null) {
+            val parentTitle = tabs.tabs().firstOrNull { it.id == parentId }?.title.orEmpty()
+            conversations.branchFrom(parentId, id, before, parentTitle)
+            replayFork(id)
+        }
+
+        // A tab opened on a choice of its own says so now, not at its first message: a phone's new chat
+        // on a model added by hand was drawn by "default" there and by the setting at the desk until then
+        // (see [plannedMessages]). A branch has nothing to say here - it is raised at once and announces
+        // itself at its birth.
+        if (opened) plannedMessages(id).forEach(::emitLive)
 
         if (opened) {
             val tab = tabs.tabs().firstOrNull { it.id == id }
@@ -1167,6 +1187,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             if (!launch.isEmpty) conversations.rememberLaunch(tab.id, launch)
 
             val conversation = tab.conversationId
+            val fork = tab.forkOrigin
             when {
                 conversation != null -> {
                     conversations.resume(tab.id, conversation)
@@ -1175,13 +1196,26 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                         conversation,
                         adoptTranscriptModel = tab.model.isEmpty(),
                         wakeAfter = false,
-                        whenMissing = { lostTranscript(tab.id) },
+                        // A fork whose process named its conversation and was put away before anybody spoke
+                        // in it has an id and no transcript: it is still the fork it was, not a lost tab.
+                        whenMissing = { if (fork != null) bringBackFork(tab.id, fork, launch) else lostTranscript(tab.id) },
                     )
                 }
 
-                // A fork that had not said anything yet, kept for its draft: it is still a fork, and its
-                // first message still forks its parent's conversation rather than starting a blank one.
-                tab.parentId != null -> conversations.branchFrom(tab.parentId, tab.id, tab.forkBefore)
+                // A fork that had not said anything yet: it is still a fork, ending where it was made to end,
+                // and it comes back showing what it carries.
+                fork != null -> {
+                    conversations.restoreFork(tab.id, fork)
+                    replayFork(tab.id)
+                }
+
+                // The same kept by a version of the panel that remembered only the parent and the message to
+                // stop at: worked out against the parent now, which is the next best thing.
+                tab.parentId != null -> {
+                    val parentTitle = state.tabs.firstOrNull { it.id == tab.parentId }?.title.orEmpty()
+                    conversations.branchFrom(tab.parentId, tab.id, tab.forkBefore, parentTitle)
+                    replayFork(tab.id)
+                }
             }
         }
 
@@ -1248,9 +1282,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             TabMemory.Tab(
                 id = tab.id,
                 parentId = tab.parentId,
-                // The last written point when the session has none to say - a restored fork whose parent had no
-                // conversation to fork from yet.
-                forkBefore = (conversations.forkBefore(tab.id) ?: before?.forkBefore).takeIf { conversationId == null },
+                // Kept for a born fork too: its process may have named a conversation that never reached the disk
+                // (see restoreTabs). Only when already known - this runs on any thread, the panel's included.
+                forkOrigin = conversations.forkOriginIfKnown(tab.id) ?: before?.forkOrigin,
+                // Only for a fork whose origin is not worked out yet - kept by an older panel, or asked a moment
+                // ago and still being resolved.
+                forkBefore = before?.forkBefore.takeIf { conversationId == null && before?.forkOrigin == null },
                 title = tab.title,
                 titleSource = tab.titleSource,
                 conversationId = conversationId,
@@ -1431,6 +1468,11 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         }
 
         deliverPrompt(sessionId, text, images, echoWith(echo, seen), remote, seen?.let(EditorContext::reminder))
+        // A turn standing on a question, a plan or a permission would hold this message for as long as
+        // the card stands - and on a phone a question had no way to be closed at all. The message is the
+        // person's answer to the card; written first, so the agent reads both in one step (see
+        // SessionPermissions.answeredInChat).
+        permissions.answeredInChat(sessionId)
     }
 
     /**
@@ -1478,6 +1520,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         /** What the editor showed, as the agent reads it - a block of its own beside the text (see ClaudeSession.userMessage). */
         context: String?,
     ) {
+        // A fork whose inherited history is still being played in: the message goes under it, not above it.
+        forkOpenings[sessionId]?.await(FORK_OPENING_WAIT_SECONDS, TimeUnit.SECONDS)
+
         stats.notePrompt(sessionId, text, images = images.size, remote = remote)
 
         // A message into a conversation nobody opened a tab for.
@@ -1980,6 +2025,34 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         }.toString()
 
     /**
+     * What a tab that has not started yet will start on, when it was opened with a choice of its own (see
+     * ClaudeSessions.planned) - the same three messages its birth will send, said ahead of it. Empty for
+     * every other tab: there the setting is the honest answer, and the clients already draw by it.
+     *
+     * Live, like the effort and the model at a birth: this is what the tab IS. Told on opening, to a
+     * client joining (see [attach]) and after a reset (see [resetJournal]) - the three moments a client
+     * can be left holding something else.
+     */
+    private fun plannedMessages(sessionId: String): List<String> {
+        val planned = conversations.planned(sessionId) ?: return emptyList()
+
+        return buildList {
+            add(modelMessage(sessionId, planned.model))
+            add(effortMessage(sessionId, planned.effort))
+            if (planned.mode.isNotEmpty()) {
+                add(
+                    buildJsonObject {
+                        put("type", "mode")
+                        put("sessionId", sessionId)
+                        put("mode", planned.mode)
+                        put("applied", true)
+                    }.toString(),
+                )
+            }
+        }
+    }
+
+    /**
      * Which Claude account a conversation runs on - said at its birth, like the effort and the model,
      * live rather than into the journal and for the same reason: it is what the conversation IS.
      *
@@ -2181,6 +2254,72 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         }
     }
 
+    /**
+     * What a fork carries, played into its tab the moment it is made - the end of it, page by page above that
+     * on request, with the seam under it where the fork's own part begins.
+     *
+     * A fork is the same conversation going on: its agent remembers everything up to the line it was made at,
+     * and a feed that showed nothing of it (which is how forks opened until now) left the person following a
+     * conversation whose first half they could not see. Played as a replay, exactly like a conversation opened
+     * from the history, so everything that knows a replay from a live turn treats it the same way (see
+     * history.md).
+     *
+     * The origin is worked out here, off the panel's thread (see ClaudeSession.origin). A message written into
+     * the tab before the history is in waits for it (see [forkOpenings]).
+     */
+    private fun replayFork(sessionId: String) {
+        val opening = CountDownLatch(1)
+        forkOpenings[sessionId] = opening
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val origin = conversations.forkOrigin(sessionId) ?: return@executeOnPooledThread
+                val page = ClaudeHistory.forkOpening(project.basePath, origin)
+
+                page.lines.forEach { line -> onAgentLine(sessionId, line, replay = true) }
+                broadcast(
+                    sessionId,
+                    buildJsonObject {
+                        put("type", "replayFinished")
+                        put("sessionId", sessionId)
+                        page.cursor?.let { put("cursor", it) }
+                    }.toString(),
+                )
+
+                // Under the seam, where it is about: the fork was asked to stop at a message its source does
+                // not hold, and carries all of it instead (see ForkOrigin.resolve).
+                if (conversations.forkMissed(sessionId)) sendError(sessionId, ForkOrigin.WHOLE)
+                // The origin is known now, and it is what brings this fork back after a restart.
+                rememberTabs()
+            } finally {
+                opening.countDown()
+                forkOpenings.remove(sessionId, opening)
+            }
+        }
+    }
+
+    /**
+     * A restored fork whose process had named a conversation that never reached the disk - see [restoreTabs].
+     * The tab goes back to being the fork it was before that process came up: same source, same line.
+     */
+    private fun bringBackFork(sessionId: String, origin: ForkOrigin, launch: SessionLaunch) {
+        remembered[sessionId]?.let { remembered[sessionId] = it.copy(conversationId = null) }
+        conversations.close(sessionId)
+        if (!launch.isEmpty) conversations.rememberLaunch(sessionId, launch)
+        conversations.restoreFork(sessionId, origin)
+        replayFork(sessionId)
+    }
+
+    /**
+     * Where a tab not born yet reads its history from - its fork's origin, or null for a tab that is no fork or
+     * has a conversation on disk of its own (see ProjectCatalog.sendHistoryPage). Reads files: not for the
+     * panel's thread.
+     */
+    fun unbornFork(sessionId: String): ForkOrigin? {
+        val own = conversations.conversationIdOf(sessionId)?.let { ClaudeHistory.transcriptFile(project.basePath, it) }
+        return if (own == null) conversations.forkOrigin(sessionId) else null
+    }
+
     // --- The journal itself -------------------------------------------------------
 
     /**
@@ -2211,6 +2350,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // choice made in another tab.
         conversations.effort(sessionId)?.let { sendEffort(sessionId, it) }
         conversations.model(sessionId)?.let { sendModel(sessionId, it) }
+        // A tab put back to sleep with a choice of its own (a restored one, a draft and nothing more) is
+        // drawn by that choice rather than by the setting - see [plannedMessages].
+        plannedMessages(sessionId).forEach(::emitLive)
         // And whose subscription pays for it now - the account chosen on this machine, whatever this
         // conversation was billed to when it was written. Said again because the reset wiped it, and a
         // tab left undrawn here would claim whatever the client happened to hold before.
@@ -2479,6 +2621,13 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     companion object {
 
         fun getInstance(project: Project): ClaudeSessionHub = project.service()
+
+        /**
+         * How long a message into a fork waits for its inherited history to be played in - see [forkOpenings].
+         * A working day's source is read in well under this; past it the message goes anyway, a little out of
+         * place rather than held up.
+         */
+        private const val FORK_OPENING_WAIT_SECONDS = 10L
 
         /**
          * Every conversation hub already alive on this machine.

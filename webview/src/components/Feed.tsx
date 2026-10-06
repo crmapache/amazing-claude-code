@@ -128,6 +128,11 @@ interface FeedProps {
    */
   onLoadEarlier?: () => void
   /**
+   * Opens a past conversation by its id - the original's name in a fork's seam (see CheckpointRow). Undefined
+   * leaves the name a plain word. Hand in a STABLE function: every card is memoised on its props.
+   */
+  onOpenConversation?: (conversationId: string, title: string) => void
+  /**
    * What stands over a sent message instead of "YOU" - see UserCard.userLabel.
    *
    * Handed in by the two feeds whose "you" side is the scenario engine rather than a person (the step log
@@ -212,6 +217,7 @@ export const Feed = ({
   onReuse,
   onRewind,
   onLoadEarlier,
+  onOpenConversation,
   userLabel,
   earlierPages,
   scrollRef,
@@ -840,6 +846,7 @@ export const Feed = ({
               onReuse={onReuse}
               onRewind={onRewind}
               onLoadEarlier={onLoadEarlier}
+              onOpenConversation={onOpenConversation}
               userLabel={userLabel}
               onPin={onPin}
               pinned={pins?.includes(item.id) ?? false}
@@ -910,6 +917,7 @@ interface ItemViewProps {
   onReuse?: (item: UserItem) => void
   onRewind?: (item: UserItem) => void
   onLoadEarlier?: () => void
+  onOpenConversation?: (conversationId: string, title: string) => void
   /** What stands over a sent message instead of "YOU" - see FeedProps.userLabel. */
   userLabel?: string
   /** Pin this row over the conversation, or unpin it - absent where there is no strip (see FeedProps). */
@@ -947,6 +955,7 @@ const ItemView = memo(({
   onReuse,
   onRewind,
   onLoadEarlier,
+  onOpenConversation,
   userLabel,
   onPin,
   pinned,
@@ -1017,7 +1026,13 @@ const ItemView = memo(({
       )
 
     case 'checkpoint':
-      return <CheckpointRow item={item} onLoadEarlier={item.chip === 'EARLIER' ? onLoadEarlier : undefined} />
+      return (
+        <CheckpointRow
+          item={item}
+          onLoadEarlier={item.chip === 'EARLIER' ? onLoadEarlier : undefined}
+          onOpenConversation={onOpenConversation}
+        />
+      )
 
     case 'compact':
       return <CompactRow item={item} />

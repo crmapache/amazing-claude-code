@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { copyToClipboard } from '../clipboard'
 import { describeWhen } from '../feed/when'
 import { groupByChat, snippetPieces, type SearchGroup } from '../feed/search'
 import type { SearchHit, SearchProgressStep, SearchScope } from '../protocol'
@@ -610,8 +611,12 @@ const CopyText = ({ text }: { text: string }) => {
       type="button"
       className={`${s.copyButton} ${copied ? s.copyDone : ''}`}
       onClick={() => {
-        void navigator.clipboard?.writeText(text)
-        setCopied(true)
+        // Through the panel's one copy, not the API straight: on Linux that never left the embedded
+        // browser, and on a phone's WebKit it pastes into Gmail as a percent-encoded link (see
+        // copyToClipboard).
+        void copyToClipboard(text).then((ok) => {
+          if (ok) setCopied(true)
+        })
       }}
     >
       {copied ? t.feed.copy.copied : t.search.copy}

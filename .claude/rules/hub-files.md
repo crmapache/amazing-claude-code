@@ -48,7 +48,7 @@ paths:
 - `latestTodo` (список задач из реплея не всплывает) - history
 - выбор из истории, какую вкладку занять - history
 - `branchFrom` / форк и шкала контекста форка - fork-tabs
-- `fork(quote, point)`, `forkWhole`, `forkable`, разрез из выделения (`forkPointAfter`) - fork-tabs
+- `fork(quote, point)`, `forkWhole`, `forkable`, разрез из выделения (`forkPointAfter`), `openOriginal` - fork-tabs
 - `openRewind`, `confirmRewind`, `rewindOutcome`, `rewindInFork`, `rewinding`, `case 'rewindPreview'`/`'rewound'`, `uuid` в `submit` - rewind
 - `startingModel`, `setCustomModels`, `stuckPick`, `onBorn` - models
 - `jumping`, `resetSearch`, эффект над `sessions` - search
@@ -91,7 +91,7 @@ paths:
 - `TitleSource` (`'user'`), `nameSession`, `titleSource` у `SearchHit` - tab-names
 - `usageStats`, `usageStatsReport`, `setUsageStats`, `usageStatsPreview`, `stat` с `kind: 'feature'` - usage-stats
 - `rewind`, `rewindPreview`, `rewindOutcome`, `rewound`, `RewindCode`, `RewindRefusal`, `uuid` у `prompt`/`promptEcho` - rewind;
-  `before` у `newSession` - fork-tabs
+  `before` у `newSession`, `ForkSeamEvent` (`fork_seam`) - fork-tabs
 
 **`webview/src/feed/build.ts`** (редьюсер ленты):
 - `TodoWrite`/`TaskCreate`/`TaskUpdate`, `tasksCarried`, `pendingTasks` - task-list
@@ -107,6 +107,7 @@ paths:
 - в состояние кладутся признаки, а не слова - i18n
 - `editorOfBlocks` в `addReplayedPrompt`, `editor` у действия `prompt` - editor-context
 - `applyRewound`, `case 'rewound'`, `uuid`/`steering` у действия `prompt` - rewind
+- `case 'fork_seam'` (шов форка, `CheckpointItem.source`) - fork-tabs
 
 **`webview/src/feed/types.ts`** и **`webview/src/feed/panelState.ts`**:
 - `DraftEdit` - prompt-improver; `ErrorItem.signIn` - expired-sign-in; `ErrorItem.sampling` - setting-sources;
@@ -144,7 +145,8 @@ paths:
 **`webview/src/harness/player.ts`** (плеер играет роль IDE): `answerResume` и страницы истории - history;
 `answerModel` (ответ обязан быть отложенным) и `setEffort` - models; переписывание - prompt-improver;
 диктовка - voice; `savePastedFile`, `clipboardWrite`/`clipboardRead` - clipboard; `saveImage` - stats;
-фидбэк - feedback; поиск - search; вход в аккаунт - expired-sign-in и accounts; транскрипт агента - subagents.
+фидбэк - feedback; поиск - search; вход в аккаунт - expired-sign-in и accounts; транскрипт агента - subagents;
+`answerFork` (история и шов нового форка) - fork-tabs.
 
 **`ClaudeSessionHub.kt`** (сам по себе подгружает remote-access):
 - `prompt`: сохранение буферов - editor-sync; `sendStatus`, очередь, команда в идущий ход - turn-lifecycle
@@ -160,19 +162,21 @@ paths:
 - `restoreTabs`, `rememberTabs`, `replayTranscript`, `lostTranscript`, `showTab`, `asleepUntilSeen` - restore-tabs
 - `nameSession`, `titleWanted`/`ownTitle` у `conversations` - tab-names
 - `rewind`, `previewRewind`, `cutBack`, `rewinding` (очередь и пуш ждут отката), `uuid` в `deliverPrompt` - rewind
+- `replayFork`, `forkOpenings` (ожидание в `deliverPrompt`), `unbornFork`, `bringBackFork`, форк в `restoreTabs` - fork-tabs
 
 **`ClaudeSession.kt`** (подгружает turn-lifecycle): `rename`, `nameAfterPerson`, `namedAs`, `ownTitle` - tab-names; `setEffort`, `effort` - models; `awaitingPermission` -
 permissions; окружение в `start` - task-list; `rememberConversation` - аргументы запуска в CLAUDE.md;
-`isBusy` - idle-sleep; `forkFrom` - accounts; `context` в `userMessage` (заметка редактора отдельным блоком) -
-editor-context; `rewind`, `previewRewind`, `cut`, `uuid` в `userMessage` - rewind; `forkPoint`, `forkBefore` - fork-tabs.
+`isBusy` - idle-sleep; `forkOrigin` - accounts и fork-tabs; `context` в `userMessage` (заметка редактора отдельным блоком) -
+editor-context; `rewind`, `previewRewind`, `cut`, `uuid` в `userMessage` - rewind; `forkLaunch`, `origin`, «родился ли» в `start` - fork-tabs.
 
 **`ClaudeSessions.kt`** (подгружает accounts и idle-sleep): `rename`, `ownTitle` - tab-names; `branchFrom` - fork-tabs; `adoptModel` - history;
 `newSession`, `onBorn`, `setPermissionMode` - models; `renewAfterSignIn` - expired-sign-in;
-`releasedRole` и рамка в `prompt` - scenarios; `branchFrom(before)`, `forkBefore` в `moveTo` - fork-tabs; `rewind`, `previewRewind` - rewind.
+`releasedRole` и рамка в `prompt` - scenarios; `branchFrom(before)`, `originOf`, `restoreFork`, `forkOrigin` в `moveTo` - fork-tabs; `rewind`, `previewRewind` - rewind.
 
 **`ProjectCatalog.kt`**: `sendCalmColors` - calm-colors; `runShellCommand` - editor-sync; `sendCustomModels` -
 models; `pasteCollapse` в `sendInit` - paste; `authenticateMcp`, `sayProject` - remote-access;
-`installedPlugins`, `refreshCommandHints` - slash-hints; список `files` - open-in-editor; `sendIndicators` и
+`installedPlugins`, `refreshCommandHints` - slash-hints; список `files` - open-in-editor; страницы нерождённого
+форка в `sendHistoryPage` - fork-tabs; `sendIndicators` и
 `hiddenIndicators` в `sendInit` - indicators.
 
 **`SessionCommands.kt`**: разбор команд от клиентов; `remember = local` у `setModel`/`setEffort` с телефона -

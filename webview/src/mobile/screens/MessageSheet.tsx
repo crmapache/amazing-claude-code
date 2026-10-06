@@ -1,3 +1,4 @@
+import { copyToClipboard } from '../../clipboard'
 import { clipboardMessage } from '../../feed/tokens'
 import { paragraphsText } from '../../feed/markdown'
 import { isPinnable, pinLine } from '../../feed/pins'
@@ -103,7 +104,9 @@ export const MessageSheet = ({
         type="button"
         className={m.sheetAction}
         onClick={() => {
-          void navigator.clipboard?.writeText(text)
+          // The panel's one copy rather than the API straight - written by the API, a message that opens
+          // with "Subject:" pasted into Gmail as a percent-encoded link (see copyToClipboard).
+          void copyToClipboard(text)
           onClose()
         }}
       >

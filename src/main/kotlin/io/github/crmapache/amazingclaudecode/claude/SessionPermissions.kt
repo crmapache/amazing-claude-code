@@ -65,6 +65,8 @@ internal class SessionPermissions(private val hub: ClaudeSessionHub) {
         val requestId: String,
         val toolName: String,
         val command: String,
+        /** The subagent whose tool asked, or null for the conversation's own turn - see [answeredInChat]. */
+        val agentId: String? = null,
     )
 
     /**
@@ -84,6 +86,7 @@ internal class SessionPermissions(private val hub: ClaudeSessionHub) {
             requestId = request.requestId,
             toolName = request.toolName,
             command = PermissionPrompt.command(request.toolName, request.input),
+            agentId = request.agentId,
         )
 
         if (request.toolName == PLAN_TOOL || request.toolName == ClaudeLaunch.ASK_TOOL) {
@@ -347,6 +350,65 @@ internal class SessionPermissions(private val hub: ClaudeSessionHub) {
     }
 
     /**
+     * The person wrote a message while the turn stood on a card, instead of answering the card.
+     *
+     * The message went into a process that was waiting for that answer and for nothing else, and it lay
+     * there for as long as the card did: on the screen it was a sent message, "Waiting for you" and a
+     * running clock, with no reply ever coming (reported from a phone, which had no way to close a
+     * question at all). The terminal never gets into this - while a card is up, its input belongs to the
+     * card, and the way out is the card's own: "Chat about this" under a question, "No, and tell Claude
+     * what to do differently" under a permission. A message written here is that same way out, taken
+     * without the button: the card is refused with a word that the person has answered in the chat.
+     *
+     * Called after the message has been written into the process, never before. The CLI holds a message
+     * written mid-turn until the turn's next step, and the refusal IS that step - so in this order the
+     * agent reads the two together. In the other order it answers the bare refusal first: measured on CLI
+     * 2.1.280, it asked the very same question again before the message reached it.
+     *
+     * Only the cards the conversation's own turn stands on. A subagent's permission is the subagent's
+     * business: the message is for the conversation, and refusing a step the person may never have
+     * looked at, on the strength of a message to somebody else, is answering a question nobody asked.
+     *
+     * A card whose process is gone still leaves every screen - the person has moved past it - but
+     * nothing is written: the process now running did not ask it, and would not know the request.
+     */
+    fun answeredInChat(sessionId: String) {
+        val own = { pending: Pending -> pending.sessionId == sessionId && pending.agentId == null }
+
+        channelPermissions.entries.filter { own(it.value) }.forEach { (id, pending) ->
+            if (channelPermissions.remove(id) == null) return@forEach
+            refuse(pending, PERMISSION_ANSWERED_IN_CHAT)
+            remember(id)
+            hub.stats.notePermission(pending.toolName, "deny")
+            resolved(sessionId, id, "deny")
+        }
+
+        plans.entries.filter { own(it.value) }.forEach { (itemId, pending) ->
+            if (plans.remove(itemId) == null) return@forEach
+            refuse(pending, PLAN_ANSWERED_IN_CHAT)
+            remember(itemId)
+            hub.stats.notePlan("keepPlanning")
+            notePending(sessionId)
+            planResolved(sessionId, itemId, "keepPlanning")
+        }
+
+        asks.entries.filter { own(it.value) }.forEach { (itemId, pending) ->
+            if (asks.remove(itemId) == null) return@forEach
+            refuse(pending, ASK_ANSWERED_IN_CHAT)
+            remember(itemId)
+            notePending(sessionId)
+            askResolved(sessionId, itemId, "dismissed")
+        }
+    }
+
+    /** A refusal with a word for the agent - written only to the process that is still waiting for it. */
+    private fun refuse(pending: Pending, message: String) {
+        if (!awaited(pending)) return
+
+        hub.conversations.answerPermission(pending.sessionId, pending.requestId, allow = false, message = message)
+    }
+
+    /**
      * How many questions are being kept.
      *
      * Nothing in the panel needs this: answering a question that has been thrown out looks from outside
@@ -469,6 +531,23 @@ internal class SessionPermissions(private val hub: ClaudeSessionHub) {
         const val ASK_DISMISSED =
             "The user closed the question without picking an option and will answer in their own words. " +
                 "Don't ask it again - wait for their message."
+
+        /*
+         * What the agent hears when the person wrote a message instead of answering the card - see
+         * [answeredInChat]. Each names what comes next, because it does come next: the message is in the
+         * same step, right after the refusal.
+         */
+        const val ASK_ANSWERED_IN_CHAT =
+            "The user did not pick an option and wrote to you in the chat instead - their message comes " +
+                "right after this. Answer it; ask the question again only if you still need the answer."
+
+        const val PLAN_ANSWERED_IN_CHAT =
+            "The user did not approve the plan and wrote to you in the chat instead - their message comes " +
+                "right after this. Take it into account and show the plan again when it is ready."
+
+        const val PERMISSION_ANSWERED_IN_CHAT =
+            "The user did not allow this call and wrote to you in the chat instead - their message comes " +
+                "right after this. Read it before trying the call again."
 
         /** What the agent hears in answer to "Keep planning". */
         const val KEEP_PLANNING = "The user wants to keep planning: refine the plan and show it again."

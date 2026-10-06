@@ -46,6 +46,31 @@ class PromptDeliveryTest {
         )
     }
 
+    // Sent from the desk with the editor shared and taken into a running turn: the CLI runs the note into
+    // the text of the queued record (measured on 2.1.280). Compared whole, it never matched, and the
+    // message went to the agent a second time after the turn - "running" lit over a finished conversation.
+    @Test
+    fun `a message absorbed with the editor's note run into it is found`() {
+        val note = "<system-reminder>\nThe user opened the file src/useSocket.js in the IDE.\n</system-reminder>"
+        val lines = sequenceOf(
+            """{"type":"attachment","attachment":{"type":"queued_command","prompt":[{"type":"text","text":"don't create it\n${note.replace("\n", "\\n")}"}],"commandMode":"prompt"},"timestamp":"${at(1)}"}""",
+        )
+        val send = PromptDelivery.Sent("don't create it", sentAt, context = note)
+
+        assertEquals(mapOf(0 to PromptDelivery.Landing.ABSORBED), PromptDelivery.match(lines, listOf(send)))
+    }
+
+    // And only that note: another message that merely begins with the same words is not this one.
+    @Test
+    fun `a longer message that only begins the same is not taken for the sent one`() {
+        val lines = sequenceOf(
+            """{"type":"attachment","attachment":{"type":"queued_command","prompt":[{"type":"text","text":"fix the tests and the docs"}],"commandMode":"prompt"},"timestamp":"${at(1)}"}""",
+        )
+
+        assertTrue(PromptDelivery.match(lines, listOf(PromptDelivery.Sent("fix the tests", sentAt, context = "note"))).isEmpty())
+        assertFalse(arrived(lines, "fix the tests"))
+    }
+
     // A bare string instead of blocks - that is how the CLI writes a message without attachments.
     @Test
     fun `a message as a string counts as delivery too`() {

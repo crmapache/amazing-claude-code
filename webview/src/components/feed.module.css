@@ -2153,6 +2153,27 @@
   color: var(--acc-fg-faint);
 }
 
+/* The original's name in a fork's seam: it opens that conversation (see CheckpointRow). A word inside the
+   caption rather than a button beside it - the reset takes the button's own look away, and what is left to
+   tell it from the words around it is a dotted underline, the same quiet promise a link in the feed makes. */
+.checkpointLink {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--acc-fg-dim);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .checkpointLink:hover {
+    color: var(--acc-fg);
+    text-decoration-style: solid;
+  }
+}
+
 /* Centred rather than left on the baseline like the words beside it: a rule has no baseline of its own, so
    the browser makes one up out of its bottom edge and the line comes out under the text as an underline.
    The middle of the row's line box is where a rule between words belongs. */

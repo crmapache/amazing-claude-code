@@ -1089,8 +1089,9 @@ export const fr: Dict = {
       notOnPhone: 'les messages précédents ne sont pas envoyés au téléphone',
       loadEarlier: 'charger les messages précédents',
       rewound: 'retour jusqu’ici · ce qui suivait ne fait plus partie de la conversation',
-      forked: (title) => `prolonge ${title} · rien d’ici n’y retourne`,
-      forkedAt: (title) => `prolonge ${title} jusqu’au message choisi · rien d’ici n’y retourne`,
+      forked: (title) => `nouvelle branche de ${title} · la suite reste ici seulement`,
+      forkedAt: (title) => `nouvelle branche de ${title} au point choisi · la suite reste ici seulement`,
+      openSource: 'Ouvrir la conversation d’origine',
     },
 
     compact: {
@@ -1536,6 +1537,7 @@ export const fr: Dict = {
       questionOf: (n, total) => `Question ${n} sur ${total}`,
       nothingWaiting: 'Plus rien ne t’attend ici.',
       openConversation: 'Ouvrir la conversation',
+      nextQuestion: 'Question suivante',
       allowOnce: 'Autoriser une fois',
       deny: 'Refuser',
     },

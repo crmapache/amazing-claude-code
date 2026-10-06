@@ -238,10 +238,10 @@ internal object TranscriptRewinds {
     private data class Marker(val index: Int, val leaf: String?)
 
     /** The line's own uuid, read the way the history reads it (see ClaudeHistory.uuidOf). */
-    private fun uuidOf(line: String): String? = UUID_FIELD.find(line)?.groupValues?.get(1)
+    fun uuidOf(line: String): String? = UUID_FIELD.find(line)?.groupValues?.get(1)
 
     /** The CLI writes `parentUuid` as a line's first key - read from there and nowhere else in it. */
-    private fun parentOf(line: String): String? {
+    fun parentOf(line: String): String? {
         if (!line.startsWith(PARENT_KEY)) return null
         val match = PARENT.find(line) ?: return null
         return match.groupValues[1].ifEmpty { null }

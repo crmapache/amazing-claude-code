@@ -86,7 +86,7 @@ export const forkPointAfter = (
 
 /**
  * A fork asked to stop at a message came up with all of the parent instead - the code the IDE says it with
- * (see ClaudeSession.FORK_WHOLE), worded by the error row in the person's language.
+ * (see ForkOrigin.WHOLE), worded by the error row in the person's language.
  */
 export const FORK_WHOLE = 'FORK_WHOLE'
 

@@ -1080,8 +1080,9 @@ export const ja: Dict = {
       notOnPhone: '以前のメッセージはスマートフォンには送られません',
       loadEarlier: '以前のメッセージを読み込む',
       rewound: 'ここまで巻き戻しました · この先にあったものはもう会話に含まれません',
-      forked: (title) => `${title} の続き · ここでの内容は元の会話に反映されません`,
-      forkedAt: (title) => `${title} の選んだメッセージまでの続き · ここでの内容は元の会話に反映されません`,
+      forked: (title) => `${title} からの新しいブランチ · ここから下はこのブランチだけに残ります`,
+      forkedAt: (title) => `${title} の選んだ位置からの新しいブランチ · ここから下はこのブランチだけに残ります`,
+      openSource: '元の会話を開く',
     },
 
     compact: {
@@ -1521,6 +1522,7 @@ export const ja: Dict = {
       questionOf: (n, total) => `質問 ${n}／${total}`,
       nothingWaiting: 'ここで待っているものはもうありません。',
       openConversation: '会話を開く',
+      nextQuestion: '次の質問',
       allowOnce: '今回だけ許可',
       deny: '拒否',
     },

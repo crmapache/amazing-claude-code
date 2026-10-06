@@ -108,7 +108,7 @@ import { StreamSwitcher } from './components/StreamSwitcher'
 import { TaskListPanel } from './components/TaskListPanel'
 import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
-import { EMPTY_ASK_DRAFT, type AskDraft } from './feed/askDraft'
+import { askReply, EMPTY_ASK_DRAFT, type AskDraft } from './feed/askDraft'
 import { bashCommand, shellText, type ShellRun } from './feed/bash'
 import { withBranch, type BranchFacts } from './feed/branch'
 import { contextOf, initialPanelState, reducePanel, type PanelState } from './feed/build'
@@ -3862,22 +3862,18 @@ export const App = () => {
       cards.answerAsk(itemId)
       forgetAskDraft(active, itemId)
 
-      const answered = answers.filter((entry) => entry.answer.trim().length > 0)
+      // The pairs, and the same as text for when nobody is left to wait for them - one shape for the desk
+      // and the phone (see askReply).
+      const reply = askReply(answers)
+      const answered = reply.answered
       if (answered.length === 0) return
-
-      // A question together with its answer, the pairs separated by an empty line. As answers alone in a
-      // row this line did not read in the feed at all: a "Only the multi-line one" without the question
-      // above it means nothing, and one call may hold up to six questions. The same text goes to the agent
-      // when there is nobody left to wait for the answer (see askAnswer in protocol) - it is clearer there
-      // too.
-      const text = answered.map((entry) => `${entry.question}\n${entry.answer}`).join('\n\n')
 
       send({
         type: 'askAnswer',
         sessionId: active,
         id: itemId,
-        answers: Object.fromEntries(answered.map((entry) => [entry.question, entry.answer])),
-        text,
+        answers: reply.answers,
+        text: reply.text,
       })
       dispatchPanel({
         session: active,
@@ -3984,8 +3980,8 @@ export const App = () => {
    * the input field (not editable, and not cluttering the field). The rewind dialog's "In a new tab" forks it
    * up to before a message of the person's, and that message goes into the fork's field to be said again.
    *
-   * [point.before] is the message the fork stops short of (see ClaudeSession.forkBefore) - absent, the whole
-   * conversation. The fork's first row says which of the two it carries, so a fork that could not be cut where
+   * [point.before] is the message the fork stops short of (see ForkOrigin.resolve in the plugin) - absent, the
+   * whole conversation. The fork's seam says which of the two it carries, so a fork that could not be cut where
    * asked is never mistaken for one that was (see feed/rewind.ts, forkPointAfter). [point.from] is the tab
    * forked - the one on screen unless said: the button stands on every tab (see Header.onFork). [point.code]
    * puts the code back in that tab as well (see rewindInFork).
@@ -4001,7 +3997,6 @@ export const App = () => {
       const id = `branch-${Date.now()}`
       const parentId = point.from ?? active
       const parent = sessions.find((session) => session.id === parentId)
-      const parentTitle = parent?.title ?? 'main session'
 
       // A fork stays in its conversation's group - and a fork of a fork too. That way one subject's tabs
       // hold together and differ from other people's at a glance.
@@ -4056,15 +4051,9 @@ export const App = () => {
         }))
       }
 
-      dispatchPanel({
-        session: id,
-        action: {
-          kind: 'checkpoint',
-          chip: 'FORK',
-          target: parentTitle,
-          targetKey: point.before ? 'forkedAt' : 'forked',
-        },
-      })
+      // The fork's mark is not drawn here: the IDE plays what the fork carries into its tab and puts the seam
+      // under it, where the fork's own part begins (see ClaudeSessionHub.replayFork). Drawn here, it would
+      // stand on top of the history it is meant to close.
 
       /**
        * The context gauge starts where the parent's stands: a fork carries its parent's whole transcript,
@@ -4318,6 +4307,19 @@ export const App = () => {
     },
     [active, openResumed, sessions, shellRuns],
   )
+
+  /**
+   * The original of a fork, opened by its name in the fork's seam - the history's own rule decides where
+   * (see resume): the tab already holding it, else an untouched tab on screen, else a tab of its own.
+   *
+   * Stable on purpose: every card of the feed is memoised on its props (see Feed), and resume changes with
+   * every change of the strip.
+   */
+  const resumeRef = useRef(resume)
+  resumeRef.current = resume
+  const openOriginal = useCallback((conversationId: string, title: string) => {
+    resumeRef.current({ id: conversationId, title, updatedAt: 0, messages: 0, titleSource: 'heuristic' })
+  }, [])
 
   /**
    * The conversation above what this tab holds - asked for by pressing the mark over the feed.
@@ -6260,6 +6262,7 @@ export const App = () => {
               onReuse={reuseMessage}
               onRewind={openRewind}
               onLoadEarlier={loadEarlier}
+              onOpenConversation={openOriginal}
               earlierPages={panel.earlierPages}
               focus={feedFocus?.session === active ? feedFocus : undefined}
               onFocused={forgetFeedFocus}

@@ -1,6 +1,7 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -22,13 +23,19 @@ class SessionPermissionsTest : BasePlatformTestCase() {
         id: String,
         tool: String = "Bash",
         input: JsonObject = buildJsonObject { put("command", "ls") },
+        agentId: String? = null,
     ) = PermissionChannel.ToolPermission(
         requestId = id,
         toolName = tool,
         toolUseId = id,
         input = input,
         requiresUserInteraction = true,
+        agentId = agentId,
     )
+
+    private val question = buildJsonObject {
+        put("questions", JsonArray(listOf(buildJsonObject { put("question", "Which fruit?") })))
+    }
 
     fun testQuestionsNobodyCanAnswerAreNotKept() {
         val permissions = hub().permissions
@@ -148,5 +155,88 @@ class SessionPermissionsTest : BasePlatformTestCase() {
         hub.permissions.ask("waiting", request("perm-waiting"))
 
         assertTrue(hub.snapshotOf("waiting").awaitsYou)
+    }
+
+    /**
+     * A message written while the turn stands on a question closes the question: the turn would otherwise
+     * hold the message for as long as the card stands, and a phone had no way to close a question at all.
+     * The card leaves every screen, and the conversation stops saying it waits for you.
+     */
+    fun testAMessageClosesTheQuestionItWasWrittenOver() {
+        val hub = hub()
+        hub.permissions.ask("chatAsk", request("ask-chat", tool = ClaudeLaunch.ASK_TOOL, input = question))
+        assertTrue(hub.snapshotOf("chatAsk").awaitsYou)
+        val afterAsk = hub.lastSeq("chatAsk")
+
+        hub.permissions.answeredInChat("chatAsk")
+
+        assertTrue(hub.lastSeq("chatAsk") > afterAsk)
+        assertFalse(hub.snapshotOf("chatAsk").awaitsYou)
+        assertEquals(0, hub.permissions.keptCount())
+    }
+
+    /*
+     * The same for a plan and for a permission - all three hold the turn the same way.
+     *
+     * One card per test: with no process behind them, every new card throws out the ones before it (see
+     * testQuestionsNobodyCanAnswerAreNotKept), so a second card here would be testing that instead.
+     */
+    fun testAMessageClosesAPlan() {
+        val hub = hub()
+        hub.permissions.ask(
+            "chatPlan",
+            request("plan-chat", tool = "ExitPlanMode", input = buildJsonObject { put("plan", "- a step") }),
+        )
+
+        hub.permissions.answeredInChat("chatPlan")
+
+        assertFalse(hub.snapshotOf("chatPlan").awaitsYou)
+        assertEquals(0, hub.permissions.keptCount())
+    }
+
+    fun testAMessageClosesAPermission() {
+        val hub = hub()
+        hub.permissions.ask("chatPerm", request("perm-chat"))
+        val afterAsk = hub.lastSeq("chatPerm")
+
+        hub.permissions.answeredInChat("chatPerm")
+
+        assertTrue(hub.lastSeq("chatPerm") > afterAsk)
+        assertFalse(hub.snapshotOf("chatPerm").awaitsYou)
+        assertEquals(0, hub.permissions.keptCount())
+    }
+
+    /** And once closed it is closed: a press on the card arriving late from another device changes nothing. */
+    fun testACardClosedByAMessageIgnoresALatePress() {
+        val hub = hub()
+        hub.permissions.ask("chatLate", request("perm-late"))
+        hub.permissions.answeredInChat("chatLate")
+        val afterMessage = hub.lastSeq("chatLate")
+
+        hub.permissions.decide("perm-late", "once")
+
+        assertEquals(afterMessage, hub.lastSeq("chatLate"))
+    }
+
+    /** Only the cards the conversation's own turn stands on: a subagent's permission is not what the message answers. */
+    fun testAMessageLeavesASubagentsPermissionAlone() {
+        val hub = hub()
+        hub.permissions.ask("chatSubagent", request("perm-subagent", agentId = "agent-1"))
+
+        hub.permissions.answeredInChat("chatSubagent")
+
+        assertTrue(hub.snapshotOf("chatSubagent").awaitsYou)
+        assertEquals(1, hub.permissions.keptCount())
+    }
+
+    /** And another conversation's card has nothing to do with it at all. */
+    fun testAMessageLeavesAnotherConversationsCardAlone() {
+        val hub = hub()
+        hub.permissions.ask("chatElsewhere", request("perm-elsewhere"))
+
+        hub.permissions.answeredInChat("chatHere")
+
+        assertTrue(hub.snapshotOf("chatElsewhere").awaitsYou)
+        assertEquals(1, hub.permissions.keptCount())
     }
 }

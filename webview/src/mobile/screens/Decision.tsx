@@ -1,10 +1,22 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { modeShortLabel } from '../../catalog'
 import type { CardState } from '../../hooks/useCardState'
+import { answersOf, askReply } from '../../feed/askDraft'
 import type { PanelState } from '../../feed/panelState'
 import { awaiting } from '../../feed/streamStatus'
 import type { AskItem, AskQuestion, FeedItem, PermItem, PlanItem, TextItem } from '../../feed/types'
 import { useT } from '../../i18n'
+import {
+  canMoveOn,
+  EMPTY_PHONE_ASK,
+  finished,
+  moveOn,
+  onScreen,
+  openOwn,
+  pickOption,
+  writeOwn,
+  type PhoneAsk,
+} from '../askSteps'
 import { Back } from './Back'
 import m from '../mobile.module.css'
 
@@ -15,15 +27,20 @@ interface DecisionProps {
   title: string
   project: string
   /**
-   * The questions answered so far, by the call that asked them - kept by the application as well, and
-   * for the same reason (see mobile/App.askAnswers): this screen is taken down by a step back into the
-   * conversation, and five answers out of six went with it.
+   * What has been picked and written so far, by the call that asked - kept by the application as well,
+   * and for the same reason (see mobile/App.askDrafts): this screen is taken down by a step back into
+   * the conversation, and five answers out of six went with it.
    */
-  answers: Record<string, Record<string, string>>
-  onAnswers: (next: (held: Record<string, Record<string, string>>) => Record<string, Record<string, string>>) => void
+  answers: Record<string, PhoneAsk>
+  onAnswers: (next: (held: Record<string, PhoneAsk>) => Record<string, PhoneAsk>) => void
   onDecide: (id: string, decision: 'once' | 'deny') => void
   onPlan: (id: string, decision: 'approve' | 'keepPlanning') => void
   onAsk: (id: string, answers: Record<string, string>, text: string) => void
+  /**
+   * Close the question without picking anything: the person will say it in the conversation. The desk's
+   * cross over the same card, with the same word to the agent (see SessionPermissions.dismissAsk).
+   */
+  onDismissAsk: (id: string) => void
   onOpenThread: () => void
   onBack: () => void
 }
@@ -41,9 +58,6 @@ interface DecisionProps {
  * granting that from a sofa is a different act from unblocking one step - the plugin refuses it over
  * the wire as well (see RemoteCommands.soften).
  */
-/** Nothing answered yet - one object rather than a fresh one per repaint. */
-const EMPTY_ANSWERS: Record<string, string> = {}
-
 export const Decision = ({
   feed,
   cards,
@@ -54,16 +68,23 @@ export const Decision = ({
   onDecide,
   onPlan,
   onAsk,
+  onDismissAsk,
   onOpenThread,
   onBack,
 }: DecisionProps) => {
   const t = useT()
   const [expanded, setExpanded] = useState(false)
+  /**
+   * The fields of one's own opened by a tap on this screen - the only ones that bring the keyboard up.
+   * One restored out of what was gathered must not: coming back from reading the conversation is not a
+   * request to type, and a keyboard over half the screen hides the very options being returned to.
+   */
+  const openedHere = useRef(new Set<string>())
 
   /**
    * A call may carry several questions, and they are answered one after another rather than all at once:
    * a phone has room for one question's options at thumb size and no more. The answer travels only when
-   * the last of them has been picked - the agent is given one reply to its call, exactly as at the desk.
+   * the last of them is done with - the agent is given one reply to its call, exactly as at the desk.
    *
    * Which is exactly why what has been gathered is not kept here: the screen goes away every time
    * somebody steps back to read the conversation, and the questions started over.
@@ -82,22 +103,35 @@ export const Decision = ({
   const plan: PlanItem | undefined = waiting?.kind === 'plan' ? waiting : undefined
   const ask: AskItem | undefined = waiting?.kind === 'ask' ? waiting : undefined
 
-  /** What has been answered of the call on screen - the rest of the application holds it by call. */
-  const answers = (ask ? gathering[ask.id] : undefined) ?? EMPTY_ANSWERS
+  /** What has been gathered for the call on screen - the rest of the application holds it by call. */
+  const held = (ask ? gathering[ask.id] : undefined) ?? EMPTY_PHONE_ASK
 
-  const question: AskQuestion | undefined = ask?.questions.find((one) => answers[one.title] === undefined)
+  const question: AskQuestion | undefined = ask ? onScreen(ask.questions, held) : undefined
+  /** Whether the question on screen is the call's last: what its button says - and whether a tap sends. */
+  const last =
+    ask !== undefined &&
+    question !== undefined &&
+    ask.questions.filter((one) => !held.done.includes(one.id)).length === 1
 
   const doing = lastWords(feed.items)
 
-  /** One question answered. The whole call is answered once nothing is left unanswered. */
-  const pick = (item: AskItem, one: AskQuestion, label: string) => {
-    const gathered = { ...answers, [one.title]: label }
-    onAnswers((held) => ({ ...held, [item.id]: gathered }))
+  /**
+   * A step through the call. The answer travels once every question is done with - in the desk's own
+   * shape, pairs and text alike (see askReply).
+   */
+  const step = (item: AskItem, next: PhoneAsk) => {
+    onAnswers((all) => ({ ...all, [item.id]: next }))
+    if (!finished(item.questions, next)) return
 
-    if (item.questions.some((other) => gathered[other.title] === undefined)) return
-
+    const reply = askReply(answersOf(item.questions, next.draft))
     cards.answerAsk(item.id)
-    onAsk(item.id, gathered, Object.values(gathered).join(', '))
+    onAsk(item.id, reply.answers, reply.text)
+  }
+
+  const openOwnAnswer = (item: AskItem, one: AskQuestion) => {
+    // By the call as well as the question: every call numbers its questions from q-0.
+    openedHere.current.add(`${item.id}:${one.id}`)
+    step(item, openOwn(held, one))
   }
 
   return (
@@ -145,11 +179,14 @@ export const Decision = ({
             {ask.questions.length > 1 && (
               <p className={m.decisionContext}>
                 {t.mobile.decision.questionOf(
-                  ask.questions.findIndex((one) => one.title === question.title) + 1,
+                  ask.questions.findIndex((one) => one.id === question.id) + 1,
                   ask.questions.length,
                 )}
               </p>
             )}
+            {/* Said, because the buttons below look the same either way: a question that takes several
+                does not move on with the first tap, and without this the screen reads as stuck. */}
+            {question.multiSelect && <p className={m.decisionContext}>{t.feed.ask.pickAny}</p>}
           </>
         )}
 
@@ -164,6 +201,15 @@ export const Decision = ({
         <button type="button" className={m.decisionLink} onClick={onOpenThread}>
           {t.mobile.decision.openConversation}
         </button>
+
+        {/* The desk's cross over the same card. Writing in the conversation closes the question too (see
+            SessionPermissions.answeredInChat), but a way out has to be on the screen that holds the
+            question rather than known about - the report this came from had none. */}
+        {ask && (
+          <button type="button" className={m.decisionLink} onClick={() => onDismissAsk(ask.id)}>
+            {t.feed.ask.dismissHint}
+          </button>
+        )}
       </div>
 
       <footer className={m.decisionFooter}>
@@ -191,17 +237,58 @@ export const Decision = ({
 
         {ask && question && (
           <>
-            {question.options.map((option) => (
-              <button
-                key={option.label}
-                type="button"
-                className={m.buttonOption}
-                onClick={() => pick(ask, question, option.label)}
-              >
-                <span className={m.buttonOptionLabel}>{option.label}</span>
-                {option.sub && <span className={m.buttonOptionHint}>{option.sub}</span>}
+            {question.options.map((option) => {
+              const on = (held.draft.picks[question.id] ?? []).includes(option.id)
+
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`${m.buttonOption} ${on ? m.buttonOptionOn : ''}`}
+                  aria-pressed={question.multiSelect ? on : undefined}
+                  onClick={() => step(ask, pickOption(held, question, option.id))}
+                >
+                  <span className={m.buttonOptionLabel}>{option.label}</span>
+                  {option.sub && <span className={m.buttonOptionHint}>{option.sub}</span>}
+                </button>
+              )
+            })}
+
+            {/* Other is one more option rather than a form off to the side, as at the desk: the tool
+                promises it itself, so the screen adds it rather than the agent. Pressed, it becomes the
+                field it stands for. */}
+            {held.draft.custom[question.id] === undefined ? (
+              <button type="button" className={m.buttonOption} onClick={() => openOwnAnswer(ask, question)}>
+                <span className={m.buttonOptionLabel}>{t.feed.ask.other}</span>
               </button>
-            ))}
+            ) : (
+              <textarea
+                className={`${m.input} ${m.ownAnswer}`}
+                value={held.draft.custom[question.id]}
+                placeholder={t.feed.ask.ownAnswer}
+                autoCapitalize="sentences"
+                autoFocus={openedHere.current.has(`${ask.id}:${question.id}`)}
+                onChange={(event) => step(ask, writeOwn(held, question, event.target.value))}
+              />
+            )}
+
+            {/* Moving on is a press of its own wherever one tap is not the whole answer: ticks, of which
+                there may be several, and words, which are never done by themselves. An ordinary option
+                needs no such press - the tap is the answer. */}
+            {(question.multiSelect || held.draft.custom[question.id] !== undefined) && (
+              <button
+                type="button"
+                className={m.buttonPrimary}
+                disabled={!canMoveOn(held, question)}
+                onClick={() => step(ask, moveOn(held, question))}
+              >
+                {!canMoveOn(held, question)
+                  ? t.feed.ask.pickToContinue
+                  : last
+                    ? t.feed.ask.send
+                    : t.mobile.decision.nextQuestion}
+              </button>
+            )}
           </>
         )}
       </footer>

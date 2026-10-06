@@ -119,6 +119,25 @@ class TabMemoryTest {
         assertNull(back.forkBefore)
     }
 
+    // A fork keeps where it comes from and the line it ends on - whatever becomes of the tab it was made from,
+    // and before a word is said in it: it shows what it carries from the first second.
+    @Test
+    fun `a fork comes back with its origin, without a draft and without its parent`() {
+        val origin = ForkOrigin(
+            source = "0e7e1c5e-0000-4000-8000-000000000001",
+            title = "The original",
+            cut = true,
+            at = "0e7e1c5e-0000-4000-8000-000000000004",
+        )
+        val fork = tab("fork", parent = "gone").copy(forkOrigin = origin)
+
+        val back = TabMemory.restorable(TabMemory.decode(TabMemory.encode(TabMemory.State(active = "fork", tabs = listOf(fork))))!!)
+
+        assertEquals(origin, back.tabs.single().forkOrigin)
+        assertNull(back.tabs.single().parentId)
+        assertEquals("fork", back.active)
+    }
+
     @Test
     fun `the tab to show is named only when it is coming back`() {
         val tabs = listOf(tab("a", conversation = "c-1"), tab("b"))

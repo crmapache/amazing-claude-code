@@ -336,3 +336,24 @@ export const phoneCommands = (
  * joining late, and a paused run sends no beat at all.
  */
 export const liveRunsOf = (facts: ProjectFacts | undefined): ScenarioRunSummary[] => facts?.liveRuns ?? []
+
+/**
+ * The models added by hand on the machine a project belongs to (see CustomModels.tsx).
+ *
+ * The project's own fact first, when there is one: it is live for an open project, while the machine's
+ * list in the inventory is as fresh as the last knock. The machine's list otherwise - and that is the
+ * case it was added for: a project closed at the desk has no facts at all, and its new chat used to
+ * offer every model Claude Code lists and not the one this machine's provider serves. An IDE older than
+ * that list says nothing about it, and the fact remains the only answer there is.
+ *
+ * Asked of that machine alone, unlike the language and the colour mode: those are about the person and
+ * any answer will do, while a model is about a Claude Code - a name added on one machine says nothing
+ * about what another one can launch, and offering it would be offering a turn that dies on its first
+ * message.
+ */
+export const customModelsOf = (
+  facts: Record<string, ProjectFacts>,
+  machine: string[] | undefined,
+  agentId: string,
+  projectKey: string,
+): string[] => facts[`${agentId}:${projectKey}`]?.customModels ?? machine ?? []

@@ -1,3 +1,4 @@
+import { normalizeMode } from '../catalog'
 import { reducePanel } from '../feed/build'
 import { initialPanelState, type PanelAction, type PanelState } from '../feed/panelState'
 import type { ShellMessage } from '../protocol'
@@ -334,6 +335,16 @@ export const applyMessage = (feed: MobileFeed, message: ShellMessage, now: numbe
      */
     case 'effort':
       return collect({ kind: 'effortApplied', effort: message.effort })
+
+    /*
+     * The permission mode, applied at the desk (the MODE selector, Shift+Tab, an approved plan) or chosen
+     * for a conversation of one's own started from here and said before its first message (see
+     * plannedMessages in the hub). The phone used to drop this message altogether, so its chip went on
+     * naming the mode a conversation was born in after the desk had moved it. No error is shown: the phone
+     * cannot change the mode, and a refusal belongs to whoever asked - it only keeps the mode in force.
+     */
+    case 'mode':
+      return collect({ kind: 'modeApplied', mode: normalizeMode(message.mode), applied: message.applied })
 
     // What this conversation is waiting to say. Held and fired by the IDE, so both screens show the same
     // list and a phone put back in a pocket does not take it along (see SessionQueue.kt).

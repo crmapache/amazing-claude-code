@@ -3232,8 +3232,23 @@ export interface AgentStreamEvent {
  * Only the events the panel draws are described. The stream is wider and grows over time, so the
  * parsing is obliged to skip what it does not know, silently.
  */
+/**
+ * Where a fork's own part begins - a line of the panel's own, played and paged with the conversation it
+ * belongs to (see ForkOrigin.seamLine in the plugin) and drawn as the fork's mark.
+ */
+export interface ForkSeamEvent {
+  type: 'fork_seam'
+  /** The conversation forked - what the mark opens. */
+  source: string
+  /** Its name when the fork was made. */
+  title: string
+  /** Forked from a chosen message rather than whole. */
+  cut: boolean
+}
+
 export type AgentEvent =
   | AgentSystemEvent
+  | ForkSeamEvent
   | AgentAssistantEvent
   | AgentUserEvent
   | AgentResultEvent
