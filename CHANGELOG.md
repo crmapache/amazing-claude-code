@@ -9,6 +9,20 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.21] - 2026-10-06
+
+- Fixed: on a paired phone, a question from Claude could only be answered with one of its suggested options. You can now write your own answer under "Other", tick several options when the question allows it, or close the question and answer in the conversation, as at the desk.
+- Fixed: writing a message while Claude waited on a question, a plan or a permission left the conversation stuck at "Waiting for you". The message waited for an answer to the card that never came, and on a phone a question could not be closed at all. A message written over a card is now Claude's answer to it: the card closes, Claude reads the message in the same step, and a command that was waiting for permission does not run.
+- Fixed: a new conversation could not be started from the phone on a model added by hand. For a project closed at the desk the phone did not offer such models at all, and in any chat started from the phone the chosen model, effort and mode appeared nowhere until the first message: "default" on the phone, the usual default at the desk. The phone now offers the models added on that computer for every project, and a new conversation shows what it was started with from the first second.
+- Fixed: the permission mode on the phone kept showing the old mode after it was changed at the desk.
+- Fixed: text copied on an iPhone and pasted into Gmail could turn into a link full of "%20" and "%0A", for example a message starting with "Subject:". iOS offered the copied text as a link too, and Gmail takes the link first. Every copy button now puts plain text on the clipboard. The copy button in search results also reaches the system clipboard on Linux now.
+- Fixed: a message written at the desk while Claude was working, with the open file shared, could be sent to Claude a second time when the turn ended, and "running" came back over a finished conversation.
+- Added: a fork now shows what it carries. The earlier conversation appears in the new tab with a "new branch from" marker under it, and the original's name in the marker opens it. Before, the new tab opened empty although Claude remembered everything, and the same history shows after an IDE restart, in a fork opened from the history and on the phone.
+- Fixed: a fork could include turns the original made after you pressed fork. The fork point is now fixed at the moment of the press, for a whole conversation too, and it survives an IDE restart or a move to another account before the first message. When a fork cannot be cut at the chosen point, the new tab says so instead of quietly carrying more.
+- Fixed: the fork of a compacted conversation showed only what came after the compaction. The earlier part is now read from the original.
+- Fixed: a compacted conversation opened from the history showed Claude's internal summary as a long message from you. It now shows the same "compacted" marker as during the live conversation.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.20] - 2026-10-04
 
 - Fixed: closing a project could show "Already disposed" in IDE Internal Errors. Pending panel updates now finish before the browser and its timers are released, and late updates are ignored.
@@ -885,7 +899,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.20...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.21...HEAD
+[0.13.21]: https://github.com/crmapache/amazing-claude-code/compare/0.13.20...0.13.21
 [0.13.20]: https://github.com/crmapache/amazing-claude-code/compare/0.13.19...0.13.20
 [0.13.19]: https://github.com/crmapache/amazing-claude-code/compare/0.13.18...0.13.19
 [0.13.18]: https://github.com/crmapache/amazing-claude-code/compare/0.13.17...0.13.18
