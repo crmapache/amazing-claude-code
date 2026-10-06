@@ -174,7 +174,13 @@
 
 /* --- The permission ----------------------------------------------------------- */
 
+/* A column that gives way, like .ask: the head, the reason and the buttons keep their height, and the command
+   takes what the panel has left and scrolls (see .dock and data-shrinks above). */
 .perm {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
   margin-bottom: 8px;
   border: 1px solid var(--acc-warn-40);
   border-radius: var(--acc-r-2xl);
@@ -185,6 +191,7 @@
 /* On the baseline rather than centred: the PERMISSION label is small mono while the target is ordinary
    text, and by the centres of their own boxes they stand at different heights. */
 .permHead {
+  flex: none;
   display: flex;
   align-items: baseline;
   gap: 9px;
@@ -203,6 +210,9 @@
 }
 
 .permCmd {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   margin: 0 11px;
   padding: 7px 9px;
   border: 1px solid var(--acc-line);
@@ -216,6 +226,7 @@
 /* The question's reason: an explanation of the command above, hence along its left edge and with the same
    padding. In ordinary text rather than mono - this is a sentence rather than a command. */
 .permReason {
+  flex: none;
   margin: 6px 11px 0;
   font-size: 11.5px;
   line-height: 16px;
@@ -223,6 +234,7 @@
 }
 
 .permActions {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 7px;

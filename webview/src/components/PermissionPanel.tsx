@@ -62,7 +62,10 @@ export const PermissionPanel = ({ item, composerEmpty, onDecide }: PermissionPan
   if (!item) return null
 
   return (
-    <div className={s.perm}>
+    /* data-shrinks: a long command (a commit message in a heredoc) made the card taller than the panel, and
+       the buttons went off its bottom edge with no scroll to reach them. Now the command scrolls inside the
+       card and the buttons stay in view - the same arrangement as AskPanel's (see .dock). */
+    <div className={s.perm} data-shrinks="">
       <div className={s.permHead}>
         <span className={s.permLabel}>{t.permission.label}</span>
         <span className={s.permTarget}>{item.target}</span>

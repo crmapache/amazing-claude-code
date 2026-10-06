@@ -52,6 +52,33 @@ const HUGE_LOG = Array.from(
     `2026-08-29T15:0${at % 10}:12.418Z  worker#${(at % 8) + 1}  GET /api/checkout/summary 200 in ${18 + (at % 40)}ms  cache=${at % 3 === 0 ? 'miss' : 'hit'}`,
 ).join('\n')
 
+/** A commit with its message in a heredoc - the command from a report where it ran past a short panel. */
+const LONG_COMMIT = [
+  `git add includes/Api/ApiQueryAllPages.php includes/Api/ApiQueryBacklinks.php && f=$(mktemp) && cat > "$f" <<'EOF'`,
+  'API: Describe list=allpages/backlinks REST responses',
+  '',
+  'Why:',
+  '- The /pages and /page/{title}/backlinks REST endpoints returned a body',
+  '  that the OpenAPI spec did not describe, because the list modules did',
+  '  not provide a response schema.',
+  '- All paginated endpoints share one envelope, so it is defined once',
+  '  rather than in every response schema.',
+  '',
+  'What:',
+  '- Make ApiQueryAllPages and ApiQueryBacklinks implement ApiRestHybrid,',
+  '  returning a helper that names their response schema file.',
+  '  ApiQueryBacklinks also serves embeddedin and imageusage, which have',
+  '  the same item structure.',
+  '- Add AllPages-response.json and Backlinks-response.json. Each combines',
+  '  the shared envelope with the schema of the list items, using allOf.',
+  '- Add the shared envelope, pagination-v1-beta.json, under',
+  '  includes/Rest/schemas as a placeholder location.',
+  '- Keep the OpenAPI conformance test for the backlinks endpoint skipped',
+  '  until the envelope can be resolved, with a FIXME saying so.',
+  'EOF',
+  'git commit -F "$f" && rm "$f"',
+].join('\n')
+
 /**
  * One agent's line in a workflow's report. A helper because the CLI resends the whole fleet on every
  * change - the checkpoints below differ from one another by a field or two in a list of nine.
@@ -872,6 +899,28 @@ export const scenariosCards: Scenario[] = [
           'removal, so the relative glob target cannot be statically resolved. This requires explicit ' +
           'approval and cannot be auto-allowed by permission rules.',
         rememberable: false,
+      }),
+    ]),
+  ]),
+
+  // A commit with its message in a heredoc, asked about under "ask" for git commit. On a short panel the card
+  // used to grow past the panel's bottom edge and take the buttons with it; now the command scrolls inside.
+  scenario('permission-long-command', 'A permission with a long command', 'cards', [
+    checkpoint('The user asks to commit', [
+      user('Commit the REST schema changes'),
+      wait(500),
+    ]),
+    checkpoint('Bash: git commit with a long message - awaiting a permission', [
+      toolUse('Bash', { command: LONG_COMMIT }, 'c9d-commit'),
+      wait(400),
+      shell({
+        type: 'permission',
+        id: 'c9d-perm',
+        sessionId: SESSION,
+        toolName: 'Bash',
+        target: 'wants to run a command',
+        command: LONG_COMMIT,
+        mode: 'default',
       }),
     ]),
   ]),
