@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.22] - 2026-10-06
+
+- Fixed: a permission request with a long command, such as a commit with a long message, could grow taller than the panel and push the Allow and Deny buttons and the input field off the screen, with no way to scroll to them. The command now scrolls inside the card, and the buttons stay in view.
+
 ## [0.13.21] - 2026-10-06
 
 - Fixed: on a paired phone, a question from Claude could only be answered with one of its suggested options. You can now write your own answer under "Other", tick several options when the question allows it, or close the question and answer in the conversation, as at the desk.
@@ -899,7 +903,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.21...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.22...HEAD
+[0.13.22]: https://github.com/crmapache/amazing-claude-code/compare/0.13.21...0.13.22
 [0.13.21]: https://github.com/crmapache/amazing-claude-code/compare/0.13.20...0.13.21
 [0.13.20]: https://github.com/crmapache/amazing-claude-code/compare/0.13.19...0.13.20
 [0.13.19]: https://github.com/crmapache/amazing-claude-code/compare/0.13.18...0.13.19
