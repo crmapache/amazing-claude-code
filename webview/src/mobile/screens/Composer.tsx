@@ -77,6 +77,15 @@ interface ComposerProps {
   onRun: () => void
   /** Dictation - the state lives in the application, because the token for it arrives there. */
   voice: PhoneDictation
+  /**
+   * Whether the words go into a conversation - the default - or to something that only reads them: a run's
+   * main thread (see ScenarioRun). Off a conversation the field keeps what a message is made of - the words,
+   * the photos, the "@" for a file, dictation - and drops what is about a conversation: the limits and the
+   * chip of how its turn runs, the context gauge, the slash commands and the side question.
+   */
+  forConversation?: boolean
+  /** What the empty field says when it is not a conversation's. */
+  placeholder?: string
 }
 
 /** Ticks at every fifth - unrelated to the colour thresholds, purely the scale's ruler. */
@@ -206,6 +215,8 @@ export const Composer = ({
   onStop,
   onRun,
   voice,
+  forConversation = true,
+  placeholder,
 }: ComposerProps) => {
   const t = useT()
   const now = useNow()
@@ -319,8 +330,8 @@ export const Composer = ({
   // the person's own skills and every plugin's are in it, and this screen repaints on every project
   // fact - that is, about once a second while a scenario runs, with nobody typing.
   const commandMatches = useMemo(
-    () => (commandQuery === null ? [] : matchCommands(commands, commandQuery)),
-    [commands, commandQuery],
+    () => (commandQuery === null || !forConversation ? [] : matchCommands(commands, commandQuery)),
+    [commands, commandQuery, forConversation],
   )
 
   /**
@@ -458,7 +469,7 @@ export const Composer = ({
 
   // A side question - `/btw` (see feed/side): it goes beside the work rather than into it, has no queue to
   // wait in, and the button says so, as at the desk.
-  const aside = asideQuestion(draft) !== null
+  const aside = forConversation && asideQuestion(draft) !== null
 
   return (
     <>
@@ -529,56 +540,58 @@ export const Composer = ({
       {/* What is read: the two windows, and how this turn runs. A tap on either ring opens the rest of
           the figures - which window this is, when it resets - because the panel keeps those in a tooltip
           and a phone has no hover to put one under. */}
-      <div className={m.strip}>
-        <button
-          type="button"
-          className={m.meter}
-          aria-label={t.mobile.composer.usageLimits}
-          disabled={!facts.session && !facts.week && !facts.extra?.active}
-          onClick={() => setLimitsOpen(true)}
-        >
-          <Ring percent={sessionRing.percent} color={sessionRing.color} flame={sessionRing.flame} size={20} />
-          <MeterValue ring={sessionRing} />
-        </button>
+      {forConversation && (
+        <div className={m.strip}>
+          <button
+            type="button"
+            className={m.meter}
+            aria-label={t.mobile.composer.usageLimits}
+            disabled={!facts.session && !facts.week && !facts.extra?.active}
+            onClick={() => setLimitsOpen(true)}
+          >
+            <Ring percent={sessionRing.percent} color={sessionRing.color} flame={sessionRing.flame} size={20} />
+            <MeterValue ring={sessionRing} />
+          </button>
 
-        <button
-          type="button"
-          className={m.meter}
-          aria-label={t.mobile.composer.usageLimits}
-          disabled={!facts.session && !facts.week && !facts.extra?.active}
-          onClick={() => setLimitsOpen(true)}
-        >
-          <Ring
-            percent={weekRing.percent}
-            color={weekRing.color}
-            pace={burning === 'week' || !facts.week ? undefined : weekBudgetToday(facts.week.resets)}
-            flame={weekRing.flame}
-            size={20}
-          />
-          <MeterValue ring={weekRing} />
-        </button>
+          <button
+            type="button"
+            className={m.meter}
+            aria-label={t.mobile.composer.usageLimits}
+            disabled={!facts.session && !facts.week && !facts.extra?.active}
+            onClick={() => setLimitsOpen(true)}
+          >
+            <Ring
+              percent={weekRing.percent}
+              color={weekRing.color}
+              pace={burning === 'week' || !facts.week ? undefined : weekBudgetToday(facts.week.resets)}
+              flame={weekRing.flame}
+              size={20}
+            />
+            <MeterValue ring={weekRing} />
+          </button>
 
-        <span className={m.stripRule} />
+          <span className={m.stripRule} />
 
-        {/*
-          Model, effort and mode in one chip rather than as three selectors.
+          {/*
+            Model, effort and mode in one chip rather than as three selectors.
 
-          At the desk they are three buttons because there is a row to put them in; here that row is the
-          one a thumb reaches, and three of them left no width for any of the three to say what it holds.
-          One chip says all three and opens the sheet where they are changed - which is also where the
-          mode explains why it cannot be.
-        */}
-        <button type="button" className={m.runChip} onClick={onRun}>
-          <Gear />
-          <span className={m.runChipText}>
-            {modelLabel(run.model)}
-            {run.effort ? ` · ${effortShortLabel(run.effort)}` : ''}
-            {run.mode ? ' · ' : ''}
-            {run.mode ? <span className={m.runChipMode}>{modeShortLabel(t, run.mode)}</span> : null}
-          </span>
-          <span className={m.runChipChevron}>›</span>
-        </button>
-      </div>
+            At the desk they are three buttons because there is a row to put them in; here that row is the
+            one a thumb reaches, and three of them left no width for any of the three to say what it holds.
+            One chip says all three and opens the sheet where they are changed - which is also where the
+            mode explains why it cannot be.
+          */}
+          <button type="button" className={m.runChip} onClick={onRun}>
+            <Gear />
+            <span className={m.runChipText}>
+              {modelLabel(run.model)}
+              {run.effort ? ` · ${effortShortLabel(run.effort)}` : ''}
+              {run.mode ? ' · ' : ''}
+              {run.mode ? <span className={m.runChipMode}>{modeShortLabel(t, run.mode)}</span> : null}
+            </span>
+            <span className={m.runChipChevron}>›</span>
+          </button>
+        </div>
+      )}
 
       {/*
         The turn in progress, and the one button that ends it.
@@ -705,28 +718,30 @@ export const Composer = ({
 
       <div className={m.boxWrap}>
         <div className={`${m.box} ${focused ? m.boxFocused : ''}`}>
-          <div className={m.ctxRow} aria-hidden="true">
-            <div className={m.ctxMeter}>
-              <div
-                className={m.ctxFill}
-                style={{
-                  width: `${context.percent}%`,
-                  background: contextColor(context.percent),
-                  boxShadow: `0 0 8px ${contextGlow(context.percent).strong}, 0 0 16px ${contextGlow(context.percent).soft}`,
-                }}
-              />
-              {CONTEXT_TICKS.map((tick) => (
-                <span key={tick} className={m.ctxTick} style={{ left: `${tick}%` }} />
-              ))}
+          {forConversation && (
+            <div className={m.ctxRow} aria-hidden="true">
+              <div className={m.ctxMeter}>
+                <div
+                  className={m.ctxFill}
+                  style={{
+                    width: `${context.percent}%`,
+                    background: contextColor(context.percent),
+                    boxShadow: `0 0 8px ${contextGlow(context.percent).strong}, 0 0 16px ${contextGlow(context.percent).soft}`,
+                  }}
+                />
+                {CONTEXT_TICKS.map((tick) => (
+                  <span key={tick} className={m.ctxTick} style={{ left: `${tick}%` }} />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <textarea
             ref={field}
             className={m.composerInput}
             value={draft}
             rows={1}
-            placeholder={connected ? t.mobile.composer.say : t.mobile.composer.reconnecting}
+            placeholder={connected ? (placeholder ?? t.mobile.composer.say) : t.mobile.composer.reconnecting}
             // Not "send": there is a Send button under the field, and Enter here makes a new line. A
             // key cap that says one thing and does another is worse than a plain one.
             enterKeyHint="enter"
@@ -755,15 +770,17 @@ export const Composer = ({
         <div className={m.toolIcons}>
           {/* The button does not open a catalogue but puts a slash into the field: the command is typed
               on from there and the list narrows by itself, exactly as at the desk. */}
-          <button
-            type="button"
-            className={`${m.iconBtn} ${commandMatches.length > 0 ? m.iconBtnOn : ''}`}
-            aria-label={t.mobile.composer.slash}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => replace(0, 0, '/')}
-          >
-            <span className={m.iconSlash}>/</span>
-          </button>
+          {forConversation && (
+            <button
+              type="button"
+              className={`${m.iconBtn} ${commandMatches.length > 0 ? m.iconBtnOn : ''}`}
+              aria-label={t.mobile.composer.slash}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => replace(0, 0, '/')}
+            >
+              <span className={m.iconSlash}>/</span>
+            </button>
+          )}
 
           {/* And the same for a file: an "@" at the caret, which the hint answers as it is typed on. */}
           <button

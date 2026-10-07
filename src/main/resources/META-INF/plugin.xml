@@ -68,11 +68,24 @@
                 description="Put a reference to the selected lines into the Claude panel input">
             <add-to-group group-id="EditorPopupMenu" anchor="first"/>
         </action>
+        <!-- The id keeps its old name although the action now serves the project tree too: a person's
+             keymap is filed under it. -->
         <action id="AmazingClaudeCode.SendSelectionAbsolute"
-                class="io.github.crmapache.amazingclaudecode.editor.SendSelectionAbsoluteAction"
+                class="io.github.crmapache.amazingclaudecode.editor.SendAbsolutePathAction"
                 text="Send Absolute Path to Amazing Claude Code GUI"
-                description="Put the file's full path into the Claude panel input, for a conversation started outside this project">
+                description="Put the full path of the selected files and folders into the Claude panel input">
+            <!-- In the project tree it is our only item, and a whole file is all there is to send from
+                 there - "Absolute Path" would only make one look for a second item that is not there. -->
+            <override-text place="ProjectViewPopup" text="Send to Amazing Claude Code GUI"/>
+            <override-text place="ChangesViewPopup" text="Send to Amazing Claude Code GUI"/>
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="AmazingClaudeCode.SendSelection"/>
+            <!-- The changed files in the Commit tool window, under its own "Copy Path/Reference...". -->
+            <add-to-group group-id="ChangesViewPopupMenu" anchor="after" relative-to-action="CopyReferencePopupGroup"/>
+            <!-- The project tree's menu, right under "Copy Path/Reference...": a path is what that item is
+                 about too. It lives in the shared clipboard group, which also stands in the main Edit menu,
+                 the structure view, the console and the navigation bar - there the action hides itself
+                 (see SendAbsolutePathAction.offeredIn). -->
+            <add-to-group group-id="CutCopyPasteGroup" anchor="after" relative-to-action="CopyReferencePopupGroup"/>
         </action>
     </actions>
 </idea-plugin>

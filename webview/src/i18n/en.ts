@@ -573,6 +573,8 @@ export const en = {
     delete: 'Delete',
     deleteTitle: 'Delete this scenario?',
     deleteRun: 'Delete this run',
+    starRun: 'Star this run',
+    unstarRun: 'Remove the star',
     deleteRunTitle: 'Delete this run?',
     /** The two bands of the runs tab: what is going, and what came of it. */
     running: 'RUNNING NOW',
@@ -674,6 +676,8 @@ export const en = {
       scenarioMissingInput: 'Something it asks for was left empty.',
       noClaude: 'Claude Code was not found on this machine.',
       runGone: 'That run is no longer there.',
+      /** Words for the main thread of a run that ended a moment before they arrived. */
+      runOver: 'That run has finished, and its main thread no longer reads messages - open it as a chat to carry on.',
       runNotResumable: 'This run cannot be picked up again: its main thread never came up.',
       /** Said out loud, like the hours': a row drawn and then gone reads as the panel forgetting it. */
       queueNotWritten: 'The queue could not be written to disk.',
@@ -750,6 +754,14 @@ export const en = {
       notYet: 'not yet',
       /** The way into a step's own conversation. */
       log: 'Log',
+      /** Above what the person wrote to the main thread, in the timeline. */
+      youSaid: 'YOU',
+      tellPlaceholder: 'Write to the main thread…',
+      /** Under the person's words while the main thread is busy judging a card. */
+      tellWaiting: 'waits until the main thread is free',
+      answering: 'The main thread is writing a reply…',
+      /** Over what the main thread passed on to the card at work. */
+      passedOn: 'Passed on to the card',
     },
     help: {
       button: 'What scenarios are',

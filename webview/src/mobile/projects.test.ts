@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { LinkState } from './link'
-import { buildProjects, chatState, waitingFor, type Inventory } from './projects'
+import { buildProjects, CAP_OPEN_BARE, CAP_PARTS, CAP_TELL, chatState, waitingFor, type Inventory } from './projects'
 
 /**
  * The first screen's order.
@@ -258,5 +260,24 @@ describe('what is waiting, across every project', () => {
     }
 
     expect(waitingFor(buildProjects([{ agentId: 'one', label: 'laptop' }], { one: idle }, states))).toEqual([])
+  })
+})
+
+/**
+ * What the machine says it can do is matched by name on this side (see RemoteAgent.caps), and a name spelled
+ * differently on the two sides is a feature that stays off for everybody without a word.
+ */
+describe('the capabilities a machine announces', () => {
+  it('are spelled here the way the machine spells them', () => {
+    const source = readFileSync(
+      resolve(__dirname, '../../../src/main/kotlin/io/github/crmapache/amazingclaudecode/remote/RemoteAgent.kt'),
+      'utf8',
+    )
+    const names: Array<[string, string]> = [
+      ['CAP_OPEN_BARE', CAP_OPEN_BARE],
+      ['CAP_PARTS', CAP_PARTS],
+      ['CAP_TELL', CAP_TELL],
+    ]
+    for (const [name, value] of names) expect(source).toContain(`const val ${name} = "${value}"`)
   })
 })

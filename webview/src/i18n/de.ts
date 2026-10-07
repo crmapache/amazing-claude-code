@@ -385,6 +385,8 @@ export const de: Dict = {
     delete: 'Löschen',
     deleteTitle: 'Dieses Szenario löschen?',
     deleteRun: 'Diesen Lauf löschen',
+    starRun: 'Mit Stern markieren',
+    unstarRun: 'Stern entfernen',
     deleteRunTitle: 'Diesen Lauf löschen?',
     queue: {
       add: 'In die Warteschlange',
@@ -504,6 +506,8 @@ export const de: Dict = {
       scenarioMissingInput: 'Etwas, wonach es fragt, ist leer geblieben.',
       noClaude: 'Claude Code wurde auf diesem Rechner nicht gefunden.',
       runGone: 'Diesen Lauf gibt es nicht mehr.',
+      /** Words for the main thread of a run that ended a moment before they arrived. */
+      runOver: 'Dieser Lauf ist beendet, und sein Hauptstrang liest keine Nachrichten mehr: Öffne ihn als Chat, um weiterzumachen.',
       runNotResumable: 'Dieser Lauf lässt sich nicht fortsetzen: sein Hauptstrang ist nie hochgekommen.',
       queueNotWritten: 'Die Warteschlange ließ sich nicht auf die Festplatte schreiben.',
       scenarioNotMoved: 'Das Szenario ließ sich nicht ins andere Regal verschieben.',
@@ -555,6 +559,14 @@ export const de: Dict = {
       stageNotReached: 'nicht erreicht',
       notYet: 'noch nicht',
       log: 'Protokoll',
+      /** Above what the person wrote to the main thread, in the timeline. */
+      youSaid: 'DU',
+      tellPlaceholder: 'An den Hauptstrang schreiben…',
+      /** Under the person's words while the main thread is busy judging a card. */
+      tellWaiting: 'wartet, bis der Hauptstrang frei ist',
+      answering: 'Der Hauptstrang schreibt eine Antwort…',
+      /** Over what the main thread passed on to the card at work. */
+      passedOn: 'An die Karte weitergegeben',
     },
     help: {
       button: 'Was Szenarien sind',

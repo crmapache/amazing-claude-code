@@ -642,6 +642,11 @@ export interface ScenarioRun {
    * are the size of the work - the figure that says whether a step read half the repository.
    */
   tokens: number
+  /**
+   * The main thread is answering something the person wrote to it, right now (see `scenarioTell`). Absent
+   * from an IDE older than the conversation.
+   */
+  answering?: boolean
 }
 
 export interface ScenarioRunStep {
@@ -685,6 +690,23 @@ export interface ScenarioRunNote {
   /** The card the head was busy with when it said this. */
   stepKey: string
   text: string
+  /**
+   * Who said it: the main thread (absent or empty), or the person running the scenario, who can write to
+   * the main thread while the run goes (see `scenarioTell`).
+   */
+  who?: '' | 'person'
+  /**
+   * For the person's words: when they reached the main thread, and 0 while they wait for it to be free -
+   * it is not interrupted in the middle of judging a card to read them.
+   */
+  deliveredAt?: number
+  /** For the main thread's answer to the person: what it passed on to the card at work. */
+  relayed?: string
+  /**
+   * For the person's words: the field they were written in, text and attachment chips in order (UserToken[]
+   * - see toldTokens), for the timeline to draw them as a chat draws a sent message. Without image bytes.
+   */
+  tokens?: unknown
 }
 
 export interface ScenarioRunQuestion {
@@ -739,6 +761,8 @@ export interface ScenarioRunSummary {
    * finished run: the table draws no road, and the list of past runs goes out whole.
    */
   roadmap?: ScenarioRoadmapStop[]
+  /** A star a person put on it in the table of past runs. Absent from an IDE older than the star. */
+  starred?: boolean
 }
 
 /** One card of one pass on the road of a going run. */
@@ -2787,6 +2811,22 @@ export type WebviewMessage =
   /** The whole record of one run: the live one from memory, an older one off the disk. */
   | { type: 'scenarioOpen'; runId: string }
   | { type: 'scenarioRunDelete'; runId: string }
+  /** The star on a past run, put on or taken off - kept on the run's record in the IDE. */
+  | { type: 'scenarioRunStar'; runId: string; starred: boolean }
+  /**
+   * Words for the main thread of a run that is going. It reads them as soon as it is free and keeps them in
+   * mind to the end of the run; its answer comes back as a note on the run (see ScenarioRunNote.who).
+   */
+  | {
+      type: 'scenarioTell'
+      runId: string
+      /** What the main thread is told - composed as a chat message is (see composePrompt). */
+      text: string
+      /** Pictures pasted into the field, as bytes - they go to the main thread beside the words. */
+      images?: { mediaType: string; data: string }[]
+      /** The field itself, for the timeline to draw (see ScenarioRunNote.tokens). */
+      tokens?: unknown
+    }
   /**
    * What one step said, read off the conversation it said it in.
    *

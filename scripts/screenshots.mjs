@@ -187,6 +187,22 @@ const openScenarios = async (page) => {
   await sleep(900)
 }
 
+/**
+ * The hub's shelf of scenarios - its first band. The hub opens on its runs (see AT_FIRST in
+ * components/scenarios/view.ts), so a frame that starts, edits or schedules a scenario goes here first.
+ * The band tabs are the tablist without a name; the strip of conversations is the one that has one.
+ */
+const toShelf = async (page) => {
+  const found = await page.evaluate(() => {
+    const band = document.querySelector('[role="tablist"]:not([aria-label]) [role="tab"]')
+    if (!band) return false
+    band.click()
+    return true
+  })
+  if (!found) throw new Error('the hub shows no band tabs on this screen')
+  await sleep(400)
+}
+
 /** Start the scenario on the first shelf, answering the one thing it asks. */
 const startTheScenario = async (page, branch) => {
   await clickExact(page, 'Run')
@@ -350,6 +366,7 @@ const FRAMES = [
     shot: 'shot-turn',
     run: async (page) => {
       await openScenarios(page)
+      await toShelf(page)
       await startTheScenario(page, 'feature/apple-pay-sheet')
       await sleep(2600)
       await openScenarios(page)
@@ -362,6 +379,7 @@ const FRAMES = [
     shot: 'shot-turn',
     run: async (page) => {
       await openScenarios(page)
+      await toShelf(page)
       await startTheScenario(page, 'feature/apple-pay-sheet')
       // Long enough for the walk to reach the card that stops to ask - the one state the whole screen
       // is arranged around (see scenarioDesk).
@@ -373,6 +391,7 @@ const FRAMES = [
     shot: 'shot-turn',
     run: async (page) => {
       await openScenarios(page)
+      await toShelf(page)
       await clickButton(page, 'Review and fix')
       await sleep(700)
       // A stage rather than the name: the cards are what the editor is about - what each session is
@@ -386,6 +405,7 @@ const FRAMES = [
     shot: 'shot-turn',
     run: async (page) => {
       await openScenarios(page)
+      await toShelf(page)
       // One for each shelf, so the day has more than a single hour standing in it.
       for (const index of [0, 1]) {
         await page.locator('[aria-label="Schedule a run"]').nth(index).click()

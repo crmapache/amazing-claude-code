@@ -75,6 +75,12 @@ export const CAP_OPEN_BARE = 'openBare'
  */
 export const CAP_PARTS = 'parts'
 
+/**
+ * Writing to the main thread of a run that is going - see RemoteAgent.CAP_TELL and `scenarioTell`. A machine
+ * without it would refuse the words as a message it has never heard of, so the run's screen offers no field.
+ */
+export const CAP_TELL = 'tellHead'
+
 export interface Inventory {
   projects: Array<{
     key: string

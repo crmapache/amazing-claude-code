@@ -1,6 +1,7 @@
 package io.github.crmapache.amazingclaudecode.scenario
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /**
  * A run: one pass of a scenario, as the timeline draws it while it happens and as the history keeps it.
@@ -158,6 +159,17 @@ internal data class ScenarioRun(
      * work. The desk writes a live run at least every half a minute for exactly this (see ScenarioDesk.pulse).
      */
     val writtenAt: Long = 0,
+    /**
+     * A star a person put on it in the table of past runs - "I have looked at this one", or whatever else they
+     * want to find it by later. The panel attaches no meaning to it; it is set and cleared by hand only (see
+     * RunStore.star), and a run carried on keeps it, being the same run.
+     */
+    val starred: Boolean = false,
+    /**
+     * The head is answering something the person wrote to it, right now (see ScenarioEngine.tell) - what the
+     * timeline shows as the main thread writing. Only ever true on a live run.
+     */
+    val answering: Boolean = false,
 )
 
 @Serializable
@@ -234,7 +246,31 @@ internal data class RunNote(
     /** The card the head was busy with when it said this. Empty for a word said between stages. */
     val stepKey: String = "",
     val text: String = "",
-)
+    /**
+     * Who said it: the head (empty), or the person running the scenario, who can write to the head while the
+     * run goes (see ScenarioEngine.tell). Empty for the head so that every note written before the person
+     * could speak reads as what it was.
+     */
+    val who: String = "",
+    /**
+     * For a person's note: when it reached the head, and 0 while it is waiting for the head to be free to read
+     * it - a head in the middle of judging a card is not interrupted for it (see ScenarioEngine.deliverTold).
+     */
+    val deliveredAt: Long = 0,
+    /** For the head's answer to the person: what it passed on to the card at work, and empty when nothing. */
+    val relayed: String = "",
+    /**
+     * For a person's note: what they wrote as the panel's field holds it - text and attachment chips in the
+     * order they were put in - so the timeline draws it the way a chat draws a sent message. [text] is what
+     * the head was told; this is only for the eye, and carries no image bytes (see HeadMail.shown).
+     */
+    val tokens: JsonElement? = null,
+) {
+    companion object {
+        /** [who] of a note the person wrote. */
+        const val PERSON = "person"
+    }
+}
 
 /**
  * A question standing between the run and the rest of the night.
@@ -311,6 +347,8 @@ internal data class RunSummary(
      * whole - a hundred nights carrying a hundred roads nobody draws, to a phone whose frame has a cap.
      */
     val roadmap: List<RoadmapStop> = emptyList(),
+    /** See [ScenarioRun.starred]. */
+    val starred: Boolean = false,
 )
 
 /** One card of one pass on the road of a going run: how it stands, and where it belongs. */
@@ -379,5 +417,6 @@ internal fun ScenarioRun.summarise(): RunSummary {
         // being asked. The tool is the fallback for a permission the CLI worded no other way.
         asking = question?.let { it.title.ifBlank { it.tool } }.orEmpty(),
         roadmap = if (RunState.finished(state)) emptyList() else road.map { it.copy(title = it.title.take(ROADMAP_TITLE)) },
+        starred = starred,
     )
 }

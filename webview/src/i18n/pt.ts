@@ -382,6 +382,8 @@ export const pt: Dict = {
     delete: 'Excluir',
     deleteTitle: 'Excluir este cenário?',
     deleteRun: 'Excluir esta execução',
+    starRun: 'Marcar com estrela',
+    unstarRun: 'Remover a estrela',
     deleteRunTitle: 'Excluir esta execução?',
     queue: {
       add: 'Adicionar à fila',
@@ -501,6 +503,8 @@ export const pt: Dict = {
       scenarioMissingInput: 'Algo que ele pede ficou em branco.',
       noClaude: 'O Claude Code não foi encontrado nesta máquina.',
       runGone: 'Essa execução não existe mais.',
+      /** Words for the main thread of a run that ended a moment before they arrived. */
+      runOver: 'Essa execução terminou e o fio principal não lê mais mensagens. Abra-o como chat para continuar.',
       runNotResumable: 'Esta execução não pode ser retomada: a thread principal nunca chegou a subir.',
       queueNotWritten: 'Não deu para gravar a fila no disco.',
       scenarioNotMoved: 'Não deu para mover o cenário para a outra prateleira.',
@@ -552,6 +556,14 @@ export const pt: Dict = {
       stageNotReached: 'não alcançada',
       notYet: 'ainda não',
       log: 'Registro',
+      /** Above what the person wrote to the main thread, in the timeline. */
+      youSaid: 'VOCÊ',
+      tellPlaceholder: 'Escrever para o fio principal…',
+      /** Under the person's words while the main thread is busy judging a card. */
+      tellWaiting: 'aguarda o fio principal ficar livre',
+      answering: 'O fio principal está escrevendo uma resposta…',
+      /** Over what the main thread passed on to the card at work. */
+      passedOn: 'Repassado ao cartão',
     },
     help: {
       button: 'O que são cenários',

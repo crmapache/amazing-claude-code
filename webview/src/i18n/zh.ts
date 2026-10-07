@@ -381,6 +381,8 @@ export const zh: Dict = {
     delete: '删除',
     deleteTitle: '删除这个场景？',
     deleteRun: '删除这次运行',
+    starRun: '加星标',
+    unstarRun: '取消星标',
     deleteRunTitle: '删除这次运行？',
     queue: {
       add: '加入队列',
@@ -497,6 +499,8 @@ export const zh: Dict = {
       scenarioMissingInput: '它要问的东西里有一项是空的。',
       noClaude: '这台机器上找不到 Claude Code。',
       runGone: '这次运行已经不在了。',
+      /** Words for the main thread of a run that ended a moment before they arrived. */
+      runOver: '这次运行已经结束，它的主线程不再读取消息。要继续，请把它作为对话打开。',
       runNotResumable: '这次运行无法继续：它的主线程一直没有启动。',
       queueNotWritten: '队列无法写入磁盘。',
       scenarioNotMoved: '无法把场景移到另一个架子。',
@@ -548,6 +552,14 @@ export const zh: Dict = {
       stageNotReached: '没走到',
       notYet: '还没到',
       log: '日志',
+      /** Above what the person wrote to the main thread, in the timeline. */
+      youSaid: '你',
+      tellPlaceholder: '写给主线程…',
+      /** Under the person's words while the main thread is busy judging a card. */
+      tellWaiting: '等主线程空下来',
+      answering: '主线程正在写回复…',
+      /** Over what the main thread passed on to the card at work. */
+      passedOn: '已转给卡片',
     },
     help: {
       button: '什么是场景',

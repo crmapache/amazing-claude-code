@@ -7,6 +7,7 @@ import { useLocale, useT } from '../../i18n'
 import type { Scenario, ScenarioQueued, ScenarioQueueState, ScenarioRunSummary, ScenarioSchedule } from '../../protocol'
 import { Roadmap } from '../../components/scenarios/Roadmap'
 import { StatePill } from '../../components/scenarios/StatePill'
+import { StarIcon } from '../../components/scenarios/icons'
 import { BANDS, type ScenariosBand } from '../../components/scenarios/view'
 import { clockLabel, defaultHour, nextNote, schedulesOf, weekdayName, whenLabel } from '../../scenarios/schedule'
 import { runWorked } from '../../scenarios/timeline'
@@ -88,6 +89,8 @@ interface ScenariosProps {
   onPause: (runId: string) => void
   onResume: (runId: string) => void
   onStop: (runId: string) => void
+  /** The star on a past run, put on or taken off - the desk's table has the same one. */
+  onStarRun: (runId: string, starred: boolean) => void
   onBack: () => void
 }
 
@@ -137,6 +140,7 @@ export const Scenarios = ({
   onPause,
   onResume,
   onStop,
+  onStarRun,
   onBack,
 }: ScenariosProps) => {
   const t = useT()
@@ -274,7 +278,12 @@ export const Scenarios = ({
                 <p className={m.bandTitle}>{t.scenarios.pastRuns}</p>
                 <div className={m.card}>
                   {past.slice(0, shown).map((run) => (
-                    <PastRun key={run.id} run={run} onOpen={() => onOpenRun(run.id)} />
+                    <PastRun
+                      key={run.id}
+                      run={run}
+                      onOpen={() => onOpenRun(run.id)}
+                      onStar={() => onStarRun(run.id, !run.starred)}
+                    />
                   ))}
                 </div>
 
@@ -625,14 +634,23 @@ const LiveRun = ({
   )
 }
 
-const PastRun = ({ run, onOpen }: { run: ScenarioRunSummary; onOpen: () => void }) => {
+/**
+ * A past run: the row opens it, and the star beside the chevron marks it (see ScenarioRunSummary.starred).
+ *
+ * Two buttons in one row cannot be one button inside another, so the row is a box and the name is the
+ * button that opens it, stretched over the whole row (.pastRunOpen) - the row is still pressed anywhere,
+ * and the star stands above that and is pressed on its own.
+ */
+const PastRun = ({ run, onOpen, onStar }: { run: ScenarioRunSummary; onOpen: () => void; onStar: () => void }) => {
   const t = useT()
   const locale = useLocale()
 
   return (
-    <button type="button" className={m.pastRun} onClick={onOpen}>
+    <div className={m.pastRun}>
       <span className={m.pastRunText}>
-        <span className={m.pastRunName}>{run.scenarioName}</span>
+        <button type="button" className={`${m.pastRunName} ${m.pastRunOpen}`} onClick={onOpen}>
+          {run.scenarioName}
+        </button>
 
         <span className={m.pastRunFacts}>
           <StatePill state={run.state} failure={run.failure} />
@@ -653,8 +671,19 @@ const PastRun = ({ run, onOpen }: { run: ScenarioRunSummary; onOpen: () => void 
         </span>
       </span>
 
-      <span className={m.taskRowChevron}>›</span>
-    </button>
+      <button
+        type="button"
+        className={`${m.pastRunStar} ${run.starred ? m.pastRunStarred : ''}`}
+        aria-label={t.scenarios.starRun}
+        aria-pressed={run.starred === true}
+        onClick={onStar}
+      >
+        <StarIcon filled={run.starred === true} />
+      </button>
+      <span className={m.taskRowChevron} aria-hidden="true">
+        ›
+      </span>
+    </div>
   )
 }
 

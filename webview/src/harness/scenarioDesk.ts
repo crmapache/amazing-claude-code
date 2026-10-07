@@ -1176,6 +1176,71 @@ export const answerScenarios = (message: WebviewMessage): void => {
     return
   }
 
+  /*
+   * Words for the main thread: on the run as the person's at once, answered a moment later the way the IDE's
+   * head answers once it is free (see ScenarioEngine.deliverTold). While a step is being judged they wait first
+   * - the state worth seeing - and are read a beat later. Words that mention the card are passed on to it, so
+   * the line under the answer can be seen as well.
+   */
+  if (message.type === 'scenarioTell') {
+    const run = records[message.runId]
+    if (!run || !live.includes(run.id)) return send({ type: 'scenarioOutcome', ok: false, code: 'runOver' })
+    const stamp = (notes: ScenarioRun['notes']) => Math.max(Date.now(), ...notes.map((note) => note.at + 1))
+    const at = stamp(run.notes)
+    const board =
+      run.steps.find((one) => ['running', 'asking', 'judging', 'paused'].includes(one.state)) ??
+      run.steps.find((one) => one.state === 'waiting')
+    const stepKey = board?.key ?? ''
+    const busy = board?.state === 'judging'
+    keep({
+      ...run,
+      answering: !busy,
+      notes: [
+        ...run.notes,
+        {
+          at,
+          stepKey,
+          text: message.text,
+          who: 'person',
+          deliveredAt: busy ? 0 : at,
+          // The field for the eye, without the bytes of pasted pictures - as the IDE keeps it (see HeadMail.shown).
+          tokens: Array.isArray(message.tokens)
+            ? message.tokens.map((token: { kind: string; chip?: { data?: string } }) =>
+                token.kind === 'chip' && token.chip ? { ...token, chip: { ...token.chip, data: undefined } } : token,
+              )
+            : undefined,
+        },
+      ],
+    })
+
+    setTimeout(
+      () => {
+        const now = records[message.runId]
+        if (!now) return
+        const passOn = /card|карточ/i.test(message.text)
+        keep({
+          ...now,
+          answering: false,
+          notes: [
+            ...now.notes.map((note) =>
+              note.who === 'person' && note.at === at ? { ...note, deliveredAt: note.deliveredAt || Date.now() } : note,
+            ),
+            {
+              at: stamp(now.notes),
+              stepKey,
+              text: passOn
+                ? 'Understood. I have passed it on to the card at work, and I will judge it with that in mind.'
+                : 'Got it. That holds for every card I hand over and every verdict I give, to the end of the run.',
+              relayed: passOn ? message.text : undefined,
+            },
+          ],
+        })
+      },
+      busy ? 3200 : 1800,
+    )
+    return
+  }
+
   if (message.type === 'scenarioPause') {
     const run = records[message.runId]
     if (run) {
@@ -1277,6 +1342,12 @@ export const answerScenarios = (message: WebviewMessage): void => {
     // IDE works it out (see ScenarioDesk.carryOn).
     stepQueue()
     return
+  }
+
+  if (message.type === 'scenarioRunStar') {
+    if (live.includes(message.runId)) return send({ type: 'scenarioOutcome', ok: false, code: 'runBusy' })
+    runs = runs.map((one) => (one.id === message.runId ? { ...one, starred: message.starred } : one))
+    return sendList()
   }
 
   if (message.type === 'scenarioRunDelete') {

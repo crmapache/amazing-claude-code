@@ -386,6 +386,8 @@ export const fr: Dict = {
     delete: 'Supprimer',
     deleteTitle: 'Supprimer ce scénario ?',
     deleteRun: 'Supprimer cette exécution',
+    starRun: 'Marquer d’une étoile',
+    unstarRun: 'Retirer l’étoile',
     deleteRunTitle: 'Supprimer cette exécution ?',
     queue: {
       add: 'Mettre dans la file',
@@ -505,6 +507,8 @@ export const fr: Dict = {
       scenarioMissingInput: 'Quelque chose qu\'il demande est resté vide.',
       noClaude: 'Claude Code est introuvable sur cette machine.',
       runGone: 'Cette exécution n\'existe plus.',
+      /** Words for the main thread of a run that ended a moment before they arrived. */
+      runOver: 'Cette exécution est terminée et son fil principal ne lit plus de messages : ouvrez-le comme conversation pour continuer.',
       runNotResumable: 'Cette exécution ne peut pas être reprise : son fil principal n\'a jamais démarré.',
       queueNotWritten: 'La file n’a pas pu être écrite sur le disque.',
       scenarioNotMoved: 'Le scénario n’a pas pu être déplacé sur l’autre étagère.',
@@ -556,6 +560,14 @@ export const fr: Dict = {
       stageNotReached: 'pas atteinte',
       notYet: 'pas encore',
       log: 'Journal',
+      /** Above what the person wrote to the main thread, in the timeline. */
+      youSaid: 'VOUS',
+      tellPlaceholder: 'Écrire au fil principal…',
+      /** Under the person's words while the main thread is busy judging a card. */
+      tellWaiting: 'attend que le fil principal soit libre',
+      answering: 'Le fil principal écrit une réponse…',
+      /** Over what the main thread passed on to the card at work. */
+      passedOn: 'Transmis à la carte',
     },
     help: {
       button: 'Ce que sont les scénarios',

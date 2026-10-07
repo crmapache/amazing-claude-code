@@ -98,4 +98,15 @@ describe('the road on the card of a going run', () => {
     expect(roadWidth(0)).toBe(0)
     expect(roadWidth(1)).toBe(ROAD.stop)
   })
+
+  /*
+   * The strip gives the road exactly roadWidth, and an IDE at 90% on a retina screen measures that box back
+   * snapped to the device grid - 147.99 of 148. That folded six stops into "+2" with room to spare.
+   */
+  it('does not fold for the hair a fractional zoom takes off the room it was given', () => {
+    expect(read(roadLayout(6, 1, roadWidth(6) - 0.01))).toBe('1 2 3 4 5 6')
+    expect(read(roadLayout(6, 1, roadWidth(6) - 0.9))).toBe('1 2 3 4 5 6')
+    // A stop's worth short is short, and the road folds.
+    expect(read(roadLayout(6, 1, roadWidth(6) - ROAD.stop))).not.toBe('1 2 3 4 5 6')
+  })
 })

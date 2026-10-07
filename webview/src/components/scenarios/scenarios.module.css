@@ -235,6 +235,14 @@
   color: var(--acc-bad-light);
 }
 
+/* A past run somebody starred: lit in the palette's orange, and kept lit under the pointer. The pale sand of a
+   warning was tried first and read as a star half switched off. */
+.iconStarred,
+.iconStarred:hover:not(:disabled),
+.iconStarred[data-hover]:not(:disabled) {
+  color: var(--acc-orange);
+}
+
 /* A clock on a scenario that has hours set: lit, so the row says it without being read. */
 .iconOn {
   color: var(--acc-branch);
@@ -272,7 +280,6 @@
 .bandTab {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   min-height: var(--acc-hit);
   padding: 4px 10px;
   border-radius: var(--acc-r-sm);
@@ -289,6 +296,17 @@
 .bandTabOn {
   background: var(--acc-bg-control);
   color: var(--acc-fg);
+}
+
+/*
+ * The name and its count on one baseline. The count is in the console font and a size down, and centred as
+ * two boxes the digits stood off the line of the word - each font puts its ink at its own height inside its
+ * line box. The button still centres the pair as a whole.
+ */
+.bandTabLine {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
 }
 
 /* The count on every tab from the first draw, zero included: a badge that appears with the first answer
@@ -316,16 +334,18 @@
   }
 }
 
-/* Something is going, and the count is the only thing on the strip that says so. */
+/* Something is going, and the count is the only thing on the strip that says so. On the baseline of its digit,
+   so it keeps the line of the tab's name; the dot is centred on its own. */
 .bandCountLive {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 4px;
   color: var(--acc-accent-light);
 }
 
 .bandCountLive::before {
   content: '';
+  align-self: center;
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -915,6 +935,12 @@
   gap: 10px;
 }
 
+/* The road (see Roadmap) gets air above and below on top of the card's own gap: at the card's 8 points the
+   stops stood pressed between the stage's name and the readings. */
+.runCardRoad {
+  margin: 4px 0;
+}
+
 /* The state at the end of the line of readings, in the card's corner - and still there when a narrow panel
    wraps the line, since the margin pushes it right on whichever line it lands. */
 .runCardState {
@@ -967,7 +993,7 @@
 
 .tableRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 96px 96px 72px 60px 108px 26px;
+  grid-template-columns: minmax(0, 1fr) 96px 96px 72px 60px 108px 26px 26px;
   align-items: center;
   gap: 8px;
   padding: 7px 9px;
@@ -1040,6 +1066,7 @@
   justify-content: flex-end;
 }
 
+.colStar,
 .colDrop {
   display: flex;
   justify-content: flex-end;
@@ -2298,7 +2325,9 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  padding: 8px 14px;
+  /* Taller than the strip's text needs, for the road on it: at 8 points its stops sat tight against the
+     rules above and below. */
+  padding: 12px 14px;
   border-bottom: 1px solid var(--acc-line);
   background: var(--acc-bg-deep);
 }
@@ -2344,12 +2373,17 @@
   background: var(--acc-accent);
 }
 
-/* The road on the run's own strip (see Roadmap): as wide as the road asks for (flex-basis, set from its
-   length) and shrinking from there, so on a narrow panel it folds rather than pushing the strip wider. */
+/*
+ * The road on the run's own strip (see Roadmap): as wide as the road asks for (--acc-road, set from its length)
+ * and shrinking from there, so on a narrow panel it folds rather than pushing the strip wider.
+ *
+ * The floor keeps a long road from being squeezed to nothing - and is never wider than the road itself: a
+ * floor of a flat 90 points held a road of two stops (44) in a slot twice its size, and the readings stood a
+ * hand's width away from it.
+ */
 .runBarRoad {
-  flex-grow: 0;
-  flex-shrink: 1;
-  min-width: 90px;
+  flex: 0 1 var(--acc-road);
+  min-width: min(90px, var(--acc-road));
   display: flex;
 }
 
@@ -2357,6 +2391,12 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+/* Pushed to the far edge of whatever line it lands on, the strip's or, wrapped, a line of its own. */
+.runBarState {
+  display: flex;
+  margin-left: auto;
 }
 
 /* --- The question the run is standing on -------------------------------------------- */
@@ -2738,6 +2778,86 @@
   color: var(--acc-fg-faint);
 }
 
+/*
+ * What the person wrote to the main thread (see the composer on ScenarioRunTab): the same frame as the main
+ * thread's words, in the person's own colour - the accent a sent message wears in a chat - so the two read as
+ * two voices of one conversation, in the order they spoke.
+ */
+.notePerson {
+  border-left-color: var(--acc-accent);
+  background: var(--acc-accent-08);
+}
+
+.notePerson .noteWho {
+  color: var(--acc-accent-light);
+}
+
+/* Their message as a chat draws a sent one (see SentTokens): words with line breaks kept, attachment chips
+   among them, nothing read as markdown. */
+.notePersonText {
+  min-width: 0;
+  font: 11px/1.55 var(--acc-font);
+  color: var(--acc-fg-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Under words the main thread has not read yet: it is judging a card, and is not interrupted for them. */
+.noteWaiting {
+  font: italic 10.5px/1.4 var(--acc-font);
+  color: var(--acc-fg-ghost);
+}
+
+/* What the main thread passed on to the card at work, under its answer. */
+.noteRelayed {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 3px;
+  padding-left: 8px;
+  border-left: 1px solid var(--acc-agent-dark);
+}
+
+.noteRelayedLabel {
+  font: 600 9px/1.2 var(--acc-font);
+  letter-spacing: 0.06em;
+  color: var(--acc-fg-ghost);
+}
+
+/* --- Writing to the main thread of a going run (the composer App hands in) ------------- */
+
+.tell {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Over the field: the main thread answering what was written in it. */
+.tellStatus {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-top: 1px solid var(--acc-line);
+  font: 10.5px var(--acc-font);
+  color: var(--acc-agent);
+}
+
+.tellDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acc-agent);
+  animation: accPulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tellDot {
+    animation: none;
+  }
+}
+
 /* --- One step's whole log, in place of the timeline ---------------------------------- */
 
 .logFacts {
@@ -2833,7 +2953,7 @@
  */
 @container (max-width: 680px) {
   .tableRow {
-    grid-template-columns: minmax(0, 1fr) 96px 96px 72px 108px 26px;
+    grid-template-columns: minmax(0, 1fr) 96px 96px 72px 108px 26px 26px;
   }
 
   .colCost {
@@ -2847,7 +2967,7 @@
   }
 
   .tableRow {
-    grid-template-columns: minmax(0, 1fr) 74px 74px 100px 26px;
+    grid-template-columns: minmax(0, 1fr) 74px 74px 100px 26px 26px;
   }
 
   .colTook,
@@ -2872,10 +2992,10 @@
   }
 
   .tableRow {
-    grid-template-columns: max-content minmax(0, 1fr) auto 26px;
+    grid-template-columns: max-content minmax(0, 1fr) auto 26px 26px;
     grid-template-areas:
-      'run run state drop'
-      'started finished finished drop';
+      'run run state star drop'
+      'started finished finished star drop';
     row-gap: 3px;
   }
 
@@ -2904,6 +3024,10 @@
 
   .colState {
     grid-area: state;
+  }
+
+  .colStar {
+    grid-area: star;
   }
 
   .colDrop {

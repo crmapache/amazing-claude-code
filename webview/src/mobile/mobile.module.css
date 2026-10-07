@@ -3252,9 +3252,17 @@
   color: var(--acc-fg-body);
 }
 
-/* The road of its cards (see Roadmap) - what the bar below used to say, and the card the run is on. */
+/* The road of its cards (see Roadmap) - what the bar below used to say, and the card the run is on. The
+   same room above it as the readings have below it. */
 .runRoad {
+  margin-top: var(--acc-sp-3);
+}
+
+/* The same road on the run's own screen, the last thing in its header: room under it as well, or the stops
+   sit on the header's bottom rule. */
+.runHeadRoad {
   margin-top: var(--acc-sp-2);
+  padding-bottom: var(--acc-sp-5);
 }
 
 /* How far along, as a bar - drawn only for an IDE too old to send the road. */
@@ -3302,18 +3310,59 @@
 /* --- The shelves: past runs, and the scenarios themselves -------------------- */
 
 .pastRun {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--acc-sp-3);
   width: 100%;
   min-height: var(--acc-hit);
   padding: var(--acc-sp-3) var(--acc-sp-4);
-  border: none;
   border-bottom: 1px solid var(--acc-bg-panel);
+  cursor: pointer;
+}
+
+/* The name is the button that opens the run, and its press reaches over the whole row (see PastRun). */
+.pastRunOpen {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: none;
   background: none;
   text-align: left;
   font-family: inherit;
   cursor: pointer;
+}
+
+.pastRunOpen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+/* Above the row's press, so a thumb on the star marks the run instead of opening it. A thumb's target, a
+   star the size of the text. */
+.pastRunStar {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--acc-hit);
+  height: var(--acc-hit);
+  margin: calc(var(--acc-sp-3) * -1) calc(var(--acc-sp-3) * -1) calc(var(--acc-sp-3) * -1) 0;
+  border: none;
+  background: none;
+  color: var(--acc-fg-ghost);
+}
+
+.pastRunStar svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* The desk's orange (see .iconStarred in scenarios.module.css). */
+.pastRunStarred {
+  color: var(--acc-orange);
 }
 
 .pastRun:last-child {
@@ -3631,6 +3680,76 @@
 
 .noteText {
   min-width: 0;
+}
+
+/* What the person wrote to the main thread: the same note in the accent a sent message wears (see the desk's
+   .notePerson). */
+.notePerson {
+  border-left-color: var(--acc-accent);
+}
+
+.notePerson .noteWho {
+  color: var(--acc-accent-light);
+}
+
+.notePersonText {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--acc-fg-body);
+}
+
+/* Under words the main thread has not read yet - it is judging a card and is not interrupted for them. */
+.noteWaiting {
+  font-style: italic;
+  color: var(--acc-fg-ghost);
+}
+
+/* What the main thread passed on to the card at work, under its answer. */
+.noteRelayed {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+  padding-left: var(--acc-sp-2);
+  border-left: 1px solid var(--acc-c-iris-1);
+}
+
+.noteRelayedLabel {
+  color: var(--acc-fg-ghost);
+}
+
+/* --- Writing to the main thread of a going run ------------------------------------ */
+
+/* Over the chat's composer at the foot of the run: the main thread answering what was written in it. */
+.tellStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  padding: var(--acc-sp-2) var(--acc-sp-5) 0;
+  font-size: 13px;
+  color: var(--acc-c-iris-2);
+}
+
+.tellDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--acc-c-iris-2);
+  animation: accTellPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes accTellPulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tellDot {
+    animation: none;
+  }
 }
 
 /* --- The question a run is standing on --------------------------------------- */

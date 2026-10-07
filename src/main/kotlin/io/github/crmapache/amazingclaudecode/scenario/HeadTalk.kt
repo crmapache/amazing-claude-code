@@ -476,6 +476,112 @@ internal object HeadTalk {
         append("Answer with `{\"again\": true|false, \"reason\": \"...\"}`.")
     }
 
+    // --- What the person writes to the head while the run goes ------------------------
+
+    /**
+     * Words the person wrote to the head, put to it as a turn of their own - the head is free: a card is at
+     * work, a question waits for the person, or the run is paused (see ScenarioEngine.deliverTold).
+     *
+     * A conversation rather than one more question with an object: the person asks what is going on, or says
+     * how the rest of the night should go, and the answer is read by them in the timeline as a reply. What
+     * they ask for stands for the rest of the run because the head is one conversation from the first card to
+     * the last - so it is told that in so many words, and told the one thing it cannot do for them: the shape
+     * of the run is not its to change, while pausing and stopping are the person's own buttons.
+     *
+     * [situation] is where the run stands, in a sentence. [toCard] is whether a card is there to pass words on
+     * to - working, standing on a question, or paused in the middle of its work - and only then is the head
+     * offered the way to do it.
+     */
+    fun toldRequest(said: List<String>, situation: String, toCard: Boolean): String = buildString {
+        appendLine("# The person running this scenario has written to you")
+        appendLine()
+        appendLine(situation)
+        appendLine()
+        appendLine(if (said.size > 1) "They wrote, in this order:" else "They wrote:")
+        appendLine()
+        appendTold(said)
+        appendLine()
+        appendLine(
+            "This is a conversation, not a question about a card: answer them in a few sentences, and they read " +
+                "your answer in the run's timeline as your reply. What they ask of you stands for the rest of the " +
+                "run - the slots you fill, the verdicts you give - until they take it back, so say plainly what " +
+                "you will do differently because of it. You can look at the project to answer them. What you " +
+                "cannot do is reach a card you have not been handed, or change the order of the run; if they ask " +
+                "for that, say so - pausing and stopping the run are their own buttons.",
+        )
+        appendLine()
+        if (toCard) {
+            appendLine(
+                "If part of it is for the card on the board, you can pass it on: its session reads your words " +
+                    "between two of its own steps, as coming from the main thread. Pass on only what the card " +
+                    "needs, in the words it needs them in.",
+            )
+            appendLine()
+            append("End with `{\"toCard\": \"...\"}` holding the words for the card, or `{}` when there is nothing to pass on.")
+        } else {
+            append("End with `{}`.")
+        }
+    }
+
+    /**
+     * Words the person wrote while the head was busy with a question of the run's, said before the next one.
+     *
+     * The head was not interrupted for them: its answer to a question of the run's is an object the run moves
+     * on, and a turn broken into by a conversation comes back without one. So they waited, and they go first in
+     * the next thing said to it - the head answers them in the same sentences that go with its object.
+     */
+    fun withTold(said: List<String>, question: String): String = buildString {
+        appendLine(
+            if (said.size > 1) {
+                "Before the message below: the person running this scenario wrote to you while you were busy, in this order."
+            } else {
+                "Before the message below: the person running this scenario wrote to you while you were busy."
+            },
+        )
+        appendLine()
+        appendTold(said)
+        appendLine()
+        appendLine(
+            "What they ask of you stands for the rest of the run, until they take it back. Answer them in the " +
+                "sentences that go with your answer below - those are what they read in the timeline - and then " +
+                "answer the message below exactly as it asks.",
+        )
+        appendLine()
+        appendLine("---")
+        appendLine()
+        append(question)
+    }
+
+    /**
+     * Words the person wrote while the head is doing a card's work itself (see ScenarioEngine.takeOver).
+     *
+     * Said into the turn that is going rather than kept for later: that turn can be an hour of work, and these
+     * are most often about that very work - "commit it as one", "leave the migration alone". The CLI reads a
+     * message written into a running turn between two of its steps.
+     */
+    fun toldMidWork(said: List<String>): String = buildString {
+        appendLine("The person running this scenario has written to you while you are finishing this card:")
+        appendLine()
+        appendTold(said)
+        appendLine()
+        append(
+            "Take it into the work, and carry on. When you are finished, end the way the message handing you the " +
+                "card asked for, and say in your sentences what you did about this.",
+        )
+    }
+
+    /** What a card is told when the head passes the person's words on to it. */
+    fun relayed(words: String): String =
+        "A word from the main thread, which the person running this scenario asked it to pass on to you:\n\n$words"
+
+    private fun StringBuilder.appendTold(said: List<String>) {
+        for (one in said) {
+            appendLine("---")
+            appendLine(one)
+        }
+        appendLine("---")
+    }
+
     /** Said once when a turn came back without the object it was asked for. */
     const val NO_OBJECT =
         "Your answer had no json object in it, so the panel has nothing to act on and the run cannot move. " +

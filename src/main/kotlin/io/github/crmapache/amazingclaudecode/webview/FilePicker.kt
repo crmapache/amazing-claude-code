@@ -42,17 +42,8 @@ internal object FilePicker {
         return kindOf(file) to relativePath(project, file)
     }
 
-    /**
-     * The attachment kind for a path that must not be shortened.
-     *
-     * That is how "Send Absolute Path…" arrives: there the full path is the whole point of the action -
-     * it is asked for a conversation raised outside this project, where a path from the root leads
-     * nowhere.
-     */
-    fun kindOf(path: String): String? =
-        LocalFileSystem.getInstance().refreshAndFindFileByPath(path)?.let(::kindOf)
-
-    private fun kindOf(file: VirtualFile): String = when {
+    /** The attachment kind - also for a file the IDE handed over itself, from the project tree's menu or the editor's. */
+    fun kindOf(file: VirtualFile): String = when {
         file.isDirectory -> "dir"
         file.extension?.lowercase() in IMAGE_EXTENSIONS -> "img"
         else -> "file"

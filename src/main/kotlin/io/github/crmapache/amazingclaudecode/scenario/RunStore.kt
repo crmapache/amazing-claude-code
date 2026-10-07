@@ -106,6 +106,18 @@ internal class RunStore(workingDirectory: String?) {
         runCatching { runDirectory(id)?.deleteRecursively() ?: false }.getOrDefault(false)
 
     /**
+     * Puts the star on a run or takes it off (see ScenarioRun.starred), and false for a run that is not here.
+     *
+     * Written with the stamp it already had rather than with now: [ScenarioRun.writtenAt] is the last moment
+     * an IDE was walking the run, and a star put on in the morning is not that.
+     */
+    fun star(id: String, starred: Boolean): Boolean {
+        val run = read(id) ?: return false
+        keep(run.copy(starred = starred), now = run.writtenAt)
+        return true
+    }
+
+    /**
      * A run that outlived the IDE that was walking it is neither going nor finished, and it has to be made
      * one of them.
      *
@@ -146,6 +158,7 @@ internal class RunStore(workingDirectory: String?) {
 
             return run.copy(
                 state = RunState.FAILED,
+                answering = false,
                 failure = run.failure.ifEmpty { RunFailure.CRASHED },
                 finishedAt = if (run.finishedAt > 0) run.finishedAt else end,
                 rested = run.rested + rest,

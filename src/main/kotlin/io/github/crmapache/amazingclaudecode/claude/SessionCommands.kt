@@ -539,7 +539,18 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
 
             "scenarioOpen" -> hub.scenarios.sendRun(clientId, field("runId"))
 
+            // Words for the main thread of a run that is going - see ScenarioEngine.tell.
+            "scenarioTell" -> hub.scenarios.tell(
+                clientId,
+                field("runId"),
+                field("text"),
+                images = images(payload),
+                tokens = payload["tokens"],
+            )
+
             "scenarioRunDelete" -> hub.scenarios.deleteRun(clientId, field("runId"))
+
+            "scenarioRunStar" -> hub.scenarios.starRun(clientId, field("runId"), flag(payload, "starred"))
 
             // What one step of a run said, read off the conversation it said it in - see ScenarioDesk.
             "scenarioLog" -> hub.scenarios.sendLog(

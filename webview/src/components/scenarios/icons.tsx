@@ -51,6 +51,19 @@ export const DuplicateIcon = () => (
   </Icon>
 )
 
+/**
+ * The star on a past run: an outline while it is off, filled once a person has put it on - the same shape
+ * either way, so the button does not change its size under the pointer.
+ */
+export const StarIcon = ({ filled }: { filled: boolean }) => (
+  <Icon>
+    <path
+      d="M8 2.3L9.59 6.32L13.9 6.58L10.57 9.33L11.64 13.52L8 11.2L4.36 13.52L5.43 9.33L2.1 6.58L6.41 6.32Z"
+      fill={filled ? 'currentColor' : 'none'}
+    />
+  </Icon>
+)
+
 /** Delete, remove, close: the same cross wherever an icon button of these screens takes something away. */
 export const CrossIcon = () => (
   <Icon>

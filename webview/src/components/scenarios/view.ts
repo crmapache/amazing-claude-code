@@ -97,8 +97,11 @@ export type ScenariosView =
   | { kind: 'list'; band: ScenariosBand; over: ScenariosOverlay }
   | { kind: 'edit'; draft: Scenario; fresh: boolean; at: EditorPlace }
 
-/** What the hub opens on, and what it goes back to when a form is closed. */
-export const AT_FIRST: ScenariosView = { kind: 'list', band: 'scenarios', over: { kind: 'none' } }
+/**
+ * What the hub opens on: its runs - what is going and what came of the last ones - rather than the shelf.
+ * That is what the button is pressed for most; a scenario is written once and run many times.
+ */
+export const AT_FIRST: ScenariosView = { kind: 'list', band: 'runs', over: { kind: 'none' } }
 
 /** Where the editor opens: the top of the outline, which is where a scenario is read from. */
 export const EDIT_AT_FIRST: EditorPlace = { part: 'name' }

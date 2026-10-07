@@ -11,6 +11,7 @@ import com.intellij.openapi.editor.colors.EditorColorsListener
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.IdeFrame
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowAnchor
@@ -767,33 +768,33 @@ internal class ClaudePanel(
             .mapNotNull { (sessionId, value) -> value.jsonPrimitive.longOrNull?.let { sessionId to it } }
             .toMap()
 
-    // --- A reference from the editor -------------------------------------------
+    // --- From the editor and the project tree --------------------------------
 
     /**
-     * Put an attachment with a ready path into the input field - the same way a file dropped into the
-     * panel with the mouse gets there.
+     * Files and folders from an IDE menu - the project tree's or the editor's - put into the input field
+     * as attachments, the same way a file dropped into the panel with the mouse gets there.
      *
-     * The path is taken as it is, without shortening: this is where "Send Absolute Path…" arrives, and
-     * there the full path is the whole point of the action (see SendSelectionAbsoluteAction).
+     * By the full path, unlike a drop: why, see SendAbsolutePathAction.
      */
-    fun attachPath(path: String) {
-        ApplicationManager.getApplication().executeOnPooledThread {
-            // We do not touch the file system from the interface thread: a path may lead anywhere, up to
-            // an unmounted drive.
-            val kind = FilePicker.kindOf(path) ?: return@executeOnPooledThread
+    fun attachFiles(files: List<VirtualFile>) {
+        if (files.isEmpty()) return
+        hub.stats.noteFeature("send_path")
 
+        // No trip to the disk here, unlike a drop: the IDE hands over files it already knows, and whether
+        // one is a folder is in its memory.
+        for (file in files) {
             webview?.send(
                 buildJsonObject {
                     put("type", "picked")
-                    put("kind", kind)
-                    put("value", path)
+                    put("kind", FilePicker.kindOf(file))
+                    put("value", file.path)
                 }.toString(),
             )
-
-            // The action was invoked from the editor or from the project tree - the focus stayed there,
-            // and typing into the input field would take a separate click.
-            ApplicationManager.getApplication().invokeLater { webview?.focus() }
         }
+
+        // The action was invoked from the editor or from the project tree - the focus stayed there,
+        // and typing into the input field would take a separate click.
+        ApplicationManager.getApplication().invokeLater { webview?.focus() }
     }
 
     /** A piece of a file from the editor: in the input field it becomes a reference, not text. */

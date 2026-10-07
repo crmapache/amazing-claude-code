@@ -383,6 +383,8 @@ export const ja: Dict = {
     delete: '削除',
     deleteTitle: 'このシナリオを削除しますか？',
     deleteRun: 'この実行を削除',
+    starRun: 'スターを付ける',
+    unstarRun: 'スターを外す',
     deleteRunTitle: 'この実行を削除しますか？',
     queue: {
       add: 'キューに追加',
@@ -499,6 +501,8 @@ export const ja: Dict = {
       scenarioMissingInput: '尋ねている項目のどれかが空のままです。',
       noClaude: 'このマシンで Claude Code が見つかりません。',
       runGone: 'その実行はもうありません。',
+      /** Words for the main thread of a run that ended a moment before they arrived. */
+      runOver: 'この実行は終了しており、メインスレッドはもうメッセージを読みません。続けるにはチャットとして開いてください。',
       runNotResumable: 'この実行は再開できません。メインスレッドが一度も立ち上がらなかったためです。',
       queueNotWritten: 'キューをディスクに書き込めませんでした。',
       scenarioNotMoved: 'シナリオをもう一方の棚へ移動できませんでした。',
@@ -550,6 +554,14 @@ export const ja: Dict = {
       stageNotReached: '届いていません',
       notYet: 'まだ',
       log: 'ログ',
+      /** Above what the person wrote to the main thread, in the timeline. */
+      youSaid: 'あなた',
+      tellPlaceholder: 'メインスレッドに書く…',
+      /** Under the person's words while the main thread is busy judging a card. */
+      tellWaiting: 'メインスレッドの手が空くのを待っています',
+      answering: 'メインスレッドが返信を書いています…',
+      /** Over what the main thread passed on to the card at work. */
+      passedOn: 'カードに伝えた内容',
     },
     help: {
       button: 'シナリオとは',

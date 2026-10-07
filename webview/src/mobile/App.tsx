@@ -46,6 +46,7 @@ import {
   buildProjects,
   CAP_OPEN_BARE,
   CAP_PARTS,
+  CAP_TELL,
   chatKey,
   waitingFor,
   type AgentEntry,
@@ -2503,6 +2504,9 @@ export const App = () => {
             onPause={(runId) => command(at.agentId, at.projectKey, { type: 'scenarioPause', runId })}
             onResume={(runId) => command(at.agentId, at.projectKey, { type: 'scenarioResume', runId })}
             onStop={(runId) => command(at.agentId, at.projectKey, { type: 'scenarioStop', runId })}
+            onStarRun={(runId, starred) =>
+              command(at.agentId, at.projectKey, { type: 'scenarioRunStar', runId, starred })
+            }
             onBack={back}
           />
         </div>
@@ -2572,6 +2576,25 @@ export const App = () => {
                 conversationId: step.conversationId,
               })
             }}
+            tell={
+              (inventories[at.agentId]?.caps ?? []).includes(CAP_TELL)
+                ? {
+                    facts: facts[`${at.agentId}:${at.projectKey}`] ?? emptyFacts(),
+                    photos: (inventories[at.agentId]?.caps ?? []).includes(CAP_PARTS) ? ROOMY : NARROW,
+                    connected: states[at.agentId] === 'connected',
+                    voice: dictation,
+                  }
+                : null
+            }
+            onTell={(prompt: OutgoingPrompt) =>
+              command(at.agentId, at.projectKey, {
+                type: 'scenarioTell',
+                runId: at.runId,
+                text: prompt.text,
+                images: prompt.images,
+                tokens: prompt.tokens,
+              })
+            }
             onBack={back}
           />
         </div>

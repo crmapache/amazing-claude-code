@@ -8,7 +8,7 @@ import { useTicking } from '../../hooks/useTicking'
 import { useLocale, useT } from '../../i18n'
 import { Roadmap } from './Roadmap'
 import { StatePill } from './StatePill'
-import { CrossIcon } from './icons'
+import { CrossIcon, StarIcon } from './icons'
 import { RUNS_PAGE } from './view'
 import s from './scenarios.module.css'
 
@@ -35,6 +35,7 @@ export const RunsBand = ({
   onPause,
   onResume,
   onStop,
+  onStar,
   onDelete,
 }: {
   going: ScenarioRunSummary[]
@@ -49,6 +50,8 @@ export const RunsBand = ({
   onPause: (runId: string) => void
   onResume: (runId: string) => void
   onStop: (run: ScenarioRunSummary) => void
+  /** The star on a past run, put on or taken off (see ScenarioRunSummary.starred). */
+  onStar: (run: ScenarioRunSummary, starred: boolean) => void
   onDelete: (run: ScenarioRunSummary) => void
 }) => {
   const t = useT()
@@ -109,6 +112,7 @@ export const RunsBand = ({
               <span className={s.colTook}>{t.scenarios.table.took}</span>
               <span className={s.colCost}>{t.scenarios.table.cost}</span>
               <span className={s.colState}>{t.scenarios.table.state}</span>
+              <span className={s.colStar} />
               <span className={s.colDrop} />
             </div>
 
@@ -133,6 +137,20 @@ export const RunsBand = ({
                 <span className={s.colCost}>{run.cost > 0 ? `$${run.cost.toFixed(2)}` : ''}</span>
                 <span className={s.colState}>
                   <StatePill state={run.state} failure={run.failure} />
+                </span>
+                {/* A mark of the person's own - "looked at", or whatever they want to find the run by. It
+                    means nothing to the panel and orders nothing: a starred run stays where its date puts it. */}
+                <span className={s.colStar}>
+                  <button
+                    type="button"
+                    className={`${s.iconButton} ${run.starred ? s.iconStarred : ''}`}
+                    data-tooltip={run.starred ? t.scenarios.unstarRun : t.scenarios.starRun}
+                    aria-label={t.scenarios.starRun}
+                    aria-pressed={run.starred === true}
+                    onClick={() => onStar(run, !run.starred)}
+                  >
+                    <StarIcon filled={run.starred === true} />
+                  </button>
                 </span>
                 <span className={s.colDrop}>
                   <button
@@ -259,7 +277,9 @@ const LiveRun = ({
       {/* An IDE that sends no road (older than the road itself) gets the bar it had - the phone meets this for
           real, its page comes from the relay and may be newer than the IDE behind it. */}
       {run.roadmap && run.roadmap.length > 0 ? (
-        <Roadmap stops={run.roadmap} state={run.state} />
+        <div className={s.runCardRoad}>
+          <Roadmap stops={run.roadmap} state={run.state} />
+        </div>
       ) : (
         <div className={s.runCardFacts}>
           <span className={s.progress}>

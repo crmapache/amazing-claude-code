@@ -499,6 +499,18 @@ interface ComposerProps {
    * message are - within reach of the hand that is already on the field.
    */
   onOpenScenarios?: () => void
+  /**
+   * What the empty field says, when it is not the field of a conversation - the main thread of a run, for
+   * one (see ScenarioRunTab). Absent means the conversation's own words.
+   */
+  placeholder?: string
+  /**
+   * Whether the words go into a conversation - the default - or to something that only reads them: a run's
+   * main thread (see ScenarioRunTab). A field that is not a conversation's has nothing a conversation's field
+   * offers around the words: no commands behind the slash, no shell through "!", no side question, no queue.
+   * Left in, each would promise what the receiving end does not do.
+   */
+  forConversation?: boolean
 }
 
 export const Composer = ({
@@ -555,6 +567,8 @@ export const Composer = ({
   railContainer,
   onOpenSearch,
   onOpenScenarios,
+  placeholder: ownPlaceholder,
+  forConversation = true,
 }: ComposerProps) => {
   const t = useT()
   const compact = layout === 'compact'
@@ -745,14 +759,14 @@ export const Composer = ({
    * changes its look because of it: this goes somewhere other than usual, and that has to be understood
    * before the press rather than from a card appearing in the feed.
    */
-  const bash = isBashDraft(tokens)
+  const bash = forConversation && isBashDraft(tokens)
 
   /**
    * A side question has been typed - `/btw` (see feed/side). The field says so the way it says it for a
    * shell command: the question goes beside the work rather than into it, and has no queue to wait in -
    * which is the whole reason to ask one.
    */
-  const aside = !bash && isAsideDraft(tokens)
+  const aside = forConversation && !bash && isAsideDraft(tokens)
 
   const commandMatches = useMemo(
     () => (query === null || dismissed ? [] : matchCommands(commands, query)),
@@ -1510,9 +1524,11 @@ export const Composer = ({
 
   const placeholder = tokens.length
     ? ''
-    : planMode
-      ? t.composer.placeholderPlan
-      : t.composer.placeholder
+    : ownPlaceholder
+      ? ownPlaceholder
+      : planMode
+        ? t.composer.placeholderPlan
+        : t.composer.placeholder
 
   /**
    * The caret has run into a chip and stopped on it rather than stepped over: from there backspace
@@ -1907,7 +1923,7 @@ export const Composer = ({
 
      A terminal command has no queue at all: the panel runs it itself and has no reason to wait for the
      agent to come free. */
-  const queueButton = bash || aside ? null : (
+  const queueButton = bash || aside || !forConversation ? null : (
     <button
       type="button"
       className={`${s.send} ${s.sendQueued}`}
@@ -2014,12 +2030,13 @@ export const Composer = ({
   const hasSearch = Boolean(onOpenSearch)
   const hasScenarios = Boolean(onOpenScenarios)
   const presentTools = useMemo(() => {
-    const present = new Set<WritingTool>(['improve', 'attach', 'slash'])
+    const present = new Set<WritingTool>(['improve', 'attach'])
+    if (forConversation) present.add('slash')
     if (hasVoice) present.add('voice')
     if (hasSearch) present.add('search')
     if (hasScenarios) present.add('scenarios')
     return present
-  }, [hasVoice, hasSearch, hasScenarios])
+  }, [hasVoice, hasSearch, hasScenarios, forConversation])
 
   const dictating = listening || finishing
   // The editor's chip has a name to give up only in the ordinary layout - beside a narrow field it is drawn
@@ -2060,7 +2077,7 @@ export const Composer = ({
   const writingTools = (
     <div className={s.toolGroups} {...fitMark('groups')}>
       {toolGroup(keep('voice', voiceButton), keep('improve', improveButton))}
-      {toolGroup(attachButton, keep('slash', slashButton))}
+      {toolGroup(attachButton, forConversation ? keep('slash', slashButton) : null)}
       {toolGroup(keep('search', searchButton), scenariosButton)}
     </div>
   )

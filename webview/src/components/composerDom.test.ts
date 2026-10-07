@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { blockText, caretScrollShift, isTypingField } from './composerDom'
+import { blockText, caretScrollShift, isTypingField, spaceGoesWithChip } from './composerDom'
 
 /**
  * How far the input field scrolls to keep the line being typed in sight - see scrollCaretIntoView.
@@ -78,5 +78,32 @@ describe('a field being typed into elsewhere', () => {
     expect(isTypingField('INPUT', 'Range')).toBe(false)
     expect(isTypingField('BUTTON', '')).toBe(false)
     expect(isTypingField('DIV', '')).toBe(false)
+  })
+})
+
+/**
+ * Whether the space after a removed chip leaves with it - see spaceGoesWithChip. A chip comes in with a
+ * space after it, and the space left behind made a field that looked empty and was not.
+ */
+describe('the space after a removed chip', () => {
+  it('goes with a chip that was alone in the field, or at the start of a line', () => {
+    expect(spaceGoesWithChip('', '')).toBe(true)
+    expect(spaceGoesWithChip('\n', 'l')).toBe(true)
+  })
+
+  it('goes with a chip that had a space before it, leaving one between the words', () => {
+    // "see [chip] and" - the space before the chip is the one that stays.
+    expect(spaceGoesWithChip(' ', 'a')).toBe(true)
+    expect(spaceGoesWithChip('\u00a0', 'a')).toBe(true)
+  })
+
+  it('goes with a chip at the end of the field or of a line', () => {
+    expect(spaceGoesWithChip('e', '')).toBe(true)
+    expect(spaceGoesWithChip('e', '\n')).toBe(true)
+  })
+
+  it('stays between two words the chip stood between with nothing else', () => {
+    // "see[chip] and" without the chip is "see and", not "seeand".
+    expect(spaceGoesWithChip('e', 'a')).toBe(false)
   })
 })

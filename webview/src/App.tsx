@@ -79,6 +79,7 @@ import {
   toggleIndicator,
   type HiddenIndicators,
   type IndicatorId,
+  type ShownIndicators,
 } from './indicators'
 import { CustomModels } from './components/CustomModels'
 import { PasteCollapse } from './components/PasteCollapse'
@@ -138,6 +139,7 @@ import {
   localCommand,
   plainText,
   sameHints,
+  type CommandEntry,
   type LocalCommand,
 } from './feed/slash'
 import {
@@ -163,7 +165,7 @@ import {
 } from './feed/improve'
 import { voiceAppend, voiceGhost, voiceMessage } from './feed/voice'
 import { composePrompt, countSessionImages, imageAttachments, tokensText, trimTrailingSpace } from './feed/tokens'
-import type { FeedItem, TaskItem, TodoItem, UserItem, UserToken } from './feed/types'
+import type { DraftEdit, FeedItem, TaskItem, TodoItem, UserItem, UserToken } from './feed/types'
 import { emptyUsageBook, mergeUsageBook, usageOf, type UsageBook } from './feed/usage'
 import type {
   AvailablePluginInfo,
@@ -242,6 +244,7 @@ import {
   type ScenariosView,
 } from './components/scenarios/ScenariosTab'
 import { liveDot, pressedAgain, runDot, runMarks, type Presses } from './scenarios/runs'
+import { toldTokens } from './scenarios/timeline'
 import { ScenarioRunTab } from './components/scenarios/ScenarioRunTab'
 import { useSelection } from './hooks/useSelection'
 
@@ -426,6 +429,19 @@ interface Draft {
 }
 
 const EMPTY_DRAFT: Draft = { tokens: [], quotes: [] }
+
+/**
+ * What the field on a run's tab goes without (see the composer handed to ScenarioRunTab): no commands to
+ * hint at, no models of its own, and none of the conversation's gauges - the run's figures are its own strip.
+ */
+const NO_COMMANDS: CommandEntry[] = []
+const NO_MODELS: string[] = []
+const NO_INDICATORS: Pick<ShownIndicators, 'contextBar' | 'contextFigure' | 'feedback' | 'thanks'> = {
+  contextBar: false,
+  contextFigure: false,
+  feedback: false,
+  thanks: false,
+}
 
 /** Nothing to send: no text, no attachment and no quote. A tab never written into has no draft at all. */
 const draftEmpty = (draft: Draft | undefined): boolean =>
@@ -5223,8 +5239,77 @@ export const App = () => {
     editorSkips,
   ])
 
+  /**
+   * The field of the tab on screen changed - the conversation's, or a run's words for its main thread (see
+   * runComposer). One handler for both, so a rewrite and a dictation behave the same in either.
+   */
+  const changeDraft = (tokens: UserToken[], from: DraftEdit) => {
+    // Renumbered image captions are not an edit at all - nothing was said, and a complaint about
+    // the last rewrite is still worth reading.
+    if (from !== 'renumber') {
+      setImproveError(null)
+      setVoiceError('')
+    }
+
+    if (!applyingImprove.current && improveSources[active]) {
+      // A hand on the keyboard makes this a draft of one's own again: the next press of the
+      // sparkle starts from what is in the field rather than from what stood before the last
+      // rewrite.
+      if (from === 'hand') forgetImproveSource(active)
+      // Cmd+Z over a rewrite is the person going back to their own words rather than moving on
+      // from them: the chain stands, and only whether a take is on the screen changes with it.
+      else if (from === 'history') {
+        setImproveSources((current) => {
+          const held = current[active]
+          return held ? { ...current, [active]: improveShown(held, tokens) } : current
+        })
+      }
+    }
+
+    // A renumbering while a rewrite is in flight: the draft did not change, only the number in a
+    // caption did, so the answer must not be turned away as landing on a different draft (see
+    // the promptImproved case above).
+    if (from === 'renumber') {
+      setImproving((current) =>
+        current && current.sessionId === active ? { ...current, tokens } : current,
+      )
+    }
+
+    editDraft(active, { tokens })
+  }
+
   const sendNow = useCallback(() => submit(false), [submit])
   const queueNext = useCallback(() => submit(true), [submit])
+
+  /**
+   * How many pictures the person has already shown the main thread of the run on screen - the new ones are
+   * numbered on from here, so "Image #3" in a later message is not the "Image #1" of an earlier one.
+   */
+  const tellImageBase = useMemo(() => {
+    const run = runRecords[runOfTab(active)]
+    return run ? countSessionImages(run.notes.map((note) => ({ kind: 'user', tokens: toldTokens(note) }))) : 0
+  }, [runRecords, active])
+
+  /**
+   * Words for the main thread of the run on screen, out of the same field a chat has (see runComposer and
+   * `scenarioTell`).
+   *
+   * Composed exactly as a chat message is - a file goes as its path, a folded paste unfolded, a pasted picture
+   * as its bytes beside the words - and the field's tokens go along, for the timeline to draw the message the
+   * way the feed draws a sent one. The draft is this tab's, kept by the panel like any other.
+   */
+  const tellNow = () => {
+    const runId = runOfTab(active)
+    if (!runId) return
+    const tokens = trimTrailingSpace(draft.tokens)
+    const text = composePrompt({ tokens, quotes: [] }, tellImageBase)
+    const images = imageAttachments(tokens)
+    if (!text && images.length === 0) return
+
+    forgetImproveSource(active)
+    send({ type: 'scenarioTell', runId, text, images, tokens })
+    editDraft(active, { tokens: [], quotes: [] })
+  }
 
   /**
    * Whether there is anything to send: text, an attachment or a quote. An empty field means both buttons
@@ -5479,6 +5564,16 @@ export const App = () => {
     setMenu(null)
     send({ type: 'stat', kind: 'feature', id: 'scenarios_tab' })
     send({ type: 'scenarios' })
+    /*
+     * The button opens the hub on its runs (see AT_FIRST), not on whichever band it was left on - with two
+     * exceptions. A form somebody is filling in, or a scenario half written in the editor, stays where it is:
+     * the view is kept up here precisely so that those survive (see scenariosView). And a press with the hub
+     * already on the screen is the way to re-read the list (above), so it does not move anybody off the band
+     * they are looking at.
+     */
+    if (active !== SCENARIOS_GROUP) {
+      setScenariosView((view) => (view.kind === 'list' && view.over.kind === 'none' ? { ...view, band: 'runs' } : view))
+    }
     openPanelTab(SCENARIOS_GROUP)
   }
 
@@ -6128,6 +6223,7 @@ export const App = () => {
           onRun={(scenario, inputs) => startScenario(scenario, inputs)}
           onOpenRun={openRun}
           onDeleteRun={(runId) => send({ type: 'scenarioRunDelete', runId })}
+          onStarRun={(runId, starred) => send({ type: 'scenarioRunStar', runId, starred })}
           onPauseRun={(runId) => send({ type: 'scenarioPause', runId })}
           onResumeRun={(runId) => send({ type: 'scenarioResume', runId })}
           onStopRun={(runId) => send({ type: 'scenarioStop', runId })}
@@ -6189,6 +6285,65 @@ export const App = () => {
           }}
           onAnswer={(allow, text) => send({ type: 'scenarioAnswer', runId: runOfTab(active), allow, text })}
           onOpenLink={openLink}
+          composer={
+            /*
+             * The same field a chat has, for the run's main thread: files, pictures, pasted text, dictation
+             * and the sparkle all behave as they do in a conversation, because it is the same component on the
+             * same draft machinery - keyed by this tab. What it has no use for stays out: commands, the shell
+             * through "!", the side question and the queue (see forConversation - the main thread only reads),
+             * the model and the meters (the run's, not the field's), the editor's chip and Stop.
+             */
+            <div
+              className={`${composer.dock} ${composer.dockAlone}`}
+              data-layout={composerLayout === 'compact' ? 'compact' : 'bottom'}
+            >
+            <Composer
+              sessionId={active}
+              tokens={draft.tokens}
+              streaming={false}
+              planMode={false}
+              contextPercent={0}
+              pasteCollapseLines={pasteCollapse}
+              sendKey={sendKey}
+              commands={NO_COMMANDS}
+              models={null}
+              customModels={NO_MODELS}
+              meters={null}
+              indicators={NO_INDICATORS}
+              files={files}
+              imageBaseCount={tellImageBase}
+              focusToken={focusToken}
+              // Its own place at the foot of the run, whatever the chat's layout: the side rail of left/right
+              // belongs to a conversation's screen.
+              layout={composerLayout === 'compact' ? 'compact' : 'bottom'}
+              placeholder={t.scenarios.run.tellPlaceholder}
+              forConversation={false}
+              fileDragOver={fileDragOver}
+              onTokensChange={changeDraft}
+              onAttach={() => send({ type: 'pick' })}
+              onDropFiles={(paths) => send({ type: 'dropped', paths })}
+              registerInsert={registerInsert}
+              registerApply={registerApply}
+              onImprove={improvePrompt}
+              improving={improving !== null}
+              improveRetry={improveSources[active] !== undefined}
+              improveError={improveErrorText}
+              improveRestore={improving?.sessionId !== active && Boolean(improveSources[active]?.applied)}
+              onImproveRestore={restoreDraft}
+              voice={{ enabled: voice.enabled, phase: voiceRun }}
+              onVoiceStart={() => send({ type: 'voiceStart', mode: 'hold' })}
+              onVoiceStop={() => send({ type: 'voiceStop' })}
+              voiceGhost={voiceTargetRef.current === active || !voiceTargetRef.current ? voiceInterim : ''}
+              voiceError={voiceErrorText}
+              onSubmit={tellNow}
+              onQueue={tellNow}
+              canSubmit={draftReady}
+              onStop={() => undefined}
+              stopStalled={false}
+              onForceStop={() => undefined}
+            />
+            </div>
+          }
         />
       ) : sessions.length === 0 ? (
         <Welcome onStart={() => startSession(MAIN_SESSION)} />
@@ -6344,40 +6499,7 @@ export const App = () => {
             onOpenScenarios={openScenarios}
             railContainer={railNode}
             fileDragOver={fileDragOver}
-            onTokensChange={(tokens, from) => {
-              // Renumbered image captions are not an edit at all - nothing was said, and a complaint about
-              // the last rewrite is still worth reading.
-              if (from !== 'renumber') {
-                setImproveError(null)
-                setVoiceError('')
-              }
-
-              if (!applyingImprove.current && improveSources[active]) {
-                // A hand on the keyboard makes this a draft of one's own again: the next press of the
-                // sparkle starts from what is in the field rather than from what stood before the last
-                // rewrite.
-                if (from === 'hand') forgetImproveSource(active)
-                // Cmd+Z over a rewrite is the person going back to their own words rather than moving on
-                // from them: the chain stands, and only whether a take is on the screen changes with it.
-                else if (from === 'history') {
-                  setImproveSources((current) => {
-                    const held = current[active]
-                    return held ? { ...current, [active]: improveShown(held, tokens) } : current
-                  })
-                }
-              }
-
-              // A renumbering while a rewrite is in flight: the draft did not change, only the number in a
-              // caption did, so the answer must not be turned away as landing on a different draft (see
-              // the promptImproved case above).
-              if (from === 'renumber') {
-                setImproving((current) =>
-                  current && current.sessionId === active ? { ...current, tokens } : current,
-                )
-              }
-
-              editDraft(active, { tokens })
-            }}
+            onTokensChange={changeDraft}
             onAttach={() => send({ type: 'pick' })}
             // The chips are assembled by the shell and come back as an ordinary picked - by the same route
             // as a choice through a dialog: only it knows whether this is a file or a folder.

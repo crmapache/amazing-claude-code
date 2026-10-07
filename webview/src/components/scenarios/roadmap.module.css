@@ -8,25 +8,17 @@
  * The sizes here are the numbers scenarios/roadmap.ts lays the road out with (ROAD) - a stop of 18, a link
  * of 8, a fold of 32. Change one and the other, or the road folds too late and runs past the card's edge,
  * or too early and hides stops it had room for. Nothing else here may take room on the row: the tint's
- * round ends and the glow of the present are drawn outside the boxes, so every gap stays the same.
+ * round ends are drawn outside the boxes, so every gap stays the same.
  *
  * The look is the timeline's own (.stageNumber in scenarios.module.css): a ring with a console-font number
- * in it, green when it is done, accent where the run is. The present glows and pulses - the one stop that
- * breathes besides the dot of a run waiting for a person, asked for by name so that "where it is" is found
- * before anything is read.
+ * in it, green when it is done, accent where the run is. On the present an arc runs round its ring while
+ * the run works or waits for a person - motion on the ring itself, nothing outside it. It used to glow and
+ * pulse instead, and the glow was asked to go: it read as a smudge around the stop rather than as the stop.
  */
 
-@keyframes accRoadGlow {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 2px var(--road-halo),
-      0 0 4px 1px var(--road-glow);
-  }
-  50% {
-    box-shadow:
-      0 0 0 3px var(--road-halo),
-      0 0 10px 3px var(--road-glow);
+@keyframes accRoadSpin {
+  to {
+    transform: rotate(1turn);
   }
 }
 
@@ -35,8 +27,7 @@
   --road-tone: var(--acc-accent);
   --road-light: var(--acc-accent-light);
   --road-fill: var(--acc-accent-16);
-  --road-halo: var(--acc-accent-12);
-  --road-glow: var(--acc-accent-40);
+  --road-ring: var(--acc-accent-32);
   --road-band: var(--acc-accent-08);
 }
 
@@ -44,8 +35,7 @@
   --road-tone: var(--acc-warn);
   --road-light: var(--acc-warn-light);
   --road-fill: var(--acc-warn-16);
-  --road-halo: var(--acc-warn-12);
-  --road-glow: var(--acc-warn-40);
+  --road-ring: var(--acc-warn-32);
   --road-band: var(--acc-warn-06);
 }
 
@@ -53,8 +43,6 @@
   --road-tone: var(--acc-fg-ghost);
   --road-light: var(--acc-fg-soft);
   --road-fill: var(--acc-neutral-12);
-  --road-halo: var(--acc-neutral-12);
-  --road-glow: transparent;
   --road-band: var(--acc-neutral-12);
 }
 
@@ -119,26 +107,44 @@
 
 /* Where the run is - after the state tones, so it wins over "ahead" on a stop nothing has begun yet. */
 .here {
+  position: relative;
   border-color: var(--road-tone);
   background: var(--road-fill);
   color: var(--road-light);
-  box-shadow: 0 0 0 2px var(--road-halo);
   opacity: 1;
 }
 
-/* Working, or waiting for a person: the glow breathes. A pause is the run standing still, and so is its stop. */
+/*
+ * Working, or waiting for a person: the ring dims and an arc with a fading tail runs round it, laid over the
+ * stop's own border - a conic gradient cut to a ring by a mask. A pause is the run standing still, and so is
+ * its stop: a plain ring, no arc.
+ */
 .toneGoing .here,
 .toneAsks .here {
-  animation: accRoadGlow 1.8s ease-in-out infinite;
+  border-color: var(--road-ring);
+}
+
+.toneGoing .here::after,
+.toneAsks .here::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  background: conic-gradient(transparent 0turn 0.3turn, var(--road-tone) 1turn);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.75px), #000 calc(100% - 1.25px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 1.75px), #000 calc(100% - 1.25px));
+  animation: accRoadSpin 1.4s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .toneGoing .here,
   .toneAsks .here {
-    animation: none;
-    box-shadow:
-      0 0 0 3px var(--road-halo),
-      0 0 8px 2px var(--road-glow);
+    border-color: var(--road-tone);
+  }
+
+  .toneGoing .here::after,
+  .toneAsks .here::after {
+    display: none;
   }
 }
 

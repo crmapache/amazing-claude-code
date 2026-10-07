@@ -44,6 +44,12 @@
   flex: none;
 }
 
+/* A dock with no status line under it - the field at the foot of a run's tab (see ScenarioRunTab): the room the
+   status line takes under a conversation's field is room here, or the field stands on the panel's edge. */
+.dockAlone {
+  padding-bottom: 10px;
+}
+
 /* The border faces where the feed adjoins the input field - see App.tsx (layout). */
 .dock[data-layout='bottom'],
 .dock[data-layout='compact'],

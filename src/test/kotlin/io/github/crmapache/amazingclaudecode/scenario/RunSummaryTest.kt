@@ -206,4 +206,13 @@ class RunSummaryTest {
 
         assertEquals("Review, then fix", summary.stageTitle)
     }
+
+    /** The table of past runs is drawn from the rows, so a star on the record has to reach the row. */
+    @Test
+    fun `the star on a run is on its row`() {
+        val finished = ScenarioRun(state = RunState.DONE, snapshot = scenario())
+
+        assertEquals(false, finished.summarise().starred)
+        assertEquals(true, finished.copy(starred = true).summarise().starred)
+    }
 }

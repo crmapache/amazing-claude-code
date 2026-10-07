@@ -381,6 +381,8 @@ export const ko: Dict = {
     delete: '삭제',
     deleteTitle: '이 시나리오를 삭제할까요?',
     deleteRun: '이 실행 삭제',
+    starRun: '별표 표시',
+    unstarRun: '별표 해제',
     deleteRunTitle: '이 실행을 삭제할까요?',
     queue: {
       add: '대기열에 추가',
@@ -497,6 +499,8 @@ export const ko: Dict = {
       scenarioMissingInput: '묻는 항목 중 하나가 비어 있습니다.',
       noClaude: '이 컴퓨터에서 Claude Code를 찾지 못했습니다.',
       runGone: '그 실행은 더 이상 없습니다.',
+      /** Words for the main thread of a run that ended a moment before they arrived. */
+      runOver: '이 실행은 끝났고 메인 스레드는 더 이상 메시지를 읽지 않습니다. 계속하려면 채팅으로 여세요.',
       runNotResumable: '이 실행은 이어갈 수 없습니다. 메인 스레드가 한 번도 뜨지 않았습니다.',
       queueNotWritten: '대기열을 디스크에 기록하지 못했습니다.',
       scenarioNotMoved: '시나리오를 다른 선반으로 옮기지 못했습니다.',
@@ -548,6 +552,14 @@ export const ko: Dict = {
       stageNotReached: '닿지 않음',
       notYet: '아직',
       log: '로그',
+      /** Above what the person wrote to the main thread, in the timeline. */
+      youSaid: '나',
+      tellPlaceholder: '메인 스레드에 쓰기…',
+      /** Under the person's words while the main thread is busy judging a card. */
+      tellWaiting: '메인 스레드가 한가해지기를 기다리는 중',
+      answering: '메인 스레드가 답장을 쓰는 중…',
+      /** Over what the main thread passed on to the card at work. */
+      passedOn: '카드에 전달함',
     },
     help: {
       button: '시나리오란',

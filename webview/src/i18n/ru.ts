@@ -426,6 +426,8 @@ export const ru: Dict = {
     delete: 'Удалить',
     deleteTitle: 'Удалить этот сценарий?',
     deleteRun: 'Удалить этот запуск',
+    starRun: 'Отметить звёздочкой',
+    unstarRun: 'Снять звёздочку',
     deleteRunTitle: 'Удалить этот запуск?',
     queue: {
       add: 'В очередь',
@@ -598,6 +600,8 @@ export const ru: Dict = {
       scenarioMissingInput: 'Что-то из спрошенного осталось пустым.',
       noClaude: 'Claude Code на этой машине не найден.',
       runGone: 'Такого запуска больше нет.',
+      /** Words for the main thread of a run that ended a moment before they arrived. */
+      runOver: 'Этот запуск закончился, и главный поток больше не читает сообщения. Чтобы продолжить, откройте его разговором.',
       runNotResumable: 'Этот запуск нельзя продолжить: его главный поток так и не поднялся.',
       queueNotWritten: 'Очередь не удалось записать на диск.',
       scenarioNotMoved: 'Сценарий не удалось перенести на другую полку.',
@@ -654,6 +658,14 @@ export const ru: Dict = {
       stageNotReached: 'не дошло',
       notYet: 'ещё нет',
       log: 'Лог',
+      /** Above what the person wrote to the main thread, in the timeline. */
+      youSaid: 'ВЫ',
+      tellPlaceholder: 'Написать главному потоку…',
+      /** Under the person's words while the main thread is busy judging a card. */
+      tellWaiting: 'ждёт, пока главный поток освободится',
+      answering: 'Главный поток пишет ответ…',
+      /** Over what the main thread passed on to the card at work. */
+      passedOn: 'Передано карточке',
     },
     help: {
       button: 'Что такое сценарии',

@@ -163,35 +163,59 @@ export const UserCard = ({
       </blockquote>
     ))}
 
-    <div className={s.userBody}>
-      {item.tokens.map((token, index) =>
-        token.kind === 'text' ? (
-          <TextToken
-            key={index}
-            value={token.value}
-            echo={token.echo === true}
-            onOpenLink={onOpenLink}
-          />
-        ) : token.chip.kind === 'paste' ? (
-          // A paste with nothing after it in the message takes a whole line: the room is free anyway,
-          // and seven words in a narrow chip are not enough to recall what exactly was sent.
-          <PasteView
-            key={index}
-            chip={token.chip}
-            block={index === item.tokens.length - 1}
-            open={cards.isOpen(`${item.id}:paste:${index}`)}
-            onToggle={() => cards.toggle(`${item.id}:paste:${index}`)}
-          />
-        ) : (
-          <ChipView key={index} chip={token.chip} />
-        ),
-      )}
-    </div>
+    <SentTokens
+      className={s.userBody}
+      tokens={item.tokens}
+      onOpenLink={onOpenLink}
+      isOpen={(index) => cards.isOpen(`${item.id}:paste:${index}`)}
+      onToggle={(index) => cards.toggle(`${item.id}:paste:${index}`)}
+    />
 
     {item.editor ? <EditorLine editor={item.editor} /> : null}
   </div>
   )
 }
+
+/**
+ * The words and the attachment chips of a sent message, as the feed draws them.
+ *
+ * Shared with the run's timeline (see ScenarioRunTab): what the person writes to a run's main thread comes
+ * out of the same field as a chat message, files, pictures and pasted text included, and reads the same way
+ * there. Whether a folded paste is open is the caller's to keep - the feed keeps it with every other card.
+ */
+export const SentTokens = ({
+  tokens,
+  className,
+  onOpenLink,
+  isOpen,
+  onToggle,
+}: {
+  tokens: UserItem['tokens']
+  className?: string
+  onOpenLink: (url: string) => void
+  isOpen: (index: number) => boolean
+  onToggle: (index: number) => void
+}) => (
+  <div className={className}>
+    {tokens.map((token, index) =>
+      token.kind === 'text' ? (
+        <TextToken key={index} value={token.value} echo={token.echo === true} onOpenLink={onOpenLink} />
+      ) : token.chip.kind === 'paste' ? (
+        // A paste with nothing after it in the message takes a whole line: the room is free anyway,
+        // and seven words in a narrow chip are not enough to recall what exactly was sent.
+        <PasteView
+          key={index}
+          chip={token.chip}
+          block={index === tokens.length - 1}
+          open={isOpen(index)}
+          onToggle={() => onToggle(index)}
+        />
+      ) : (
+        <ChipView key={index} chip={token.chip} />
+      ),
+    )}
+  </div>
+)
 
 /**
  * What the editor showed when the message went - the file, and how many lines of it were selected. The

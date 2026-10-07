@@ -426,8 +426,62 @@ export const needsTrailingSpace = (char: string): boolean => char.length === 0 |
  * of them and quietly miss the other.
  */
 export const removeChip = (root: HTMLElement, node: HTMLElement) => {
+  takeSpaceAfter(node)
   node.remove()
   root.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+/** A space the field puts after a chip, or one Chromium turned into a non-breaking one. */
+const SPACE_AFTER_CHIP = /^[  ]$/
+
+/** What a chip reads as from a neighbouring character's point of view - something that is not a space. */
+const CHIP_CHAR = '￼'
+
+/**
+ * Whether the space after a removed chip goes out with it.
+ *
+ * A chip comes in with a space after it (see needsTrailingSpace), and the same space has to leave with it:
+ * left behind, it was a field that looked empty after the cross and was not, and the placeholder did not
+ * come back.
+ *
+ * Which space was ours cannot be told apart from one typed by hand, so the rule is about what is left:
+ * the space goes when the chip stood at an edge on at least one side - the start of the field or a line,
+ * the end, or a space already there. Between two words it stays: "see[chip] and" is "see and" without the
+ * chip, not "seeand".
+ *
+ * `before` is the character before the chip, `after` the one after the space; empty for an edge.
+ */
+export const spaceGoesWithChip = (before: string, after: string): boolean => {
+  const edge = (char: string) => char === '' || /\s/.test(char)
+  return edge(before) || edge(after)
+}
+
+/**
+ * The character a neighbour shows on the side facing the chip: a text's own character, a chip's stand-in,
+ * a line break for any other element (the browser's <br>). Empty text nodes are looked through.
+ */
+const edgeChar = (node: Node | null, side: 'first' | 'last'): string => {
+  if (!node) return ''
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = node.textContent ?? ''
+    if (!text) return edgeChar(side === 'last' ? node.previousSibling : node.nextSibling, side)
+    return side === 'last' ? text.charAt(text.length - 1) : text.charAt(0)
+  }
+  return chipNodeOf(node) ? CHIP_CHAR : '\n'
+}
+
+const takeSpaceAfter = (chip: HTMLElement) => {
+  const next = chip.nextSibling
+  if (!next || next.nodeType !== Node.TEXT_NODE) return
+
+  const text = next as Text
+  if (!SPACE_AFTER_CHIP.test(text.data.charAt(0))) return
+
+  const after = text.data.length > 1 ? text.data.charAt(1) : edgeChar(text.nextSibling, 'first')
+  if (!spaceGoesWithChip(edgeChar(chip.previousSibling, 'last'), after)) return
+
+  if (text.data.length === 1) text.remove()
+  else text.deleteData(0, 1)
 }
 
 /**

@@ -14,6 +14,7 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHome
 import io.github.crmapache.amazingclaudecode.claude.ClaudePlugin
 import io.github.crmapache.amazingclaudecode.claude.EffortLevels
+import io.github.crmapache.amazingclaudecode.claude.ImageAttachment
 import io.github.crmapache.amazingclaudecode.claude.InstalledPlugin
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
 import io.github.crmapache.amazingclaudecode.claude.SettingSources
@@ -32,6 +33,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
@@ -1046,6 +1048,25 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
         live[runId]?.engine?.answer(allow, text) ?: Unit
 
     /**
+     * Words from the person to the main thread of a run that is going (see ScenarioEngine.tell, HeadMail).
+     *
+     * A run that is no longer going is refused by name rather than in silence: its head reads nothing more,
+     * and the field the words were typed in has gone from the screen by the time this lands only if the
+     * screen heard about the ending first. The way on is the head's conversation opened as a chat.
+     */
+    fun tell(
+        clientId: String,
+        runId: String,
+        text: String,
+        images: List<ImageAttachment> = emptyList(),
+        tokens: JsonElement? = null,
+    ) {
+        if (text.isBlank() && images.isEmpty()) return
+        val engine = live[runId]?.engine
+        if (engine == null || !engine.tell(text, images, tokens)) outcome(clientId, ok = false, code = "runOver")
+    }
+
+    /**
      * The whole record of one run: the live one from memory, an older one off the disk.
      *
      * Cut down for whoever is not this machine, which the broadcast road does by itself and this one
@@ -1075,6 +1096,21 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
             // is - so it names the run rather than the project.
             if (live.containsKey(runId)) return@off outcome(clientId, ok = false, code = "runBusy")
             runs.delete(runId)
+            sendList()
+        }
+    }
+
+    /**
+     * The star on a past run (see ScenarioRun.starred).
+     *
+     * Refused on a run that is going: its record is the engine's to write, and the next write from memory
+     * would take the star straight back off. Only the table of finished runs offers it, so this is a phone
+     * and a desk racing a carry-on.
+     */
+    fun starRun(clientId: String, runId: String, starred: Boolean) {
+        off {
+            if (live.containsKey(runId)) return@off outcome(clientId, ok = false, code = "runBusy")
+            if (!runs.star(runId, starred)) return@off outcome(clientId, ok = false, code = "runGone")
             sendList()
         }
     }

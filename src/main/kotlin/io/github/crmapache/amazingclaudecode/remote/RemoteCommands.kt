@@ -242,7 +242,10 @@ internal object RemoteCommands {
          * without the rest of the form;
          * `scenarioDraft` and `scenarioDraftCancel` are a model writing one out of a sentence (a run
          * with read-only tools inside the project - see ScenarioAuthor); `scenarioRun` is play;
-         * `scenarioSchedule` and `scenarioUnschedule` are the hours; `scenarioRunDelete` is the history;
+         * `scenarioTell` is words for the main thread of a run that is going, which is the same door as
+         * `prompt` into a conversation that happens to be a run's;
+         * `scenarioSchedule` and `scenarioUnschedule` are the hours; `scenarioRunDelete` and `scenarioRunStar`
+         * are the history;
          * and `scenarioLog` is what one step actually said, handed over a page at a time at the size a
          * phone can carry (see ScenarioDesk.sendLog) rather than refused for being large.
          *
@@ -253,6 +256,7 @@ internal object RemoteCommands {
         "scenarioFetch",
         "scenarioOpen",
         "scenarioAnswer",
+        "scenarioTell",
         "scenarioPause",
         "scenarioResume",
         "scenarioContinue",
@@ -267,6 +271,7 @@ internal object RemoteCommands {
         "scenarioSchedule",
         "scenarioUnschedule",
         "scenarioRunDelete",
+        "scenarioRunStar",
         "scenarioLog",
         /*
          * The queue - rounds of work taken one at a time over one working copy (see ScenarioQueue).

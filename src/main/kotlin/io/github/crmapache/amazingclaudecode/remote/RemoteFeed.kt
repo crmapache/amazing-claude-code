@@ -422,7 +422,18 @@ internal object RemoteFeed {
             when (name) {
                 "snapshot" -> put(name, (value as? JsonObject)?.let(::scenarioBody) ?: value)
                 "steps" -> put(name, mapObjects(value) { step -> stepBody(step, words) })
-                "notes" -> put(name, mapObjects(value) { note -> JsonObject(note + ("text" to cut(note["text"], words, NOTE_CHARS))) })
+                // What the head passed on to a card (see RunNote.relayed) is the same free text and gets the same cut.
+                // The person's own field as the desk draws it (RunNote.tokens) does not travel: a pasted log is all
+                // of it, and the phone draws the person's words from the text like everything else on a note.
+                "notes" -> put(
+                    name,
+                    mapObjects(value) { note ->
+                        JsonObject(
+                            (note - "tokens") + ("text" to cut(note["text"], words, NOTE_CHARS)) +
+                                (note["relayed"]?.let { mapOf("relayed" to cut(it, words, NOTE_CHARS)) } ?: emptyMap()),
+                        )
+                    },
+                )
                 else -> put(name, value)
             }
         }

@@ -42,7 +42,9 @@ describe('the two plugins', () => {
 
   it('differ in their features only where the agent underneath does', () => {
     expect(apart(FEATURES.acc, FEATURES.acx)).toEqual({
-      missingHere: ['design_login', 'rewind', 'stop_task'],
+      // scenario_tell and send_path are the ones that are not about the agent: writing to a run's main thread
+      // and the project tree's menu came to ACC first, and wait for the fork until they are ported there.
+      missingHere: ['design_login', 'rewind', 'scenario_tell', 'send_path', 'stop_task'],
       notInPlugin: ['project_trust'],
     })
     expect(apart(SCREENS.acc, SCREENS.acx)).toEqual({

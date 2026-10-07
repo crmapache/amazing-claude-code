@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { ScenarioRun, ScenarioRunStep } from '../../protocol'
 import { formatTokens } from '../../feed/build'
 import { formatDuration } from '../../feed/tools'
@@ -10,6 +10,7 @@ import {
   runWorked,
   stepWorked,
   timelineOf,
+  toldTokens,
   type StageStanding,
 } from '../../scenarios/timeline'
 import { roadOf, roadWidth } from '../../scenarios/roadmap'
@@ -21,6 +22,7 @@ import { SkeletonBar } from '../Skeleton'
 import { Roadmap } from './Roadmap'
 import { StatePill } from './StatePill'
 import { StepLog, stepFacts } from './StepLog'
+import { SentTokens } from '../items/UserCard'
 import s from './scenarios.module.css'
 
 /**
@@ -70,6 +72,13 @@ export interface ScenarioRunTabProps {
   onOpenChat: () => void
   onAnswer: (allow: boolean, text: string) => void
   onOpenLink: (url: string) => void
+  /**
+   * The field for words to the run's main thread while it goes - the same composer a chat has, built by App
+   * on this tab's draft (files, pictures, pastes, dictation and all; see `scenarioTell`). Drawn at the foot of
+   * a run that is going and not at all once it is over: the main thread reads nothing more by then, and its
+   * conversation opens as a chat for that.
+   */
+  composer: ReactNode
 }
 
 export const ScenarioRunTab = ({
@@ -86,12 +95,15 @@ export const ScenarioRunTab = ({
   onOpenChat,
   onAnswer,
   onOpenLink,
+  composer,
 }: ScenarioRunTabProps) => {
   const t = useT()
   const [confirmStop, setConfirmStop] = useState(false)
   const [answer, setAnswer] = useState('')
   /** Which step's window is open. Held here rather than read off [log]: the log arrives a moment later. */
   const [opened, setOpened] = useState('')
+  /** Which folded pastes in the person's notes are open, by note and place (see SentTokens). */
+  const [openPastes, setOpenPastes] = useState<Set<string>>(() => new Set())
 
   /*
    * The clock, ticking only while something is actually running.
@@ -103,6 +115,25 @@ export const ScenarioRunTab = ({
   const now = useTicking(live)
 
   const rows = useMemo(() => (run ? timelineOf(run) : []), [run])
+
+  /*
+   * Words just sent to the main thread are brought into view once they are on the run.
+   *
+   * They land under the card the run is at, which is wherever the work is - the middle of a long timeline as
+   * often as its end - while the field is at the foot of the tab. Without this, Enter is followed by nothing
+   * visibly happening. A person's note that was not there when this tab drew last is the one just sent - from
+   * here, or from a phone in the same hand; a reply of the main thread does not move the page, so one arriving
+   * while the person reads further up does not pull them away.
+   */
+  const body = useRef<HTMLDivElement>(null)
+  const told = run?.notes.filter((note) => note.who === 'person') ?? []
+  const lastTold = told.length > 0 ? told[told.length - 1].at : 0
+  const seenTold = useRef(lastTold)
+  useEffect(() => {
+    if (lastTold <= seenTold.current) return
+    seenTold.current = lastTold
+    body.current?.querySelector(`[data-note="${lastTold}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [lastTold])
 
   if (!run) {
     return (
@@ -218,12 +249,10 @@ export const ScenarioRunTab = ({
       </div>
 
       <div className={s.runBar}>
-        <StatePill state={run.state} failure={run.failure} />
-
         {/* The same road as the run's card in the hub (see Roadmap), where a bar and "6/6 cards" used to be.
             As wide as it needs and no wider, so the readings follow it; on a narrow panel it takes a line of
             its own and folds there. */}
-        <span className={s.runBarRoad} style={{ flexBasis: `${roadWidth(road.length)}px` }}>
+        <span className={s.runBarRoad} style={{ '--acc-road': `${roadWidth(road.length)}px` } as CSSProperties}>
           <Roadmap stops={road} state={run.state} />
         </span>
 
@@ -254,9 +283,15 @@ export const ScenarioRunTab = ({
             </span>
           ) : null}
         </span>
+
+        {/* The state at the strip's far edge, where the hub's card has it (see RunsBand): a reading, not the
+            first thing of the row - the road is. */}
+        <span className={s.runBarState}>
+          <StatePill state={run.state} failure={run.failure} />
+        </span>
       </div>
 
-      <div className={s.body}>
+      <div className={s.body} ref={body}>
         {run.error ? <div className={s.outcome}>{run.error}</div> : null}
 
         {/*
@@ -421,12 +456,41 @@ export const ScenarioRunTab = ({
             }
 
             if (row.kind === 'note') {
+              const person = row.note.who === 'person'
+              // Only on a run that goes: a run that ended with words still waiting took them with it.
+              const waiting = person && !over && !row.note.deliveredAt
               return (
-                <div key={row.key} className={s.note}>
+                <div key={row.key} className={s.note} data-note={row.note.at}>
                   <span className={s.noteRail} />
-                  <span className={s.noteBody}>
-                    <span className={s.noteWho}>{t.scenarios.run.headSaid}</span>
-                    <Glance text={row.note.text} className={s.noteText} />
+                  <span className={`${s.noteBody} ${person ? s.notePerson : ''}`}>
+                    <span className={s.noteWho}>{person ? t.scenarios.run.youSaid : t.scenarios.run.headSaid}</span>
+                    {/* The person's own message as a chat draws a sent one - words and attachment chips; the
+                        head's words are markdown. */}
+                    {person ? (
+                      <SentTokens
+                        className={s.notePersonText}
+                        tokens={toldTokens(row.note)}
+                        onOpenLink={onOpenLink}
+                        isOpen={(index) => openPastes.has(`${row.note.at}:${index}`)}
+                        onToggle={(index) =>
+                          setOpenPastes((current) => {
+                            const next = new Set(current)
+                            const key = `${row.note.at}:${index}`
+                            if (!next.delete(key)) next.add(key)
+                            return next
+                          })
+                        }
+                      />
+                    ) : row.note.text ? (
+                      <Glance text={row.note.text} className={s.noteText} />
+                    ) : null}
+                    {waiting ? <span className={s.noteWaiting}>{t.scenarios.run.tellWaiting}</span> : null}
+                    {row.note.relayed ? (
+                      <span className={s.noteRelayed}>
+                        <span className={s.noteRelayedLabel}>{t.scenarios.run.passedOn}</span>
+                        <Glance text={row.note.relayed} className={s.noteText} />
+                      </span>
+                    ) : null}
                   </span>
                 </div>
               )
@@ -445,6 +509,19 @@ export const ScenarioRunTab = ({
           })}
         </div>
       </div>
+
+      {/* The main thread answering the person, said over the field the words came from. */}
+      {over ? null : (
+        <div className={s.tell}>
+          {run.answering ? (
+            <div className={s.tellStatus}>
+              <span className={s.tellDot} />
+              {t.scenarios.run.answering}
+            </div>
+          ) : null}
+          {composer}
+        </div>
+      )}
 
       {confirmStop ? (
         <Confirm

@@ -1,3 +1,4 @@
+import type { UserToken } from '../feed/types'
 import type { ScenarioRun, ScenarioRunNote, ScenarioRunStep } from '../protocol'
 import { passesOf } from './rules'
 
@@ -113,7 +114,21 @@ export const timelineOf = (run: ScenarioRun): TimelineRow[] => {
 const notesFor = (notes: ScenarioRunNote[], stepKey: string): ScenarioRunNote[] =>
   notes.filter((note) => note.stepKey === stepKey).sort((one, two) => one.at - two.at)
 
-const noteKey = (note: ScenarioRunNote): string => `note:${note.stepKey}:${note.at}`
+/**
+ * What the person wrote to the main thread, as the pieces a chat message is drawn from (see SentTokens).
+ *
+ * The field's own tokens when the note carries them; its text as one piece when it does not - a note from an
+ * IDE that sent no tokens, or one read on a phone, which gets the text alone (see RemoteFeed.runBody). Nothing
+ * for the main thread's own notes.
+ */
+export const toldTokens = (note: ScenarioRunNote): UserToken[] => {
+  if (note.who !== 'person') return []
+  if (Array.isArray(note.tokens) && note.tokens.length > 0) return note.tokens as UserToken[]
+  return note.text ? [{ kind: 'text', value: note.text }] : []
+}
+
+// Who as well as when: the person's words and the main thread's answer are two notes of one moment.
+const noteKey = (note: ScenarioRunNote): string => `note:${note.who ?? ''}:${note.stepKey}:${note.at}`
 
 /**
  * Where a stage stands, from its own steps and nothing else.

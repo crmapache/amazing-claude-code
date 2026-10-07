@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
 import snakeinHero from '../assets/snakein-hero.webp'
 import { AuthorCard } from './AuthorCard'
 import { Microphone } from './Microphone'
@@ -198,6 +198,19 @@ export const parentOf = (screen: MenuScreen): MenuScreen => {
   if (NEW_CHAT_SCREENS.includes(screen)) return 'newChat'
   if (SETTINGS_SCREENS.includes(screen)) return 'settings'
   return 'menu'
+}
+
+/**
+ * Whether going from one screen to another is a step back: the second stands on the way from the first
+ * to the root. Only such a step finds a screen where it was left (see SideMenu); any other way in is a
+ * fresh start, and a fresh start opens at the top.
+ */
+export const leadsBack = (from: MenuScreen, to: MenuScreen): boolean => {
+  for (let screen = from; screen !== 'menu'; ) {
+    screen = parentOf(screen)
+    if (screen === to) return true
+  }
+  return false
 }
 
 /**
@@ -491,6 +504,35 @@ export const SideMenu = ({
   useWheelScroll(detail, inDetail)
 
   /*
+   * Where each screen was left. Every screen of the detail shares one scrolling layer, so a step from the
+   * settings scrolled to their foot into "Indicators" and back put the list wherever the shorter screen
+   * had clamped it - the top, as a rule - and the same step into "Voice input" opened that one halfway
+   * down. A step back now finds the screen where it was; a step in opens the next one at its top.
+   *
+   * Written on scroll rather than on leaving: by the time the next screen is committed the old one's rows
+   * are gone and the browser has already clamped the offset to the new content. A shut menu forgets
+   * everything - it reopens on the root, and a screen opened from outside it has no way back to restore.
+   */
+  const places = useRef(new Map<MenuScreen, number>())
+  const shown = useRef(screen)
+
+  useLayoutEffect(() => {
+    const from = shown.current
+    shown.current = screen
+
+    const target = detail.current
+    if (!target || from === screen) return
+
+    const top = leadsBack(from, screen) ? (places.current.get(screen) ?? 0) : 0
+    places.current.set(screen, top)
+    target.scrollTop = top
+  }, [screen])
+
+  useEffect(() => {
+    if (!open) places.current.clear()
+  }, [open])
+
+  /*
    * Escape closes what is open, one step at a time: "what travels" goes back to remote access, a screen
    * goes back to the root, the root closes the menu. Caught in the capture phase and stopped there -
    * further down the same key means "stop the agent" (see App), and closing a menu must not do that.
@@ -683,6 +725,7 @@ export const SideMenu = ({
             ref={detail}
             className={`${s.level} ${s.levelDetail} ${inDetail ? s.levelDetailShown : s.levelDetailHidden}`}
             inert={!inDetail}
+            onScroll={(event) => places.current.set(shown.current, event.currentTarget.scrollTop)}
           >
             {children}
           </div>

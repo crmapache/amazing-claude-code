@@ -33,29 +33,3 @@ internal class SendSelectionAction : AnAction(), DumbAware {
         ClaudePanels.getInstance(project).withPanel { panel -> panel.sendSelection(reference) }
     }
 }
-
-/**
- * "Send Absolute Path to Amazing Claude Code GUI" - a neighbour in the menu, but not a variation of it:
- * this is a reference to a whole file rather than to the selected lines.
- *
- * A full path is asked for when the conversation was raised outside this project: there a path from the
- * root leads nowhere. Lines are not appended to such a reference - a file was asked for, not a place
- * inside it; in the input field it stands as an ordinary attachment chip, like a file dropped into the
- * panel with the mouse.
- */
-internal class SendSelectionAbsoluteAction : AnAction(), DumbAware {
-
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-
-    override fun update(event: AnActionEvent) {
-        event.presentation.isEnabledAndVisible = event.project != null &&
-            event.getData(CommonDataKeys.VIRTUAL_FILE) != null
-    }
-
-    override fun actionPerformed(event: AnActionEvent) {
-        val project = event.project ?: return
-        val file = event.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
-
-        ClaudePanels.getInstance(project).withPanel { panel -> panel.attachPath(file.path) }
-    }
-}

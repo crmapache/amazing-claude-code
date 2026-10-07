@@ -92,6 +92,17 @@ export const bandOf = (stops: ScenarioRoadmapStop[], here: number): { from: numb
 }
 
 /**
+ * How far short of a row the measured room may come and the row still count as fitting.
+ *
+ * The room is measured, and under a zoom that is not whole - an IDE at 90% on a retina screen draws a CSS
+ * pixel as 1.8 device pixels - the box comes back snapped to the device grid, a hair narrower than the CSS
+ * asked for. The run's own strip gives the road exactly its whole width (see roadWidth), so a hair short
+ * folded a six-stop road into "+2" in a strip with a hand's width to spare. A pixel is less than any stop or
+ * link, and a row that runs past its box by less than that is not seen.
+ */
+const ROAD_SNAP = 1
+
+/**
  * Which stops to draw in `width` pixels: all of them when they fit, otherwise the widest window around the
  * present that does.
  */
@@ -101,7 +112,7 @@ export const roadLayout = (count: number, here: number, width: number, metrics: 
 
   for (let size = count; size > 1; size -= 1) {
     const items = windowed(count, at, size)
-    if (widthOf(items, metrics) <= width) return items
+    if (widthOf(items, metrics) <= width + ROAD_SNAP) return items
   }
   return windowed(count, at, 1)
 }

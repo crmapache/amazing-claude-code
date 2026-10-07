@@ -13,6 +13,10 @@ import { cutCardOf, finished, resumable, runWorked, stepWorked, timelineOf } fro
 import { dayAndHour } from '../../scenarios/moments'
 import { outcomeText } from '../scenarios'
 import { Back } from './Back'
+import { Composer, type OutgoingPrompt } from './Composer'
+import type { ProjectFacts } from '../facts'
+import type { PhotoRoad } from '../images'
+import type { PhoneDictation } from '../useDictation'
 import m from '../mobile.module.css'
 
 interface ScenarioRunProps {
@@ -30,6 +34,15 @@ interface ScenarioRunProps {
   onAnswer: (allow: boolean, text: string) => void
   /** One step's own conversation, on a screen of its own (see ScenarioStep). */
   onOpenStep: (step: ScenarioRunStep) => void
+  /**
+   * What the field for the main thread needs - the same composer a chat has, off a conversation (see
+   * forConversation) - or null when the machine does not take such words (see CAP_TELL): the page comes from
+   * the relay and may be newer than the plugin behind it, which would refuse the message as one it has never
+   * heard of.
+   */
+  tell: { facts: ProjectFacts; photos: PhotoRoad; connected: boolean; voice: PhoneDictation } | null
+  /** Words for the main thread of the run while it goes, photos included - see `scenarioTell`. */
+  onTell: (prompt: OutgoingPrompt) => void
   onBack: () => void
 }
 
@@ -64,6 +77,8 @@ export const ScenarioRun = ({
   onOpenChat,
   onAnswer,
   onOpenStep,
+  tell,
+  onTell,
   onBack,
 }: ScenarioRunProps) => {
   const t = useT()
@@ -158,7 +173,7 @@ export const ScenarioRun = ({
         </div>
 
         {/* The road of its cards, where a bar used to be - the same one the run's card draws (see Roadmap). */}
-        <div className={m.runRoad}>
+        <div className={m.runHeadRoad}>
           <Roadmap stops={roadOf(run)} state={run.state} />
         </div>
       </header>
@@ -211,10 +226,25 @@ export const ScenarioRun = ({
             }
 
             if (row.kind === 'note') {
+              // The person's own words as well as the main thread's - the same two voices the desk draws.
+              const person = row.note.who === 'person'
               return (
-                <div key={row.key} className={m.note}>
-                  <span className={m.noteWho}>{t.scenarios.run.headSaid}</span>
-                  <Glance text={row.note.text} className={m.noteText} />
+                <div key={row.key} className={`${m.note} ${person ? m.notePerson : ''}`}>
+                  <span className={m.noteWho}>{person ? t.scenarios.run.youSaid : t.scenarios.run.headSaid}</span>
+                  {person ? (
+                    <span className={m.notePersonText}>{row.note.text}</span>
+                  ) : row.note.text ? (
+                    <Glance text={row.note.text} className={m.noteText} />
+                  ) : null}
+                  {person && !over && !row.note.deliveredAt ? (
+                    <span className={m.noteWaiting}>{t.scenarios.run.tellWaiting}</span>
+                  ) : null}
+                  {row.note.relayed ? (
+                    <span className={m.noteRelayed}>
+                      <span className={m.noteRelayedLabel}>{t.scenarios.run.passedOn}</span>
+                      <Glance text={row.note.relayed} className={m.noteText} />
+                    </span>
+                  ) : null}
                 </div>
               )
             }
@@ -272,6 +302,48 @@ export const ScenarioRun = ({
           </div>
         ) : null}
       </div>
+
+      {/*
+        Words for the main thread, at the foot where the thumb is - the chat's own composer, off a conversation:
+        the words, photos, an "@" for a file, dictation. While the run goes and nothing else holds the foot: a
+        question standing for the person takes it, and answering it comes first.
+      */}
+      {!over && !question && tell && (
+        <footer className={m.composer}>
+          {run.answering ? (
+            <span className={m.tellStatus}>
+              <span className={m.tellDot} />
+              {t.scenarios.run.answering}
+            </span>
+          ) : null}
+          <Composer
+            facts={tell.facts}
+            photos={tell.photos}
+            context={NO_CONTEXT}
+            run={NO_RUN}
+            running={false}
+            since={0}
+            queue={NOTHING_QUEUED}
+            queueOpen={false}
+            onQueueOpen={ignore}
+            onUnqueue={ignore}
+            connected={tell.connected}
+            imageBase={picturesShown(run)}
+            quotes={NO_QUOTES}
+            onDropQuote={ignore}
+            onSend={onTell}
+            onQueue={onTell}
+            unsent={NOTHING_UNSENT}
+            onRetry={ignore}
+            onDiscard={ignore}
+            onStop={ignore}
+            onRun={ignore}
+            voice={tell.voice}
+            forConversation={false}
+            placeholder={t.scenarios.run.tellPlaceholder}
+          />
+        </footer>
+      )}
 
       {question && (
         <footer className={m.decisionFooter}>
@@ -469,3 +541,23 @@ const StepRow = ({
     <div className={className}>{body}</div>
   )
 }
+
+/** What the composer is given on a run's screen for what only a conversation has (see forConversation). */
+const NO_CONTEXT = { percent: 0, used: 0, limit: 0 }
+const NO_RUN = { model: '', effort: '', mode: '' }
+const NOTHING_QUEUED: [] = []
+const NO_QUOTES: string[] = []
+const NOTHING_UNSENT: [] = []
+const ignore = () => undefined
+
+/**
+ * How many pictures the person has already shown the main thread - the new ones are numbered on from here, so
+ * "Image #3" in a later message is not the "Image #1" of an earlier one. Read off the words, which name every
+ * picture they carried: the phone gets a note's text and not its chips (see RemoteFeed.runBody).
+ */
+const picturesShown = (run: Run): number =>
+  run.notes.reduce((most, note) => {
+    if (note.who !== 'person') return most
+    const numbers = [...note.text.matchAll(/\[Image #(\d+)\]/g)].map((match) => Number(match[1]))
+    return Math.max(most, ...numbers)
+  }, 0)

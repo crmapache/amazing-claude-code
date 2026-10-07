@@ -1328,6 +1328,9 @@ internal class RemoteAgent : Disposable {
                 // A message too big for one frame may come in several (see RemoteParts). An older machine
                 // knows nothing of parts, and a phone talking to one still squeezes its photos into a frame.
                 add(CAP_PARTS)
+                // Words for the main thread of a run that is going (scenarioTell). An older machine refuses
+                // the message as one it has never heard of, so the phone offers no field to type them in.
+                add(CAP_TELL)
             }
             // The catalogue of models, so a conversation started from a phone can be started on a
             // chosen one. It belongs to the machine rather than to a project - it is what this
@@ -1995,6 +1998,9 @@ internal class RemoteAgent : Disposable {
 
         /** A message too big for one frame may arrive in parts - see [part]. Spelled in mobile/projects.ts too. */
         const val CAP_PARTS = "parts"
+
+        /** Writing to the main thread of a going run - see ScenarioEngine.tell. Spelled in mobile/projects.ts too. */
+        const val CAP_TELL = "tellHead"
 
         /**
          * "This machine no longer knows you." One word for both ways of saying it - sealed at the moment

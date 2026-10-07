@@ -9,12 +9,12 @@ import s from './roadmap.module.css'
  * The road of a going run: (✓)-(✓)-(3)-(4)-(5).
  *
  * Every card of every pass is a stop - ticked when it is done, crossed when it failed, dashed when a loop
- * ended before it was needed, numbered while it is ahead. The stop the run is on keeps its number and
- * glows, pulsing, in the tone of what the run is doing (working, waiting for you); on a pause it stands
- * still and grey. Its card's name is in the hint over it, not beside it: a stop that grows a label pushes
- * every stop after it along and makes the row uneven. The stage it belongs to is tinted behind it, so the
- * stage named over the road can be found on it. A finished run's road has no present: nothing glows and
- * nothing is tinted - the ticks, the cross where it stopped and the dashes of what it never reached say it.
+ * ended before it was needed, numbered while it is ahead. The stop the run is on keeps its number, ringed
+ * and filled in the tone of what the run is doing (working, waiting for you); on a pause it is grey. Its
+ * card's name is in the hint over it, not beside it: a stop that grows a label pushes every stop after it
+ * along and makes the row uneven. The stage it belongs to is tinted behind it, so the stage named over the
+ * road can be found on it. A finished run's road has no present: nothing is ringed in a tone and nothing is
+ * tinted - the ticks, the cross where it stopped and the dashes of what it never reached say it.
  *
  * The stops stand at one short distance from each other, whatever the card's width - a road stretched
  * across a wide card reads as gaps, not as a road. What fits is decided by measuring (see

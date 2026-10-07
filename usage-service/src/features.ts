@@ -106,6 +106,11 @@ export const FEATURES: Record<Product, Record<string, FeatureLabel>> = {
     account_add: { group: 'manage', label: 'Add a Claude account' },
     account_switch: { group: 'manage', label: 'Switch Claude account' },
     design_login: { group: 'manage', label: 'Claude Design sign-in' },
+    // Writing to the main thread of a going run - the Codex fork's scenarios have no such conversation yet.
+    scenario_tell: { group: 'scenarios', label: "Write to a run's main thread" },
+    // Not about the agent: the project tree's menu came to ACC first, and moves to the shared list once the
+    // fork has it.
+    send_path: { group: 'editor', label: 'Send a file or folder from the project tree or the editor menu' },
   },
   acx: {
     ...SHARED_FEATURES,

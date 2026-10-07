@@ -132,6 +132,7 @@ export interface ScenariosTabProps {
   onRun: (scenario: Scenario, inputs: Record<string, string>) => void
   onOpenRun: (runId: string) => void
   onDeleteRun: (runId: string) => void
+  onStarRun: (runId: string, starred: boolean) => void
   onPauseRun: (runId: string) => void
   onResumeRun: (runId: string) => void
   onStopRun: (runId: string) => void
@@ -175,6 +176,7 @@ export const ScenariosTab = ({
   onRun,
   onOpenRun,
   onDeleteRun,
+  onStarRun,
   onPauseRun,
   onResumeRun,
   onStopRun,
@@ -371,19 +373,21 @@ export const ScenariosTab = ({
               className={`${s.bandTab} ${band === one ? s.bandTabOn : ''}`}
               onClick={() => show(one)}
             >
-              {t.scenarios.bands[one]}
-              {/*
-                The count is lit for work that is happening and for a queue that has STOPPED - the two
-                states on this screen somebody would want to know about without opening the band. A queue
-                merely holding turns is not news; one that stopped at midnight is the whole night.
-              */}
-              <span
-                key={one === 'queue' ? queueFlash : 0}
-                className={`${s.bandCount} ${one === 'queue' && queueFlash ? s.bandCountGrew : ''} ${
-                  (one === 'runs' && counts.runs > 0) || (one === 'queue' && queue?.held) ? s.bandCountLive : ''
-                }`}
-              >
-                {counts[one]}
+              <span className={s.bandTabLine}>
+                {t.scenarios.bands[one]}
+                {/*
+                  The count is lit for work that is happening and for a queue that has STOPPED - the two
+                  states on this screen somebody would want to know about without opening the band. A queue
+                  merely holding turns is not news; one that stopped at midnight is the whole night.
+                */}
+                <span
+                  key={one === 'queue' ? queueFlash : 0}
+                  className={`${s.bandCount} ${one === 'queue' && queueFlash ? s.bandCountGrew : ''} ${
+                    (one === 'runs' && counts.runs > 0) || (one === 'queue' && queue?.held) ? s.bandCountLive : ''
+                  }`}
+                >
+                  {counts[one]}
+                </span>
               </span>
             </button>
           ))}
@@ -456,6 +460,7 @@ export const ScenariosTab = ({
             onPause={onPauseRun}
             onResume={onResumeRun}
             onStop={setStopping}
+            onStar={(run, starred) => onStarRun(run.id, starred)}
             onDelete={(run) => setRemoving({ run })}
           />
         ) : null}

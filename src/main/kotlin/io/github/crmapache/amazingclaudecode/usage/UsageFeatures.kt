@@ -47,6 +47,7 @@ internal object UsageFeatures {
         "pin",
         "open_in_editor",
         "send_selection",
+        "send_path",
         "attach_file",
         "paste_file",
         "copy",
@@ -63,6 +64,7 @@ internal object UsageFeatures {
         "scenario_schedule",
         "scenario_queue",
         "scenario_answer",
+        "scenario_tell",
         "statistics_tab",
         "stats_share",
         "mcp_manage",
@@ -168,6 +170,7 @@ internal object UsageFeatures {
         "mcpAdd",
         "mcpRemove",
         "scenarioAnswer",
+        "scenarioTell",
         "scenarioPause",
         "scenarioResume",
         "scenarioContinue",
@@ -182,6 +185,7 @@ internal object UsageFeatures {
         "scenarioSchedule",
         "scenarioUnschedule",
         "scenarioRunDelete",
+        "scenarioRunStar",
         "scenarioQueue",
         "scenarioQueueRemove",
         "scenarioQueueMove",
@@ -273,6 +277,7 @@ internal object UsageFeatures {
         "scenarioSchedule" -> "scenario_schedule"
         "scenarioQueue" -> "scenario_queue"
         "scenarioAnswer" -> "scenario_answer"
+        "scenarioTell" -> "scenario_tell"
         "saveImage" -> "stats_share"
         "mcpAdd", "mcpRemove", "mcpReconnect", "mcpAuthenticate" -> "mcp_manage"
         "pluginInstall", "pluginUninstall", "pluginEnable", "pluginDisable", "marketplaceAdd", "marketplaceRemove" ->

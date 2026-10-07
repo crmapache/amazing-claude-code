@@ -6,10 +6,12 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.AgentStream
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSession
+import io.github.crmapache.amazingclaudecode.claude.ImageAttachment
 import io.github.crmapache.amazingclaudecode.claude.PermissionChannel
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -215,6 +217,47 @@ internal class ScenarioEngine(
      */
     private var reasked = false
 
+    /**
+     * Whether a turn of the head's is in flight - one we asked for and have not had the end of, or one an
+     * interrupt has not finished closing.
+     *
+     * The run's own phases do not say it: a pause interrupts the head and the turn closes some time after, in
+     * PAUSED, and a card going back to work takes a verdict back the same way. Words for the head written over
+     * a turn still closing would be read as part of it (see HeadMail.way).
+     */
+    private var headTalking = false
+
+    /** Whether the head's turn in flight is it answering the person (see [deliverTold]). */
+    private var answeringPerson = false
+
+    /** The person's notes that turn carries, by their stamps - waiting again if it dies unanswered (see [raiseHead]). */
+    private var carrying: List<Long> = emptyList()
+
+    /** When the head was given the person's words, for the ceiling a silent head has (see [watchThePersonsTurn]). */
+    private var personAskedAt = 0L
+
+    /**
+     * Whether a question of the run's is waiting for the head to finish answering the person (see [askAgain]).
+     * The question itself is [pendingHead], as it is for a pause.
+     */
+    private var deferred = false
+
+    /** What the head passed on to a card that was paused at the time: said to it when the run resumes (see [passOn]). */
+    private var forCardOnResume = ""
+
+    /**
+     * Pictures the person pasted into what they wrote to the head, by the stamp of their note, until the head
+     * is given them (see [deliverTold]).
+     *
+     * Held here rather than on the note: the note is the record of the run, written on every change and sent
+     * to every screen, and a screenshot is a megabyte of base64 (see HeadMail.shown). An IDE that goes down
+     * before the head was free loses them and keeps the words - the words name every picture they had.
+     */
+    private val toldImages = mutableMapOf<Long, List<ImageAttachment>>()
+
+    /** The pictures the head's conversation with the person carries - given back with the words if it dies (see [raiseHead]). */
+    private var carryingImages: Map<Long, List<ImageAttachment>> = emptyMap()
+
     private var clock: ScheduledFuture<*>? = null
 
     /** When the current card's turn began, and how much of the time since then does not count. */
@@ -335,6 +378,15 @@ internal class ScenarioEngine(
         head = openHead(resumeFrom = run.headConversationId, takingOver = headWasFinishing)
         unfenced = headWasFinishing
         tookOver = headWasFinishing
+        // A fresh process has no turn in flight; words the person wrote that never reached the old one go to
+        // this one with the first thing said to it (see [askAgain]) or on their own once it is free.
+        headTalking = false
+        answeringPerson = false
+        carrying = emptyList()
+        carryingImages = emptyMap()
+        deferred = false
+        forCardOnResume = ""
+        run = run.copy(answering = false)
         watchTheClock()
 
         at = point.at
@@ -387,6 +439,7 @@ internal class ScenarioEngine(
             }
         }
         changed()
+        deliverTold()
     }
 
     /** What a card cut short is told: the same words as after a pause, plus what the head held against it. */
@@ -591,23 +644,54 @@ internal class ScenarioEngine(
         askAgain(text)
     }
 
-    /** The same question, put again. The allowance is not renewed - that is what makes it an allowance. */
+    /**
+     * The same question, put again. The allowance is not renewed - that is what makes it an allowance.
+     *
+     * Words the person wrote while the head was busy go first in it (see HeadTalk.withTold), and a head in the
+     * middle of answering the person is not written into: the question waits for that turn to end (see
+     * [heardBack]) - two answers in one turn come back as one, and the run would read the person's as its own.
+     * Composed on every sending rather than kept composed in [pendingHead], so that a question put again after
+     * a pause does not say the same words of the person twice.
+     */
     private fun askAgain(text: String) {
         pendingHead = text
+        if (answeringPerson) {
+            deferred = true
+            headAskedAt = 0
+            return
+        }
+        deferred = false
+        val session = head ?: return
         headAskedAt = System.currentTimeMillis()
         headTurn.clear()
-        head?.sendPrompt(text)
+        val told = HeadMail.waiting(run.notes)
+        val said = if (told.isEmpty()) {
+            text
+        } else {
+            run = run.copy(notes = HeadMail.delivered(run.notes, told, System.currentTimeMillis()))
+            HeadTalk.withTold(told.map { it.text }, text)
+        }
+        headTalking = true
+        session.sendPrompt(said, images = told.flatMap { toldImages.remove(it.at).orEmpty() })
     }
 
     @Synchronized
     private fun onHeadTurnEnded() {
+        headTalking = false
+        // The head answering the person: read as a reply, and then whatever was waiting for it to finish.
+        if (answeringPerson) return heardBack()
+
         /*
          * Our own interrupt, or a turn that ended with nothing asked of the head: after the run did, in a
          * pause, or after a verdict was taken back because the card went on working (see
          * [onCardTurnStarted]). None of them is an answer to anything - read as one, a turn cut short
          * without its object would be asked for the object again, about a question that no longer stands.
+         * The head is free once it has closed, though, and words the person wrote meanwhile go to it now.
          */
-        if (interrupting || (phase != Phase.TAKEOVER && phase !in HEAD_PHASES)) return
+        if (interrupting || (phase != Phase.TAKEOVER && phase !in HEAD_PHASES)) {
+            if (!interrupting) deliverTold()
+            return
+        }
 
         val reply = HeadTalk.read(headTurn.last)
         // The opening message is about the run rather than about any card, so its answer belongs above
@@ -645,17 +729,184 @@ internal class ScenarioEngine(
             else -> Unit
         }
         changed()
+        deliverTold()
     }
 
-    /** One or two sentences from the head, wedged into the timeline where they were said. */
-    private fun note(text: String, stepKey: String) {
+    /**
+     * One or two sentences from the head, wedged into the timeline where they were said - and, for an answer
+     * to the person, what it passed on to the card at work.
+     */
+    private fun note(text: String, stepKey: String, relayed: String = "") {
         run = run.copy(
             notes = run.notes + RunNote(
-                at = System.currentTimeMillis(),
+                at = HeadMail.stamp(run.notes, System.currentTimeMillis()),
                 stepKey = stepKey,
                 text = shorten(text, NOTE_CHARS),
+                relayed = shorten(relayed, NOTE_CHARS),
             ),
         )
+    }
+
+    // --- The person writing to the head ----------------------------------------------
+
+    /**
+     * Words from the person to the head while the run goes (see HeadMail).
+     *
+     * Written into the timeline at once, as theirs, under the card the run stands at - and put to the head the
+     * moment it is free to read them. False for a run that is over: its head reads nothing more, and the way to
+     * go on talking to it is its conversation opened as a chat.
+     */
+    @Synchronized
+    fun tell(text: String, images: List<ImageAttachment> = emptyList(), tokens: JsonElement? = null): Boolean {
+        if (phase == Phase.OVER) return false
+        val words = text.trim()
+        if (words.isEmpty() && images.isEmpty()) return false
+
+        val at = HeadMail.stamp(run.notes, System.currentTimeMillis())
+        if (images.isNotEmpty()) toldImages[at] = images
+        run = run.copy(
+            notes = run.notes + RunNote(
+                at = at,
+                stepKey = boardKey(),
+                text = shorten(words, HeadMail.TOLD_CHARS),
+                who = RunNote.PERSON,
+                tokens = HeadMail.shown(tokens),
+            ),
+        )
+        deliverTold()
+        changed()
+        return true
+    }
+
+    /**
+     * Put what the person wrote to the head, if the head can read it now (see HeadMail.way).
+     *
+     * Called wherever the head may just have become free: one of its turns closed, the run was paused or
+     * resumed or picked up again, or the person wrote. What cannot go yet stays waiting on its note - the next
+     * question of the run's carries it (see [askAgain]), or the next call here does.
+     */
+    private fun deliverTold() {
+        if (phase == Phase.OVER) return
+        val told = HeadMail.waiting(run.notes)
+        if (told.isEmpty()) return
+        val session = head ?: return
+        val now = System.currentTimeMillis()
+
+        when (
+            HeadMail.way(
+                headUp = true,
+                turnOpen = headTalking,
+                answeringPerson = answeringPerson,
+                doingCardWork = phase == Phase.TAKEOVER,
+                waitingOnOthers = phase in WAITING_PHASES,
+            )
+        ) {
+            HeadMail.Way.NOW -> {
+                run = run.copy(notes = HeadMail.delivered(run.notes, told, now), answering = true)
+                carrying = told.map { it.at }
+                carryingImages = told.mapNotNull { note -> toldImages.remove(note.at)?.let { note.at to it } }.toMap()
+                answeringPerson = true
+                personAskedAt = now
+                headTurn.clear()
+                headTalking = true
+                session.sendPrompt(
+                    HeadTalk.toldRequest(told.map { it.text }, situation(), toCard = canPassOn()),
+                    images = carryingImages.values.flatten(),
+                )
+            }
+
+            HeadMail.Way.INTO_WORK -> {
+                run = run.copy(notes = HeadMail.delivered(run.notes, told, now))
+                session.sendPrompt(
+                    HeadTalk.toldMidWork(told.map { it.text }),
+                    images = told.flatMap { toldImages.remove(it.at).orEmpty() },
+                )
+            }
+
+            HeadMail.Way.LATER -> return
+        }
+        changed()
+    }
+
+    /**
+     * The head has answered the person: its words go under their note, what it passed on goes to the card, and
+     * a question of the run's that waited for the conversation is put now (see [askAgain]) - unless the run was
+     * paused meanwhile, and then resuming puts it.
+     */
+    private fun heardBack() {
+        answeringPerson = false
+        personAskedAt = 0
+        carrying = emptyList()
+        carryingImages = emptyMap()
+
+        val reply = HeadTalk.read(headTurn.last)
+        val words = reply.body?.let { HeadAnswer.text(it, "toCard") }.orEmpty().trim()
+        val passed = if (words.isNotEmpty()) passOn(words) else ""
+        if (reply.words.isNotBlank() || passed.isNotEmpty()) note(reply.words, boardKey(), relayed = passed)
+        run = run.copy(answering = false)
+
+        // Only a question of the head's own phase is still standing: one taken back meanwhile (a card that went
+        // on working under a verdict) has left nothing to put.
+        val standing = deferred && (phase in HEAD_PHASES || phase == Phase.TAKEOVER) && pendingHead.isNotBlank()
+        if (standing) {
+            askAgain(pendingHead)
+        } else {
+            if (phase != Phase.PAUSED) deferred = false
+            deliverTold()
+        }
+        changed()
+    }
+
+    /**
+     * The person's words, passed on by the head to the card on the board - and what of them reached it.
+     *
+     * A card at work reads them between two of its own steps; one standing on a question, once the question
+     * is answered - the CLI holds a message written into an open turn until that turn's next step. A card
+     * paused in the middle of its work is told when the run resumes, with the words that carry it on. With no
+     * card on the board there is nobody to pass them to, and the head's reply says nothing was passed.
+     */
+    private fun passOn(words: String): String {
+        val session = card ?: return ""
+        val text = HeadTalk.relayed(words)
+        return when {
+            phase in CARD_PHASES -> {
+                session.sendPrompt(text)
+                words
+            }
+
+            phase == Phase.PAUSED && resumeTo in CARD_PHASES -> {
+                forCardOnResume = listOf(forCardOnResume, text).filter { it.isNotBlank() }.joinToString("\n\n")
+                words
+            }
+
+            else -> ""
+        }
+    }
+
+    /** Whether there is a card the head could pass the person's words on to (see [passOn]). */
+    private fun canPassOn(): Boolean =
+        card != null && (phase in CARD_PHASES || (phase == Phase.PAUSED && resumeTo in CARD_PHASES))
+
+    /** The card the run stands at, by key - empty before the first one, which the timeline reads as "above them all". */
+    private fun boardKey(): String {
+        val opening = phase == Phase.OPENING || (phase == Phase.PAUSED && resumeTo == Phase.OPENING)
+        return if (opening) "" else run.steps.getOrNull(at)?.key.orEmpty()
+    }
+
+    /** Where the run stands, in a sentence for the head answering the person (see HeadTalk.toldRequest). */
+    private fun situation(): String {
+        val step = run.steps.getOrNull(at)
+        val named = step?.let { "card ${at + 1} of ${run.total}, \"${it.title.ifBlank { "Untitled" }}\"" }
+        val standing = if (phase == Phase.PAUSED) resumeTo else phase
+        val where = when (standing) {
+            Phase.OPENING -> "The run has only just begun: no card has been handed to you yet."
+            Phase.CARD -> named?.let { "The run is going: $it is at work right now." }
+            Phase.BLOCKED -> named?.let { "The run is going: $it has stopped on a question, and it waits for the person to answer it." }
+            Phase.TAKEOVER -> named?.let { "You were finishing $it yourself." }
+            else -> named?.let { "The run is going: it stands at $it." }
+        } ?: "The run is going."
+        if (phase != Phase.PAUSED) return where
+        return "$where The person has paused the run: nothing is working until they resume it, and nothing about a card is asked of you meanwhile."
     }
 
     // --- Walking the plan ----------------------------------------------------------
@@ -798,9 +1049,15 @@ internal class ScenarioEngine(
             Phase.CARD -> cardWaits = false
 
             Phase.VERDICT -> {
-                interrupting = true
-                head?.interrupt()
-                interrupting = false
+                // A head answering the person was never put the verdict (see [askAgain]): there is nothing to take
+                // back from it, and its answer to the person is left to finish.
+                if (answeringPerson) {
+                    deferred = false
+                } else {
+                    interrupting = true
+                    head?.interrupt()
+                    interrupting = false
+                }
                 pendingHead = ""
                 headAskedAt = 0
                 heldEndings += judged
@@ -823,6 +1080,7 @@ internal class ScenarioEngine(
                     if (resumeTo == Phase.VERDICT) {
                         pendingHead = ""
                         headAskedAt = 0
+                        deferred = false
                     }
                     resumeTo = Phase.CARD
                 }
@@ -1146,6 +1404,21 @@ internal class ScenarioEngine(
         head?.stop()
         unfenced = takingOver
         head = openHead(resumeFrom = run.headConversationId, takingOver = takingOver)
+        /*
+         * The process that was answering the person went down with its answer unsaid (a card taken over while
+         * the head was talking): the words wait again, and the first thing said to the new process carries
+         * them (see [askAgain]).
+         */
+        if (answeringPerson) {
+            run = run.copy(notes = HeadMail.undelivered(run.notes, carrying), answering = false)
+            toldImages.putAll(carryingImages)
+            answeringPerson = false
+            personAskedAt = 0
+            carrying = emptyList()
+            carryingImages = emptyMap()
+        }
+        headTalking = false
+        deferred = false
     }
 
     // --- Questions the cards raise -------------------------------------------------
@@ -1407,7 +1680,11 @@ internal class ScenarioEngine(
 
         interrupting = true
         hold()
-        head?.interrupt()
+        /*
+         * The head is interrupted only when it is answering the run. Answering the person, it is left to finish:
+         * the pause is the run's work standing still, and talking it over is what a pause is often taken for.
+         */
+        if (!answeringPerson) head?.interrupt()
         /*
          * The card is interrupted only when it is actually working.
          *
@@ -1428,6 +1705,7 @@ internal class ScenarioEngine(
             steps = run.steps.map { if (StepState.over(it.state) || it.state == StepState.WAITING) it else it.copy(state = StepState.PAUSED) },
         )
         changed()
+        deliverTold()
     }
 
     /**
@@ -1459,6 +1737,13 @@ internal class ScenarioEngine(
             run = run.copy(state = RunState.RUNNING)
             editStep(standing.key) { it.copy(state = StepState.ASKING) }
             putQuestion(standing, waiting)
+            // Its turn is open on the question, so what the head passed on to it is held by the CLI until the
+            // answer (see [passOn]).
+            if (forCardOnResume.isNotBlank()) {
+                card?.sendPrompt(forCardOnResume)
+                forCardOnResume = ""
+            }
+            deliverTold()
             return
         }
 
@@ -1481,7 +1766,9 @@ internal class ScenarioEngine(
                 pausedFor = 0
                 pausedAt = 0
                 freshCardTurn()
-                card?.sendPrompt(CARD_CARRY_ON)
+                // What the head passed on to it during the pause goes with the words that carry it on (see [passOn]).
+                card?.sendPrompt(listOf(CARD_CARRY_ON, forCardOnResume).filter { it.isNotBlank() }.joinToString("\n\n"))
+                forCardOnResume = ""
             }
 
             Phase.BLOCKED -> run.steps.getOrNull(at)?.let { step -> editStep(step.key) { it.copy(state = StepState.ASKING) } }
@@ -1505,7 +1792,16 @@ internal class ScenarioEngine(
 
             else -> Unit
         }
+        /*
+         * A card standing on a question was never interrupted, and its turn is open: what the head passed on to
+         * it goes in now, and the CLI holds it until the question is answered.
+         */
+        if (forCardOnResume.isNotBlank() && phase in CARD_PHASES) {
+            card?.sendPrompt(forCardOnResume)
+            forCardOnResume = ""
+        }
         changed()
+        deliverTold()
     }
 
     /** Stop for good: both processes are taken down and the run is written as stopped. */
@@ -1532,6 +1828,10 @@ internal class ScenarioEngine(
     /** Both processes, the clock and the questions - everything the run holds while it is alive. */
     private fun takeEverythingDown() {
         phase = Phase.OVER
+        answeringPerson = false
+        deferred = false
+        toldImages.clear()
+        carryingImages = emptyMap()
 
         clock?.cancel(false)
         clock = null
@@ -1565,6 +1865,7 @@ internal class ScenarioEngine(
      */
     @Synchronized
     private fun tick() {
+        if (watchThePersonsTurn()) return
         when {
             phase == Phase.CARD -> watchTheCard()
             phase == Phase.TAKEOVER -> watchTheTakeOver()
@@ -1626,6 +1927,19 @@ internal class ScenarioEngine(
 
         run.steps.getOrNull(at)?.let { step -> editStep(step.key) { it.copy(failure = RunFailure.HEAD_SILENT) } }
         end(RunState.FAILED, RunFailure.HEAD_SILENT, "the main thread stopped answering")
+    }
+
+    /**
+     * How long the head has been answering the person - the same half hour as a question of the run's, and for
+     * the same reason: a head that says nothing for that long about a few sentences is not about to speak, and a
+     * question of the run's may be waiting behind it (see [askAgain]). True when it ended the run.
+     */
+    private fun watchThePersonsTurn(): Boolean {
+        if (!answeringPerson || personAskedAt == 0L) return false
+        if (System.currentTimeMillis() - personAskedAt < HEAD_CEILING_MS) return false
+
+        end(RunState.FAILED, RunFailure.HEAD_SILENT, "the main thread stopped answering")
+        return true
     }
 
     /**
@@ -1696,6 +2010,7 @@ internal class ScenarioEngine(
             failure = failure.ifEmpty { run.failure },
             error = error.ifEmpty { run.error },
             question = null,
+            answering = false,
             /*
              * The cards still in the air when the run ended, told apart by whether they had begun.
              *
@@ -1758,6 +2073,12 @@ internal class ScenarioEngine(
 
         /** The phases in which the card's own turn is open - working, or standing on a question. */
         val CARD_PHASES = setOf(Phase.CARD, Phase.QUESTION, Phase.BLOCKED)
+
+        /**
+         * The phases in which nothing is asked of the head: a card at work, a question standing for the person,
+         * a pause - when words the person wrote to it can be a turn of their own (see HeadMail.way).
+         */
+        val WAITING_PHASES = setOf(Phase.CARD, Phase.BLOCKED, Phase.PAUSED)
         const val HOUR_MS = 60L * 60 * 1000
         const val TICK_SECONDS = 30L
         /**

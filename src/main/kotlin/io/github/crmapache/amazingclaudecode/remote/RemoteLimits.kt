@@ -171,6 +171,8 @@ internal class RemoteLimits {
             "scenarioFetch" to 30,
             "scenarioOpen" to 20,
             "scenarioAnswer" to 20,
+            // A message, typed - the same pace as a prompt into a chat.
+            "scenarioTell" to 20,
             "scenarioPause" to 10,
             "scenarioResume" to 10,
             "scenarioStop" to 10,
@@ -184,6 +186,8 @@ internal class RemoteLimits {
             "scenarioSchedule" to 15,
             "scenarioUnschedule" to 15,
             "scenarioRunDelete" to 15,
+            // Rewrites one small file, and going down a night's runs starring the ones looked at is a row of presses.
+            "scenarioRunStar" to 30,
             /*
              * The queue. Adding a turn is counted like starting a run even though it usually starts
              * nothing this second: over an idle project it starts one immediately, and a ceiling that

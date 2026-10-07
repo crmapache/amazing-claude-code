@@ -426,6 +426,8 @@ export const uk: Dict = {
     delete: 'Видалити',
     deleteTitle: 'Видалити цей сценарій?',
     deleteRun: 'Видалити цей запуск',
+    starRun: 'Позначити зірочкою',
+    unstarRun: 'Зняти зірочку',
     deleteRunTitle: 'Видалити цей запуск?',
     queue: {
       add: 'У чергу',
@@ -599,6 +601,8 @@ export const uk: Dict = {
       scenarioMissingInput: 'Щось із запитаного лишилося порожнім.',
       noClaude: 'Claude Code на цій машині не знайдено.',
       runGone: 'Такого запуску більше немає.',
+      /** Words for the main thread of a run that ended a moment before they arrived. */
+      runOver: 'Цей запуск закінчився, і головний потік більше не читає повідомлень. Щоб продовжити, відкрийте його розмовою.',
       runNotResumable: 'Цей запуск не можна продовжити: його головний потік так і не піднявся.',
       queueNotWritten: 'Чергу не вдалося записати на диск.',
       scenarioNotMoved: 'Сценарій не вдалося перенести на іншу полицю.',
@@ -655,6 +659,14 @@ export const uk: Dict = {
       stageNotReached: 'не дійшло',
       notYet: 'ще ні',
       log: 'Лог',
+      /** Above what the person wrote to the main thread, in the timeline. */
+      youSaid: 'ВИ',
+      tellPlaceholder: 'Написати головному потоку…',
+      /** Under the person's words while the main thread is busy judging a card. */
+      tellWaiting: 'чекає, поки головний потік звільниться',
+      answering: 'Головний потік пише відповідь…',
+      /** Over what the main thread passed on to the card at work. */
+      passedOn: 'Передано картці',
     },
     help: {
       button: 'Що таке сценарії',
