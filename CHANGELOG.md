@@ -9,6 +9,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.25] - 2026-10-07
+
+- Changed: the card of a running scenario shows the name of the stage it is in and a row of numbered circles, one for every card of every pass. Finished cards are ticked, the current one glows, and the rest keep their numbers; the stage it is in is shaded behind its circles, and hovering a circle shows the card's name. When the row does not fit a narrow panel or a long run, it folds the far ends into counts like "+9" and keeps the first card, the current one and the last. The same row replaces the progress bar on the run's own screen and on the phone. The stage name is there from the first second, so the card no longer jumps when the first card starts.
+- Fixed: the time of a scenario run included stretches when nothing was working: a pause, a question waiting for your answer, and the hours between an IDE that closed unexpectedly and its next start. The run's time, each card's time and each stage's time now count only the time the run actually worked, and stand still while it is paused or waiting for you. A run whose IDE went away now ends at the last moment it was known to be working, not when the IDE was opened again.
+- Changed: the table of past scenario runs shows when each run finished instead of how many cards it had. On a narrow panel each row now takes two lines, the name and the state on top and the start and finish times under them; before, the name collapsed to nothing and slid under the dates.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.24] - 2026-10-07
 
 - Fixed: with many conversations open, the open tab was hard to tell from the others. Only its background was slightly different, and on the light theme there was almost no difference at all. The open tab now lights up in the colour of its group: the stripe over it gets brighter and its colour fills the tab, on the dark and the light theme alike. On the light theme the group stripes are also deeper now, so they no longer fade into the white tab strip.
@@ -913,7 +920,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.24...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.25...HEAD
+[0.13.25]: https://github.com/crmapache/amazing-claude-code/compare/0.13.24...0.13.25
 [0.13.24]: https://github.com/crmapache/amazing-claude-code/compare/0.13.23...0.13.24
 [0.13.23]: https://github.com/crmapache/amazing-claude-code/compare/0.13.22...0.13.23
 [0.13.22]: https://github.com/crmapache/amazing-claude-code/compare/0.13.21...0.13.22
