@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.24] - 2026-10-07
+
+- Fixed: with many conversations open, the open tab was hard to tell from the others. Only its background was slightly different, and on the light theme there was almost no difference at all. The open tab now lights up in the colour of its group: the stripe over it gets brighter and its colour fills the tab, on the dark and the light theme alike. On the light theme the group stripes are also deeper now, so they no longer fade into the white tab strip.
+
 ## [0.13.23] - 2026-10-06
 
 - Fixed: in a scenario, a card that handed work to helpers in the background was judged the moment it had started them. The main thread took "waiting for the reviewers" for the card's answer and spent one of its goes sending the card back for a report it was about to write. The run now waits until every such helper has reported, and the main thread sees everything the card said along the way. A command a helper sent to the background, such as a test run, is waited for up to 30 minutes. A command the card itself left running, such as a dev server, is not waited for, and the card is told so. After a pause or a stop, the card is also told that its background helpers did not survive it.
@@ -909,7 +913,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.23...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.24...HEAD
+[0.13.24]: https://github.com/crmapache/amazing-claude-code/compare/0.13.23...0.13.24
 [0.13.23]: https://github.com/crmapache/amazing-claude-code/compare/0.13.22...0.13.23
 [0.13.22]: https://github.com/crmapache/amazing-claude-code/compare/0.13.21...0.13.22
 [0.13.21]: https://github.com/crmapache/amazing-claude-code/compare/0.13.20...0.13.21
