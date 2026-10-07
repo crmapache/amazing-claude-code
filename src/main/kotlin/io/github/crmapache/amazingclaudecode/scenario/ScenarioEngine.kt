@@ -154,6 +154,26 @@ internal class ScenarioEngine(
     private var headCost = 0.0
     private var cardCost = 0.0
 
+    /**
+     * The helpers the card on the board started in the background, and what it said each time it ended a
+     * turn while they were still at work, oldest first.
+     *
+     * Such an ending is not the card's answer: the helpers' reports start its next turn by themselves, and
+     * the card is judged once it ends a turn with nobody left to wait for (see [turnOver]). What it said on
+     * the way is kept rather than dropped - the report can come before the wait as well as after it.
+     */
+    private var helpers = BackgroundWork()
+    private val heldEndings = mutableListOf<String>()
+
+    /** Everything the head is judging the card on right now - taken back if the card goes on working (see [onCardTurnStarted]). */
+    private var judged: List<String> = emptyList()
+
+    /**
+     * Whether the card ended its turn to wait for its helpers and has not started another since - the one
+     * state in which nothing on the card's side moves until a helper does (see [watchTheCard]).
+     */
+    private var cardWaits = false
+
     /** Set while an interrupt of ours is in flight, so the turn it ends is not read as an answer. */
     private var interrupting = false
 
@@ -243,7 +263,7 @@ internal class ScenarioEngine(
         val now = System.currentTimeMillis()
         // Read before the ending is wiped off the step: the head's last word against it is part of
         // what the card is told (see [carryOnWords]).
-        val words = run.steps.getOrNull(point.at)?.let(::carryOnWords) ?: CARRY_ON
+        val words = run.steps.getOrNull(point.at)?.let(::carryOnWords) ?: CARD_CARRY_ON
         /*
          * Cut while the head was finishing the card itself (see [takeOver]): the work that was going is the
          * head's, so the head is what carries on - it remembers what it had already done, and the card's own
@@ -328,8 +348,7 @@ internal class ScenarioEngine(
             point.begun && step != null && definition != null && step.conversationId.isNotEmpty() -> {
                 nudges = 0
                 cardCost = step.cost
-                cardTurn.clear()
-                cardTurnEnded = false
+                freshCardTurn()
                 editStep(step.key) { it.copy(state = StepState.RUNNING) }
                 card = openCard(step, definition, resumeFrom = step.conversationId)
                 phase = Phase.CARD
@@ -360,7 +379,7 @@ internal class ScenarioEngine(
 
     /** What a card cut short is told: the same words as after a pause, plus what the head held against it. */
     private fun carryOnWords(step: RunStep): String =
-        if (step.verdictReason.isBlank()) CARRY_ON else "$CARRY_ON The main thread judged it not done yet: ${step.verdictReason}"
+        if (step.verdictReason.isBlank()) CARD_CARRY_ON else "$CARD_CARRY_ON The main thread judged it not done yet: ${step.verdictReason}"
 
     private fun openHead(resumeFrom: String = "", takingOver: Boolean = false): ClaudeSession = ClaudeSession(
         workingDirectory = workingDirectory,
@@ -390,23 +409,33 @@ internal class ScenarioEngine(
         onTurnEnded = { onHeadTurnEnded() },
     )
 
-    private fun openCard(step: RunStep, definition: Card, resumeFrom: String = ""): ClaudeSession = ClaudeSession(
-        workingDirectory = workingDirectory,
-        resumeFrom = resumeFrom.ifEmpty { null },
-        model = definition.model.ifBlank { scenario.head.model }.ifBlank { defaultModel },
-        effort = definition.effort.ifBlank { scenario.head.effort }.ifBlank { defaultEffort },
-        permissionMode = definition.permissionMode.ifBlank { scenario.head.permissionMode },
-        accountId = accountId,
-        briefing = HeadTalk.CARD_BRIEFING,
-        nameWanted = false,
-        onEvent = { line -> onCardLine(step.key, line) },
-        onError = { message -> onSessionError(head = false, message = message) },
-        onFinished = {},
-        onToolPermission = { request -> onCardQuestion(request) },
-        onPermissionWithdrawn = { onQuestionWithdrawn(it) },
-        onCrashed = { onCrashed(head = false) },
-        onTurnEnded = { onCardTurnEnded() },
-    )
+    private fun openCard(step: RunStep, definition: Card, resumeFrom: String = ""): ClaudeSession {
+        // A process's helpers are its own and die with it, so every process is read by a fresh count - bound
+        // here rather than looked up later, so that the last lines of a process taken down cannot reach it.
+        val work = BackgroundWork()
+        helpers = work
+        return ClaudeSession(
+            workingDirectory = workingDirectory,
+            resumeFrom = resumeFrom.ifEmpty { null },
+            model = definition.model.ifBlank { scenario.head.model }.ifBlank { defaultModel },
+            effort = definition.effort.ifBlank { scenario.head.effort }.ifBlank { defaultEffort },
+            permissionMode = definition.permissionMode.ifBlank { scenario.head.permissionMode },
+            accountId = accountId,
+            briefing = HeadTalk.CARD_BRIEFING,
+            nameWanted = false,
+            onEvent = { line ->
+                work.read(line)
+                onCardLine(step.key, line)
+            },
+            onError = { message -> onSessionError(head = false, message = message) },
+            onFinished = {},
+            onToolPermission = { request -> onCardQuestion(request) },
+            onPermissionWithdrawn = { onQuestionWithdrawn(it) },
+            onCrashed = { onCrashed(head = false) },
+            onTurnEnded = { onCardTurnEnded() },
+            onTurnStarted = { onCardTurnStarted() },
+        )
+    }
 
     // --- What the two sessions say -------------------------------------------------
 
@@ -560,8 +589,13 @@ internal class ScenarioEngine(
 
     @Synchronized
     private fun onHeadTurnEnded() {
-        // Our own interrupt, or a turn that ended after the run did. Neither is an answer to anything.
-        if (interrupting || phase == Phase.PAUSED || phase == Phase.OVER) return
+        /*
+         * Our own interrupt, or a turn that ended with nothing asked of the head: after the run did, in a
+         * pause, or after a verdict was taken back because the card went on working (see
+         * [onCardTurnStarted]). None of them is an answer to anything - read as one, a turn cut short
+         * without its object would be asked for the object again, about a question that no longer stands.
+         */
+        if (interrupting || (phase != Phase.TAKEOVER && phase !in HEAD_PHASES)) return
 
         val reply = HeadTalk.read(headTurn.last)
         // The opening message is about the run rather than about any card, so its answer belongs above
@@ -628,9 +662,7 @@ internal class ScenarioEngine(
 
         nudges = 0
         tookOver = false
-        cardTurn.clear()
-        // A fresh turn of the card's: whatever ended before it is not this turn ending (see [cardTurnEnded]).
-        cardTurnEnded = false
+        freshCardTurn()
         cardCost = 0.0
         editStep(step.key) {
             it.copy(state = StepState.JUDGING, startedAt = System.currentTimeMillis(), title = definition.title.ifBlank { it.title })
@@ -715,18 +747,139 @@ internal class ScenarioEngine(
          * that had not been working at all. A pause counts the same way, and only over a question: a
          * pause taken over the card's own work interrupts it, and the turn that ends afterwards is that
          * interrupt's own (see [pause]).
+         *
+         * Helpers of the dead turn may go on reporting while the question stands, each report a turn of
+         * its own: what every such turn said is held as it ends, or only the last would reach the head.
          */
         if (phase == Phase.QUESTION || phase == Phase.BLOCKED) {
             cardTurnEnded = true
+            holdWhileHelpersWork()
             return
         }
         if (phase == Phase.PAUSED) {
-            if (resumeTo == Phase.QUESTION || resumeTo == Phase.BLOCKED) cardTurnEnded = true
+            if (resumeTo == Phase.QUESTION || resumeTo == Phase.BLOCKED) {
+                cardTurnEnded = true
+                holdWhileHelpersWork()
+            }
             return
         }
         if (phase != Phase.CARD) return
 
-        judgeTheCard()
+        turnOver()
+    }
+
+    /**
+     * The card started a turn by itself: a helper's report woke it, or a message of ours that went missing
+     * went in again (see ClaudeSession.checkDeliveries).
+     *
+     * Waiting for its helpers, that is what was expected and nothing changes. Being judged, the card was not
+     * done after all: a helper that reported in the last moments of a turn is taken up by the CLI with a
+     * turn of its own right after it, by which time nothing was left to wait for and the card had gone to
+     * the head on what it said before reading the report. The question is taken back from the head, and the
+     * card is judged again when this turn ends, with everything it said before. Paused, the brake holds: the
+     * turn is interrupted, and resuming goes back to the card rather than to a verdict on words it has since
+     * gone past.
+     */
+    @Synchronized
+    private fun onCardTurnStarted() {
+        when (phase) {
+            Phase.CARD -> cardWaits = false
+
+            Phase.VERDICT -> {
+                interrupting = true
+                head?.interrupt()
+                interrupting = false
+                pendingHead = ""
+                headAskedAt = 0
+                heldEndings += judged
+                judged = emptyList()
+                cardTurn.clear()
+                phase = Phase.CARD
+                run.steps.getOrNull(at)?.let { step -> editStep(step.key) { it.copy(state = StepState.RUNNING) } }
+                changed()
+            }
+
+            // The turn under the question had died (see [cardTurnEnded]) and a report has brought the card back:
+            // answered now, the question leads to waiting for this turn's end, not to a verdict in its middle.
+            Phase.QUESTION, Phase.BLOCKED -> cardIsBack()
+
+            Phase.PAUSED -> when (resumeTo) {
+                Phase.CARD, Phase.VERDICT -> {
+                    interrupting = true
+                    card?.interrupt()
+                    interrupting = false
+                    if (resumeTo == Phase.VERDICT) {
+                        pendingHead = ""
+                        headAskedAt = 0
+                    }
+                    resumeTo = Phase.CARD
+                }
+
+                // The brake holds over a question too - over one whose turn had died, that is: a live turn standing
+                // on its question is never interrupted (see [pause]). The interrupted turn ends dead, as the one
+                // before it did, and its end is read the way that one's was.
+                Phase.QUESTION, Phase.BLOCKED -> if (cardTurnEnded) {
+                    cardIsBack()
+                    interrupting = true
+                    card?.interrupt()
+                    interrupting = false
+                }
+
+                else -> Unit
+            }
+
+            else -> Unit
+        }
+    }
+
+    /** A turn that died under a question is alive again: what it said is held, and the new one's end is awaited. */
+    private fun cardIsBack() {
+        if (!cardTurnEnded) return
+        cardTurnEnded = false
+        heldEndings += cardTurn.last
+        cardTurn.clear()
+    }
+
+    /** What every new message to the card starts from: nothing it ended with before is this turn's ending. */
+    private fun freshCardTurn() {
+        cardTurn.clear()
+        heldEndings.clear()
+        judged = emptyList()
+        cardWaits = false
+        // See [cardTurnEnded].
+        cardTurnEnded = false
+    }
+
+    /** Keep what the card said at a turn it ended while its helpers were still at work (see [heldEndings]). */
+    private fun holdWhileHelpersWork(): Boolean {
+        if (!helpers.busy()) return false
+        heldEndings += cardTurn.last
+        cardTurn.clear()
+        return true
+    }
+
+    /**
+     * The card's turn is over: hand it to the head - unless helpers it started in the background are still
+     * at work, and then wait for them.
+     *
+     * Their reports start the card's next turn by themselves, so waiting is staying in the card's phase
+     * with the card's clock running on: it is the card's work, and a helper that never comes back is caught
+     * by the card's three-hour ceiling, a wait that ran out without a turn by the clock (see [watchTheCard]).
+     * A turn that died under a question comes here as well (see
+     * [afterQuestion]) and goes back to the card's phase the same way. A pause taken while the card waits
+     * interrupts it as it would mid-turn, and the CLI stops the helpers with it (measured on 2.1.280) - the
+     * same full stop as everywhere else, and the card told to carry on starts them again if it needs them.
+     */
+    private fun turnOver() {
+        if (!holdWhileHelpersWork()) return judgeTheCard()
+
+        cardTurnEnded = false
+        cardWaits = true
+        if (phase == Phase.CARD) return
+
+        phase = Phase.CARD
+        run = run.copy(state = RunState.RUNNING)
+        run.steps.getOrNull(at)?.let { step -> editStep(step.key) { it.copy(state = StepState.RUNNING) } }
     }
 
     /**
@@ -735,14 +888,21 @@ internal class ScenarioEngine(
      * A turn that died halfway leaves a short answer or none at all, and that is told to the head as it
      * is rather than decided here - `ok` is what it managed to say. Whether half an answer is worth
      * another go is the head's judgement, and it already has the machinery for it.
+     *
+     * [overdue] is a wait given up on while a helper's command was still running (see [watchTheCard]): the
+     * head is told so, because then the last thing the card said is likely "waiting", not a report.
      */
-    private fun judgeTheCard() {
+    private fun judgeTheCard(overdue: Boolean = false) {
         val step = run.steps.getOrNull(at) ?: return
         val stage = scenario.stages.firstOrNull { it.id == step.stageId } ?: return
         val definition = stage.cards.firstOrNull { it.id == step.cardId } ?: return
 
         cardTurnEnded = false
-        val endings = cardTurn.last
+        cardWaits = false
+        val waited = heldEndings.isNotEmpty()
+        val endings = heldEndings + cardTurn.last
+        heldEndings.clear()
+        judged = endings
         val answer = endings.joinToString("\n\n")
         editStep(step.key) { it.copy(state = StepState.JUDGING, said = "", summary = shorten(answer, SUMMARY_CHARS)) }
 
@@ -751,6 +911,8 @@ internal class ScenarioEngine(
             HeadTalk.verdictRequest(
                 card = definition,
                 endings = endings,
+                waited = waited,
+                overdue = overdue,
                 ok = answer.isNotBlank(),
                 nudgesLeft = (scenario.head.retries - nudges).coerceAtLeast(0),
                 handsOver = canTakeOver(stopAsked = false),
@@ -771,9 +933,7 @@ internal class ScenarioEngine(
             cardStartedAt = System.currentTimeMillis()
             pausedFor = 0
             pausedAt = 0
-            cardTurn.clear()
-            // A fresh turn of the card's: whatever ended before it is not this turn ending (see [cardTurnEnded]).
-            cardTurnEnded = false
+            freshCardTurn()
             card?.sendPrompt(retry)
             return
         }
@@ -1067,14 +1227,15 @@ internal class ScenarioEngine(
          * Everything still in the queue belongs to that same dead turn: put to a person at three in the
          * morning it would be a question about work that has already stopped, and answered it would be
          * written into a request the CLI discards. The card goes to the head with whatever it managed to
-         * say (see [judgeTheCard]).
+         * say (see [judgeTheCard]) - or, with helpers of its still at work, waits for them first (see
+         * [turnOver]).
          */
         if (cardTurnEnded) {
             questions.clear()
             deciding = ""
             if (phase == Phase.BLOCKED) release()
             run = run.copy(question = null)
-            judgeTheCard()
+            turnOver()
             return
         }
 
@@ -1307,10 +1468,8 @@ internal class ScenarioEngine(
                 cardStartedAt = System.currentTimeMillis()
                 pausedFor = 0
                 pausedAt = 0
-                cardTurn.clear()
-                // A fresh turn of the card's: whatever ended before it is not this turn ending (see [cardTurnEnded]).
-                cardTurnEnded = false
-                card?.sendPrompt(CARRY_ON)
+                freshCardTurn()
+                card?.sendPrompt(CARD_CARRY_ON)
             }
 
             Phase.BLOCKED -> run.steps.getOrNull(at)?.let { step -> editStep(step.key) { it.copy(state = StepState.ASKING) } }
@@ -1414,8 +1573,14 @@ internal class ScenarioEngine(
      * A card that ran past its time is one its session could not finish, so it goes to the head where the
      * scenario says so. What it was saying at that moment travels with it: the head never judged a turn
      * that never ended, and it is the one clue to where three hours went.
+     *
+     * A card waiting for its helpers is looked at on the same beat. A helper's report starts the card's
+     * next turn by itself, so nothing is left to wait for while it still waits only when that never came:
+     * a command of a helper's that outlived its allowance (see BackgroundWork.HELPERS_COMMAND_MS), or a
+     * report the CLI did not take up. Its answer is then what it said so far, and the head judges that.
      */
     private fun watchTheCard() {
+        if (cardWaits && !helpers.busy()) return judgeTheCard(overdue = helpers.overdue())
         if (!pastTheCeiling()) return
 
         val step = run.steps.getOrNull(at) ?: return
@@ -1581,6 +1746,15 @@ internal class ScenarioEngine(
         const val TAKE_OVER_CHARS = 400
         const val DETAIL_CHARS = 2000
         const val CARRY_ON = "Carry on from where you stopped."
+
+        /**
+         * The same words for a card, and one thing more: its helpers in the background did not survive. A
+         * stop takes the process down, and a pause interrupts the card, which the CLI answers by stopping
+         * them (measured on 2.1.280). Told nothing, a card last seen waiting for its reviewers goes on
+         * waiting for reports that will never come, ends its turn on that, and is judged on it.
+         */
+        const val CARD_CARRY_ON = "$CARRY_ON Helpers you had started in the background did not survive the stop: " +
+            "start again any you still need."
 
         /** Everything a turn was charged for - the cache is most of it on a card that reads a lot. */
         val TOKEN_FIELDS = listOf(

@@ -127,6 +127,46 @@ class HeadTalkTest {
         assertTrue(asked.indexOf("DOD: all met") < asked.indexOf("style once more"))
     }
 
+    /*
+     * Recorded live: a card that sent its plan to reviewers in the background reached the head as "waiting
+     * for them", and the head sent it back for the report it was about to write. Now the card is judged
+     * once they have reported, and the head is told the report comes last rather than first.
+     */
+    @Test
+    fun `a verdict on a card that waited for its helpers says where the report is`() {
+        val asked = HeadTalk.verdictRequest(
+            card,
+            listOf("Sent the plan to three reviewers, waiting for them.", "Brief written into the card. Report follows."),
+            ok = true,
+            nudgesLeft = 1,
+            waited = true,
+        )
+
+        assertTrue("helpers it had started in the background" in asked)
+        assertTrue("the last is where it finally stopped" in asked)
+        assertTrue("--- ending 2 of 2" in asked)
+        assertTrue("the report is usually the first" !in asked)
+        assertTrue(asked.indexOf("waiting for them") < asked.indexOf("Brief written"))
+    }
+
+    // A wait given up on by the clock: the last ending is then likely "waiting" itself, and saying the
+    // panel waited for every report would be untrue.
+    @Test
+    fun `a verdict on a wait given up on says a report is missing`() {
+        val asked = HeadTalk.verdictRequest(
+            card,
+            listOf("Sent the plan to three reviewers, waiting for them.", "Two reviews in, the third is still running its tests."),
+            ok = true,
+            nudgesLeft = 1,
+            waited = true,
+            overdue = true,
+        )
+
+        assertTrue("stopped waiting before all of them had reported" in asked)
+        assertTrue("may be the card still waiting rather than its report" in asked)
+        assertTrue("waited until every one of them had reported" !in asked)
+    }
+
     @Test
     fun `a verdict on a single ending reads as before`() {
         val asked = HeadTalk.verdictRequest(card, listOf("Done."), ok = true, nudgesLeft = 1)

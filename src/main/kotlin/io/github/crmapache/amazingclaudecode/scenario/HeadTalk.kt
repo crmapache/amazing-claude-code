@@ -61,6 +61,11 @@ internal object HeadTalk {
      * Short on purpose in a second sense as well: a card is meant to read as an ordinary task in an
      * ordinary repository, and the more it is told about the machinery around it, the more of its answer
      * is about the machinery.
+     *
+     * The one piece of machinery it is told about is the one it cannot see: its helpers started in the
+     * background are waited for before its answer is read, and a command started there is not - a dev
+     * server never ends (see BackgroundWork). A card that ended its turn to wait for its tests would be
+     * judged on "waiting for the tests" and sent back for the rest.
      */
     const val CARD_BRIEFING =
         "This turn is one step of a scenario being run by the Amazing Claude Code panel of a JetBrains " +
@@ -68,7 +73,8 @@ internal object HeadTalk {
             "scenario: it gave you this task, it reads your answer, and it decides whether the step is " +
             "done - so finish by saying plainly what you did and what came of it, because that answer is " +
             "the whole of what it sees. If you need a decision the task does not cover, ask for it: the " +
-            "main thread answers, and it answers quickly."
+            "main thread answers, and it answers quickly. A command you run in the background is not " +
+            "waited for: if you need what it returns, wait for it before you end your turn."
 
     /** The first message of the run: what it is for, how the board works, and what to answer with. */
     fun opening(scenario: Scenario, projectPath: String, inputs: Map<String, String>, total: Int): String {
@@ -242,12 +248,26 @@ internal object HeadTalk {
      * More than one is said to the head in so many words: without it, a report followed by a note about a
      * hook's style pass reads as two halves of one answer, or as the note superseding the report.
      *
+     * [waited] is whether some of those endings came while helpers the card had started in the background
+     * were still at work (see ScenarioEngine.turnOver). Then the order of things is the other way round -
+     * "waiting for the reviewers" first and the report last - and the head is told which way to read them.
+     * [overdue] is a wait given up on while a helper's command was still running: then the last ending is
+     * likely "waiting" itself, and the head is told that a report is still missing rather than that it came.
+     *
      * [handsOver] is whether giving up on the card hands its work to the head (see TakeOver.wanted). Then
      * the head is offered two ways of saying no rather than one, and the difference is the point: a card
      * that could not do it is work the head can pick up, and a stop the briefing forbids getting past is
      * not - the head saying which is how a scenario's hard stops stay stops with the fence down.
      */
-    fun verdictRequest(card: Card, endings: List<String>, ok: Boolean, nudgesLeft: Int, handsOver: Boolean = false): String = buildString {
+    fun verdictRequest(
+        card: Card,
+        endings: List<String>,
+        ok: Boolean,
+        nudgesLeft: Int,
+        handsOver: Boolean = false,
+        waited: Boolean = false,
+        overdue: Boolean = false,
+    ): String = buildString {
         appendLine(
             if (ok) {
                 "The card's turn is over. This is what it said:"
@@ -257,7 +277,26 @@ internal object HeadTalk {
         )
         appendLine()
         val said = endings.filter { it.isNotBlank() }
-        if (said.size > 1) {
+        if (waited && overdue) {
+            appendLine(
+                "It ended a turn while helpers it had started in the background were still at work, and " +
+                    "their reports set it going again. The panel stopped waiting before all of them had " +
+                    "reported: a command one of them had started was still running after half an hour, so " +
+                    "its report has not come. What it said at every ending is here, in order, and the last " +
+                    "may be the card still waiting rather than its report. Any other ending before the last " +
+                    "is one a hook of the project sent it back to work from.",
+            )
+            appendLine()
+        } else if (waited) {
+            appendLine(
+                "It ended a turn while helpers it had started in the background were still at work. Their " +
+                    "reports set it going again, and the panel waited until every one of them had reported " +
+                    "before asking you, so what it said at every ending is here, in order. Any other ending " +
+                    "before the last is one a hook of the project sent it back to work from. Read them " +
+                    "together: the last is where it finally stopped, and it usually holds the report.",
+            )
+            appendLine()
+        } else if (said.size > 1) {
             appendLine(
                 "It meant to end its turn ${said.size} times. Each time but the last, a hook of the project " +
                     "sent it back to work, so what it said at every ending is here, in order. Read them " +
