@@ -9,6 +9,17 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.26] - 2026-10-07
+
+- Added: right-click a file or a folder in the project tree, or a changed file in the Commit tool window, and "Send to Amazing Claude Code GUI" stands right under "Copy Path/Reference...". It puts what you clicked into the input field as an attachment with its full path, the same as dragging it into the panel; select several files and folders and they all go in at once. In the editor's own menu the two items stay where they were: the selected lines first, then "Send Absolute Path to Amazing Claude Code GUI" for the whole file, and that one now works on folders as well.
+- Changed: removing an attachment from the input field takes the space after it along. That space came in with the attachment, and left behind it made a field that looked empty but was not, so the hint of an empty field did not come back. Between two words the space stays, so they do not run together.
+- Added: you can write to the main thread of a running scenario. At the bottom of the run's tab there is a field like a chat's, with files, pictures, pasted text and dictation, and the phone has it too. Your words and the answer appear in the timeline under the card the run is on. When the main thread is free it answers at once; while it is answering one of the run's own questions, your words wait and go first in its next turn; while it is doing a card's work itself, they reach it in the middle of that work. It can pass what you said on to the card that is working.
+- Added: a star on a past scenario run, to mark it for yourself - for instance, that you have looked at it. It is only your mark: runs are not sorted, filtered or kept by it. The star is stored with the run, so a second window and the phone see it too.
+- Changed: the current card on a scenario's road no longer glows. Its ring has a short arc running around it while the run works or waits for you, and stays grey while the run is paused. The road also has more room above and below it, on the phone too, where its circles sat right on the line under the header, and on the run's screen the run's state now stands at the right end of the row, as on its card.
+- Fixed: with the IDE scaled to 90% on a Retina screen, a scenario's road could fold six circles into "+2" while the row had room for all of them. The width was measured a fraction of a pixel narrower than the row; a difference that small no longer counts.
+- Fixed: going back in the side menu always started the screen from the top. Settings scrolled to the bottom came back at the top after a visit to "Indicators", and the next screen opened from there could start half-way down. Each screen now comes back where you left it, and a screen you open starts at its top.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.25] - 2026-10-07
 
 - Changed: the card of a running scenario shows the name of the stage it is in and a row of numbered circles, one for every card of every pass. Finished cards are ticked, the current one glows, and the rest keep their numbers; the stage it is in is shaded behind its circles, and hovering a circle shows the card's name. When the row does not fit a narrow panel or a long run, it folds the far ends into counts like "+9" and keeps the first card, the current one and the last. The same row replaces the progress bar on the run's own screen and on the phone. The stage name is there from the first second, so the card no longer jumps when the first card starts.
@@ -920,7 +931,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.25...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.26...HEAD
+[0.13.26]: https://github.com/crmapache/amazing-claude-code/compare/0.13.25...0.13.26
 [0.13.25]: https://github.com/crmapache/amazing-claude-code/compare/0.13.24...0.13.25
 [0.13.24]: https://github.com/crmapache/amazing-claude-code/compare/0.13.23...0.13.24
 [0.13.23]: https://github.com/crmapache/amazing-claude-code/compare/0.13.22...0.13.23
