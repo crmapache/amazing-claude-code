@@ -132,11 +132,12 @@ export const StepLog = ({
  *
  * In that order, and it is the order the panel already reads these in (see the facts under a workflow's
  * agent): time first because it is what somebody is looking for, then the size of the work, then the
- * money it came to.
+ * money it came to. `worked` is what it genuinely worked (see stepWorked, runWorked), and 0 while it is
+ * still going - a figure that keeps moving does not belong on a line that stands still.
  */
-export const stepFacts = (startedAt: number, finishedAt: number, tokens: number, cost: number): string =>
+export const stepFacts = (worked: number, tokens: number, cost: number): string =>
   [
-    startedAt > 0 && finishedAt > 0 ? formatDuration(finishedAt - startedAt) : '',
+    worked > 0 ? formatDuration(worked) : '',
     tokens > 0 ? formatTokens(tokens) : '',
     cost > 0 ? `$${cost.toFixed(2)}` : '',
   ]

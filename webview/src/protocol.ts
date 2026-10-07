@@ -620,6 +620,13 @@ export interface ScenarioRun {
    * there was such a thing.
    */
   idle?: number
+  /**
+   * Time it stood still while it was a run - paused, or standing on a question a person has to answer -
+   * and when the stretch it is standing still in began (0 while it works). Subtracted from its clock the
+   * way `idle` is (see runWorked). Absent on a record written before there was such a thing.
+   */
+  rested?: number
+  restingSince?: number
   /** Every card of every pass, in the order they were planned - loops written out flat. */
   steps: ScenarioRunStep[]
   /** What the head said in words as it went, wedged into the timeline where it was said. */
@@ -669,6 +676,8 @@ export interface ScenarioRunStep {
    * than the setting) when it never had to - see ScenarioHead.onGiveUp.
    */
   takeOver?: string
+  /** Time the run stood still while this card was the one on the board - see ScenarioRun.rested. */
+  rested?: number
 }
 
 export interface ScenarioRunNote {
@@ -713,20 +722,33 @@ export interface ScenarioRunSummary {
   tokens?: number
   /** See ScenarioRun.idle. */
   idle?: number
-  /** Which stage of how many it is standing in, counting from one. Zero when it has not begun. */
-  stage?: number
-  stages?: number
-  /** The card it is on right now, by name. */
+  /** See ScenarioRun.rested - stamps and sums rather than a figure, so the live frame does not tick. */
+  rested?: number
+  restingSince?: number
+  /**
+   * The name of the stage it stands in - the one line over the road on its card. The stage of the first stop
+   * that is not over, so it is there before any card begins (see RunSummary.stageTitle).
+   */
+  stageTitle?: string
+  /** The card it is on right now, by name - what the card says over its road for an IDE with no stage name. */
   at?: string
-  /** Which pass of that stage, and how many it may have. Zero when the stage does not loop. */
-  pass?: number
-  passes?: number
-  /** How many times the main thread has sent the card it is on back to work. */
-  nudges?: number
   /** What it has stopped to ask, when it is standing on a question. Empty otherwise. */
   asking?: string
-  /** Whether the card it is on is being finished by the main thread itself (see ScenarioRunStep.takeOver). */
-  takingOver?: boolean
+  /**
+   * Every card of every pass, in order, as the road on the card of a going run draws it. Empty for a
+   * finished run: the table draws no road, and the list of past runs goes out whole.
+   */
+  roadmap?: ScenarioRoadmapStop[]
+}
+
+/** One card of one pass on the road of a going run. */
+export interface ScenarioRoadmapStop {
+  state: ScenarioStepState
+  /** Which stage it belongs to, counting from one - what the tint behind the stage the run is in follows. */
+  stage: number
+  pass: number
+  /** Its name, cut short. */
+  title: string
 }
 
 /**

@@ -228,8 +228,61 @@ const RELEASE: Scenario = {
   scope: 'user',
 }
 
+/**
+ * A long night: a loop of three cards that may go round five times between a stage before and one after -
+ * eighteen stops on the road of a going run. Here so that the road has something to fold on a narrow panel
+ * (see scenarios/roadmap.ts); the other two are as short as most real scenarios are.
+ */
+const PATROL: Scenario = {
+  version: 1,
+  id: 'night-patrol',
+  name: 'Night patrol',
+  createdAt: Date.now() - 20 * 24 * 60 * 60 * 1000,
+  updatedAt: Date.now() - 24 * 60 * 60 * 1000,
+  inputs: [{ id: 'p1', name: 'ticket', label: 'Ticket', placeholder: 'ACC-412', required: true }],
+  head: {
+    briefing: 'Take the ticket from a plan to a pull request, and go round the checks until nothing is left.',
+    model: '',
+    effort: '',
+    permissionMode: 'acceptEdits',
+    onQuestion: 'head',
+    retries: 2,
+  },
+  stages: [
+    {
+      id: 'p-plan',
+      title: 'Plan the ticket',
+      repeat: 1,
+      untilDone: false,
+      cards: [card('p-read', 'Read the ticket and plan', 'Read {{ticket}} and write a plan of the change.')],
+    },
+    {
+      id: 'p-round',
+      title: 'Build, review and fix',
+      repeat: 5,
+      untilDone: true,
+      cards: [
+        card('p-build', 'Build what the plan says', 'Build the next part of the plan.'),
+        card('p-review', 'Review the branch', 'Review what was built and write the findings down.'),
+        card('p-fix', 'Fix the findings', 'Fix what the review found.'),
+      ],
+    },
+    {
+      id: 'p-ship',
+      title: 'Ship it',
+      repeat: 1,
+      untilDone: false,
+      cards: [
+        card('p-pr', 'Open the pull request', 'Open a pull request for the branch.'),
+        card('p-deploy', 'Deploy and look at it', 'Deploy and check the change on the live site.'),
+      ],
+    },
+  ],
+  scope: 'project',
+}
+
 const reset = (): void => {
-  shelves = [structuredClone(REVIEW), structuredClone(RELEASE)]
+  shelves = [structuredClone(REVIEW), structuredClone(PATROL), structuredClone(RELEASE)]
   runs = [
     {
       id: 'run-yesterday',
@@ -567,16 +620,18 @@ const sendLive = (): void => {
 /**
  * What the IDE's own `summarise` builds, including where the run has got to.
  *
- * The half under `inputs` is what a card of a going run draws - the stage it is in, the card it is on,
- * what it has burnt and what it has stopped to ask - so a harness that left it out would show the one
- * band of the hub that this redesign is about as a row of blanks.
+ * The half under `inputs` is what a card of a going run draws - the stage it is in, its road, what it has
+ * burnt and what it has stopped to ask - so a harness that left it out would show the one band of the hub
+ * that this redesign is about as a row of blanks. The stage is the one of the first stop not over, as the
+ * IDE reads it, so the name is there before the first card begins.
  */
 const summarise = (run: ScenarioRun): ScenarioRunSummary => {
   const here =
     run.steps.find((step) => step.state === 'running' || step.state === 'asking' || step.state === 'judging') ??
     [...run.steps].reverse().find((step) => step.startedAt > 0)
-  const stage = run.snapshot.stages.findIndex((one) => one.id === here?.stageId)
-  const passes = stage >= 0 ? run.snapshot.stages[stage].repeat : 0
+  const over = (state: ScenarioRunStep['state']): boolean => state === 'done' || state === 'failed' || state === 'skipped'
+  const standing = run.steps.find((step) => !over(step.state)) ?? run.steps[run.steps.length - 1]
+  const stage = run.snapshot.stages.find((one) => one.id === standing?.stageId) ?? run.snapshot.stages[0]
 
   return {
     id: run.id,
@@ -592,13 +647,44 @@ const summarise = (run: ScenarioRun): ScenarioRunSummary => {
     cost: run.cost,
     inputs: run.inputs,
     tokens: run.tokens,
-    stage: stage >= 0 ? stage + 1 : 0,
-    stages: run.snapshot.stages.length,
+    idle: run.idle,
+    rested: run.rested,
+    restingSince: run.restingSince,
+    stageTitle: stage?.title ?? '',
+    roadmap:
+      run.state === 'done' || run.state === 'failed' || run.state === 'stopped'
+        ? []
+        : run.steps.map((step) => ({
+            state: step.state,
+            stage: run.snapshot.stages.findIndex((one) => one.id === step.stageId) + 1,
+            pass: step.pass,
+            title: step.title,
+          })),
     at: here?.title ?? '',
-    pass: passes > 1 ? (here?.pass ?? 0) : 0,
-    passes: passes > 1 ? passes : 0,
-    nudges: here?.nudges.length ?? 0,
     asking: run.question ? run.question.title || run.question.tool : '',
+  }
+}
+
+/**
+ * The run's clock, kept the way the IDE keeps it (see RunClock.kt): standing still - a pause, a question
+ * for a person - stamps its start; going back to work adds its length to the run and to the card on the
+ * board. Everything else here is a few seconds long, so this is the one part of the clock worth seeing.
+ */
+const clockFollows = (run: ScenarioRun, resting: boolean): ScenarioRun => {
+  const since = run.restingSince ?? 0
+  if (resting) return since > 0 ? run : { ...run, restingSince: Date.now() }
+  if (since === 0) return run
+
+  const length = Math.max(0, Date.now() - since)
+  return {
+    ...run,
+    rested: (run.rested ?? 0) + length,
+    restingSince: 0,
+    steps: run.steps.map((one) =>
+      one.state === 'running' || one.state === 'asking' || one.state === 'paused' || one.state === 'judging'
+        ? { ...one, rested: (one.rested ?? 0) + length }
+        : one,
+    ),
   }
 }
 
@@ -662,7 +748,7 @@ const walk = (id: string, from = 0, startIn: 'run' | 'judge' = 'run'): void => {
     if (phase === 'run' && at === 1 && !asked[id]) {
       asked[id] = true
       keep({
-        ...run,
+        ...clockFollows(run, true),
         state: 'blocked',
         question: {
           stepKey: step.key,
@@ -1077,8 +1163,8 @@ export const answerScenarios = (message: WebviewMessage): void => {
     const run = records[message.runId]
     if (run?.question) {
       keep({
-        ...run,
-        state: 'running',
+        ...clockFollows(run, run.state === 'paused'),
+        state: run.state === 'paused' ? 'paused' : 'running',
         question: null,
         steps: run.steps.map((one) => (one.state === 'asking' ? { ...one, state: 'running' } : one)),
         notes: [
@@ -1094,9 +1180,13 @@ export const answerScenarios = (message: WebviewMessage): void => {
     const run = records[message.runId]
     if (run) {
       keep({
-        ...run,
+        ...clockFollows(run, true),
         state: 'paused',
-        steps: run.steps.map((one) => (one.state === 'running' ? { ...one, state: 'paused' } : one)),
+        steps: run.steps.map((one) =>
+          one.state === 'running' || one.state === 'asking' || one.state === 'judging'
+            ? { ...one, state: 'paused' }
+            : one,
+        ),
       })
     }
     return
@@ -1105,10 +1195,12 @@ export const answerScenarios = (message: WebviewMessage): void => {
   if (message.type === 'scenarioResume') {
     const run = records[message.runId]
     if (run) {
+      // A pause lifted over a question nobody has answered goes back to waiting for it, and the clock with it.
+      const waits = run.question !== null
       keep({
-        ...run,
-        state: 'running',
-        steps: run.steps.map((one) => (one.state === 'paused' ? { ...one, state: 'running' } : one)),
+        ...clockFollows(run, waits),
+        state: waits ? 'blocked' : 'running',
+        steps: run.steps.map((one) => (one.state === 'paused' ? { ...one, state: waits ? 'asking' : 'running' } : one)),
       })
     }
     return
@@ -1118,7 +1210,7 @@ export const answerScenarios = (message: WebviewMessage): void => {
     const run = records[message.runId]
     if (run) {
       keep({
-        ...run,
+        ...clockFollows(run, false),
         state: 'stopped',
         failure: 'stopped',
         finishedAt: Date.now(),

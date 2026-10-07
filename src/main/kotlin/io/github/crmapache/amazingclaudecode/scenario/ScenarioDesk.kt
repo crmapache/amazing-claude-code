@@ -1211,11 +1211,20 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
         // What is going, to everybody, at a pace an eye can use - and cheaply enough to send it whole.
         if (now - lastLive >= LIVE_MS) sendLive()
 
+        /*
+         * To the disk when it moved - and every half a minute when it did not.
+         *
+         * A card in a long silent command moves nothing for an hour, and the record is the only witness of
+         * when the run was last alive: an IDE that goes away leaves it saying "running", and the sweep at
+         * the next start closes it at the moment it was last written (see RunStore.abandoned). Written only
+         * on change, a run killed an hour into such a command would be counted as working until morning -
+         * or, the other way round, its last hour would vanish from it.
+         */
         for ((_, holder) in holders) {
             synchronized(holder.lock) {
-                if (holder.dirty && now - holder.lastWrite >= WRITE_MS) {
+                if (now - holder.lastWrite >= if (holder.dirty) WRITE_MS else VOUCH_MS) {
                     holder.lastWrite = now
-                    runs.keep(holder.engine.run)
+                    runs.keep(holder.engine.run, now)
                 }
             }
         }
@@ -1377,6 +1386,9 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
         const val QUEUE = "Scenario queue"
         const val REDRAW_MS = 250L
         const val WRITE_MS = 2_000L
+
+        /** How often a live run that has not moved is written anyway - see [pulse]. */
+        const val VOUCH_MS = 30_000L
 
         /** How often the short "what is going" frame goes out - see [sendLive]. */
         const val LIVE_MS = 1_000L

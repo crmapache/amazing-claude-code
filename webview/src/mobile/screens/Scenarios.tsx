@@ -1,19 +1,21 @@
 import { useState } from 'react'
+import { formatTokens } from '../../feed/build'
 import { formatDuration } from '../../feed/tools'
 import { useGrowthFlash } from '../../hooks/useGrowthFlash'
 import { useNow } from '../../hooks/useNow'
 import { useLocale, useT } from '../../i18n'
 import type { Scenario, ScenarioQueued, ScenarioQueueState, ScenarioRunSummary, ScenarioSchedule } from '../../protocol'
+import { Roadmap } from '../../components/scenarios/Roadmap'
 import { StatePill } from '../../components/scenarios/StatePill'
 import { BANDS, type ScenariosBand } from '../../components/scenarios/view'
 import { clockLabel, defaultHour, nextNote, schedulesOf, weekdayName, whenLabel } from '../../scenarios/schedule'
-import { runElapsed } from '../../scenarios/timeline'
+import { runWorked } from '../../scenarios/timeline'
 import { countdown, timetableOf } from '../../scenarios/timetable'
 import { blankScenario } from '../../scenarios/blank'
 import { cardRuns, passesOf, problemsOf, blocking } from '../../scenarios/rules'
 import { pastRuns, runMarks, runningRuns } from '../../scenarios/runs'
 import { namedRun, queueBehind, queueMarks, queueStanding, queuedFor } from '../../scenarios/queue'
-import { startedLabel } from '../../scenarios/moments'
+import { endedLabel, momentLabel } from '../../scenarios/moments'
 import type { ScenarioShelves } from '../facts'
 import {
   outcomeText,
@@ -560,7 +562,7 @@ const LiveRun = ({
 }) => {
   const t = useT()
   const share = run.total > 0 ? Math.round((run.done / run.total) * 100) : 0
-  const elapsed = formatDuration(runElapsed(run, now))
+  const worked = formatDuration(runWorked(run, now))
   const asks = run.state === 'blocked'
 
   return (
@@ -571,20 +573,29 @@ const LiveRun = ({
         <span className={m.taskRowChevron}>›</span>
       </button>
 
+      {/* The same three things the desk's card says, in the same order (see RunsBand): the name of the stage
+          it is in and nothing else, drawn from the first frame; the road of its cards; what it has worked and
+          spent. */}
+      <span className={m.runStage}>{run.stageTitle || run.at || '\u00a0'}</span>
+
+      {run.roadmap && run.roadmap.length > 0 ? (
+        <div className={m.runRoad}>
+          <Roadmap stops={run.roadmap} state={run.state} />
+        </div>
+      ) : (
+        <span className={m.runTrack}>
+          <span className={m.runFill} style={{ width: `${share}%` }} />
+        </span>
+      )}
+
       <span className={m.runFacts}>
         <StatePill state={run.state} failure={run.failure} />
-        <span className={m.runFact}>{t.scenarios.run.cards(run.done, run.total)}</span>
         <span className={m.runFact}>
-          <span className={m.runFactKey}>
-            {run.state === 'paused' ? t.scenarios.run.openFor : t.scenarios.run.runningShort}
-          </span>
-          {elapsed}
+          <span className={m.runFactKey}>{t.scenarios.run.active}</span>
+          {worked}
         </span>
+        {run.tokens ? <span className={m.runFact}>{formatTokens(run.tokens)}</span> : null}
         {run.cost > 0 ? <span className={m.runFact}>{`$${run.cost.toFixed(2)}`}</span> : null}
-      </span>
-
-      <span className={m.runTrack}>
-        <span className={m.runFill} style={{ width: `${share}%` }} />
       </span>
 
       {run.asking ? <p className={m.runAskText}>{run.asking}</p> : null}
@@ -627,8 +638,13 @@ const PastRun = ({ run, onOpen }: { run: ScenarioRunSummary; onOpen: () => void 
           <StatePill state={run.state} failure={run.failure} />
           <span className={m.pastRunMeta}>
             {[
-              startedLabel(run.startedAt, locale, t.scenarios.when),
-              `${run.done}/${run.total}`,
+              // When it ended rather than how many cards - the same trade the desk's table made.
+              [
+                momentLabel(run.startedAt, locale, t.scenarios.when),
+                run.finishedAt > 0 ? endedLabel(run.startedAt, run.finishedAt, locale, t.scenarios.when) : '',
+              ]
+                .filter(Boolean)
+                .join(' → '),
               run.cost > 0 ? `$${run.cost.toFixed(2)}` : '',
             ]
               .filter(Boolean)

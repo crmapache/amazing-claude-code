@@ -606,7 +606,7 @@ export const en = {
     table: {
       run: 'RUN',
       started: 'STARTED',
-      cards: 'CARDS',
+      finished: 'FINISHED',
       took: 'TOOK',
       cost: 'COST',
       state: 'STATE',
@@ -715,15 +715,18 @@ export const en = {
         chatHint: 'Opens the main thread’s conversation in a tab of its own. It remembers the whole run, so you can go on from there.',
       },
       cards: (done: number, total: number): string => `${done}/${total} cards`,
-      running: 'running for',
-      /** The same, short enough for a card in a list of them. */
-      runningShort: 'for',
-      openFor: 'open for',
+      /**
+       * How long it has genuinely worked - pauses, questions waiting for you and an IDE that went away are not
+       * in it (see runWorked). The same word whether it is going, paused or standing on a question.
+       */
+      active: 'active',
+      /** The road of cards on the card of a going run, for whoever cannot see it (see Roadmap). */
+      road: 'Cards in order',
+      /** A stretch of the road folded to make it fit, from which card to which. */
+      roadFolded: (from: number, to: number): string => `cards ${from}-${to}`,
       took: 'took',
       cost: 'cost',
       tokens: 'tokens',
-      /** Where the run is, on the card in the list: "stage 2 of 3 · Write the tests". */
-      stageOf: (at: number, total: number): string => `stage ${at} of ${total}`,
       /** The heading of a pass of a stage that runs a set number of times, and of one that may stop early. */
       passOf: (pass: number, passes: number): string => `pass ${pass} of ${passes}`,
       passOfUpTo: (pass: number, passes: number): string => `pass ${pass} of up to ${passes}`,
@@ -732,8 +735,6 @@ export const en = {
       sentBack: (n: number): string => (n === 1 ? 'sent back once' : `sent back ${n} times`),
       /** A card the main thread finished itself, and why its own session could not. */
       takenOver: (why: string): string => `The main thread took it over: ${why}`,
-      /** On the card of a live run, while that is happening. */
-      takingOver: 'the main thread is finishing it',
       allow: 'Allow',
       deny: 'Refuse',
       send: 'Send',

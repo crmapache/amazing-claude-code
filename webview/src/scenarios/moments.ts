@@ -46,12 +46,12 @@ export const clockOnly = (at: number, locale: string): string =>
   formatter(CLOCKS, locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(at))
 
 /**
- * When a run started, as the table of past runs writes it.
+ * When a run started or ended, as the table of past runs writes it.
  *
  * Today and yesterday are said in words because those are the two everybody is actually looking for, and
  * "8 Sep" over a run that finished an hour ago makes somebody count dates to find out it is today's.
  */
-export const startedLabel = (
+export const momentLabel = (
   at: number,
   locale: string,
   words: { todayAt: (clock: string) => string; yesterdayAt: (clock: string) => string },
@@ -62,3 +62,17 @@ export const startedLabel = (
   if (away === -1) return words.yesterdayAt(clockOnly(at, locale))
   return dayAndHour(at, locale)
 }
+
+/**
+ * When a run ended, said after when it started on one line: the hour alone when it is the same day - "today
+ * 02:37 → 07:37" - and the whole label when the night crossed midnight, where the hour alone would read as
+ * the morning before.
+ */
+export const endedLabel = (
+  startedAt: number,
+  finishedAt: number,
+  locale: string,
+  words: { todayAt: (clock: string) => string; yesterdayAt: (clock: string) => string },
+  now: number = Date.now(),
+): string =>
+  daysBetween(startedAt, finishedAt) === 0 ? clockOnly(finishedAt, locale) : momentLabel(finishedAt, locale, words, now)

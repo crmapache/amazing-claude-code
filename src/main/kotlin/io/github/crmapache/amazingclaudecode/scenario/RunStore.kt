@@ -88,12 +88,17 @@ internal class RunStore(workingDirectory: String?) {
             .onFailure { thisLogger().info("Could not read a scenario run: ${it.message}") }
             .getOrNull()
 
-    fun keep(run: ScenarioRun) {
+    /**
+     * Written with the moment of writing on it - the last moment the run is known to have been alive (see
+     * ScenarioRun.writtenAt).
+     */
+    fun keep(run: ScenarioRun, now: Long = System.currentTimeMillis()) {
         runCatching {
             val folder = runDirectory(run.id) ?: return
+            val stamped = run.copy(writtenAt = now)
             folder.mkdirs()
-            File(folder, RECORD).writeText(json.encodeToString(run))
-            File(folder, SUMMARY).writeText(json.encodeToString(run.summarise()))
+            File(folder, RECORD).writeText(json.encodeToString(stamped))
+            File(folder, SUMMARY).writeText(json.encodeToString(stamped.summarise()))
         }.onFailure { thisLogger().warn("Could not write a scenario run", it) }
     }
 
@@ -112,40 +117,57 @@ internal class RunStore(workingDirectory: String?) {
      * which is exactly what an abandoned one looks like - so without it the sweep would write "crashed"
      * over a run that started a moment ago and is about to draw its first card.
      */
-    fun repairAbandoned(alive: Set<String>) {
+    fun repairAbandoned(alive: Set<String>, now: Long = System.currentTimeMillis()) {
         for (summary in summaries()) {
             if (RunState.finished(summary.state)) continue
             if (summary.id in alive) continue
             val run = read(summary.id) ?: continue
-            keep(
-                run.copy(
-                    state = RunState.FAILED,
-                    failure = run.failure.ifEmpty { RunFailure.CRASHED },
-                    finishedAt = if (run.finishedAt > 0) run.finishedAt else System.currentTimeMillis(),
-                    question = null,
-                    steps = run.steps.map { step ->
-                        if (StepState.over(step.state)) {
-                            step
-                        } else {
-                            step.copy(
-                                // A card that never got its go was skipped, and that is a different thing in
-                                // the morning from one that was halfway through something when the IDE went
-                                // away: only the second may have left half a change on the disk.
-                                state = if (StepState.begun(step.state)) StepState.FAILED else StepState.SKIPPED,
-                                failure = step.failure.ifEmpty {
-                                    if (StepState.begun(step.state)) RunFailure.CRASHED else ""
-                                },
-                                finishedAt = if (step.finishedAt > 0) step.finishedAt else System.currentTimeMillis(),
-                            )
-                        }
-                    },
-                ),
-            )
+            keep(abandoned(run, now), now)
         }
     }
 
-    private companion object {
-        const val RECORD = "run.json"
-        const val SUMMARY = "summary.json"
+    internal companion object {
+        private const val RECORD = "run.json"
+        private const val SUMMARY = "summary.json"
+
+        /**
+         * A run whose IDE went away, closed at the moment it was last known to be alive.
+         *
+         * That moment is [ScenarioRun.writtenAt], not this one: the sweep runs at the next start of the IDE,
+         * and a run that fell over at two in the morning and was found at nine did not work for seven more
+         * hours - its clock, its last card and the gap a later carry-on measures from all end where the
+         * walking ended. A record from before the stamp existed has nothing better than now.
+         *
+         * A stretch it was standing still in when it went is closed there too (see ScenarioRun.rested).
+         */
+        fun abandoned(run: ScenarioRun, now: Long): ScenarioRun {
+            val end = run.writtenAt.takeIf { it > 0 }?.coerceAtLeast(run.startedAt)?.coerceAtMost(now) ?: now
+            val rest = if (run.restingSince > 0) (end - run.restingSince).coerceAtLeast(0) else 0
+
+            return run.copy(
+                state = RunState.FAILED,
+                failure = run.failure.ifEmpty { RunFailure.CRASHED },
+                finishedAt = if (run.finishedAt > 0) run.finishedAt else end,
+                rested = run.rested + rest,
+                restingSince = 0,
+                question = null,
+                steps = run.steps.map { step ->
+                    if (StepState.over(step.state)) {
+                        step
+                    } else {
+                        val begun = StepState.begun(step.state)
+                        step.copy(
+                            // A card that never got its go was skipped, and that is a different thing in
+                            // the morning from one that was halfway through something when the IDE went
+                            // away: only the second may have left half a change on the disk.
+                            state = if (begun) StepState.FAILED else StepState.SKIPPED,
+                            failure = step.failure.ifEmpty { if (begun) RunFailure.CRASHED else "" },
+                            finishedAt = if (step.finishedAt > 0) step.finishedAt else end,
+                            rested = if (begun) step.rested + rest else step.rested,
+                        )
+                    }
+                },
+            )
+        }
     }
 }

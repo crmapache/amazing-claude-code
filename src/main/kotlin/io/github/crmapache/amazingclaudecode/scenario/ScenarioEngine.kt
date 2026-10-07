@@ -91,7 +91,19 @@ internal class ScenarioEngine(
     private var head: ClaudeSession? = null
     private var card: ClaudeSession? = null
 
+    /**
+     * What the engine is waiting for - and with it, whether the run's clock is running (see [restsFollow]).
+     *
+     * The clock hangs off the phase rather than off the places that pause and block, because the phase is
+     * the one thing every road through here sets: a pause lifted over a question, a question withdrawn
+     * under a pause, a card taken over while it stood on one. Remembering to start and stop a clock at each
+     * of those is a promise that breaks with the next road somebody adds.
+     */
     private var phase = Phase.OPENING
+        set(value) {
+            field = value
+            restsFollow(value)
+        }
 
     /** Where in [ScenarioRun.steps] the front of the work is. */
     private var at = 0
@@ -1614,6 +1626,19 @@ internal class ScenarioEngine(
 
         run.steps.getOrNull(at)?.let { step -> editStep(step.key) { it.copy(failure = RunFailure.HEAD_SILENT) } }
         end(RunState.FAILED, RunFailure.HEAD_SILENT, "the main thread stopped answering")
+    }
+
+    /**
+     * Start or stop the run's own clock as the phase moves (see RunClock).
+     *
+     * Standing still is a pause, and a question nobody but a person can answer - the same two the card's
+     * ceiling does not count (see [hold]). A head deciding a question is work, and so is a card waiting for
+     * its helpers: something is being done and paid for. The end of the run closes a stretch it ended in -
+     * a run stopped while paused did not work through its pause either.
+     */
+    private fun restsFollow(phase: Phase) {
+        val resting = phase == Phase.PAUSED || phase == Phase.BLOCKED
+        run = RunClock.follow(run, resting = resting, board = at, now = System.currentTimeMillis())
     }
 
     private fun hold() {

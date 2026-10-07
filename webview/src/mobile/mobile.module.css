@@ -3237,7 +3237,27 @@
   color: var(--acc-fg-ghost);
 }
 
-/* How far along, as a bar. The one figure on the card that is read without reading. */
+/* The stage the run is in, by name - the desk card's line (see .runCardStage in scenarios.module.css), a
+   size up for a thumb's distance. Cut rather than wrapped, so the card keeps its height. */
+.runStage {
+  display: block;
+  min-width: 0;
+  margin-top: var(--acc-sp-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--acc-fg-body);
+}
+
+/* The road of its cards (see Roadmap) - what the bar below used to say, and the card the run is on. */
+.runRoad {
+  margin-top: var(--acc-sp-2);
+}
+
+/* How far along, as a bar - drawn only for an IDE too old to send the road. */
 .runTrack {
   height: 5px;
   margin-top: var(--acc-sp-3);
@@ -3251,14 +3271,6 @@
   border-radius: var(--acc-r-pill);
   background: var(--acc-accent);
   transition: width 0.3s ease;
-}
-
-.runFillDone {
-  background: var(--acc-ok);
-}
-
-.runFillFailed {
-  background: var(--acc-bad);
 }
 
 /*

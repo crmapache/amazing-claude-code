@@ -6,8 +6,10 @@ import { useLocale, useT } from '../../i18n'
 import type { ScenarioRun as Run, ScenarioRunStep } from '../../protocol'
 import { Chevron } from '../../components/Chevron'
 import { Glance } from '../../components/items/Glance'
+import { Roadmap } from '../../components/scenarios/Roadmap'
 import { StatePill } from '../../components/scenarios/StatePill'
-import { cutCardOf, finished, progressOf, resumable, runElapsed, timelineOf } from '../../scenarios/timeline'
+import { roadOf } from '../../scenarios/roadmap'
+import { cutCardOf, finished, resumable, runWorked, stepWorked, timelineOf } from '../../scenarios/timeline'
 import { dayAndHour } from '../../scenarios/moments'
 import { outcomeText } from '../scenarios'
 import { Back } from './Back'
@@ -98,9 +100,7 @@ export const ScenarioRun = ({
   }
 
   const over = finished(run.state)
-  const progress = progressOf(run)
-  const share = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0
-  const elapsed = formatDuration(runElapsed(run, now))
+  const elapsed = formatDuration(runWorked(run, now))
   const question = run.question
 
   return (
@@ -144,17 +144,12 @@ export const ScenarioRun = ({
         <div className={m.runStrip}>
           <StatePill state={run.state} failure={run.failure} />
 
-          <span className={m.runFact}>{t.scenarios.run.cards(progress.done, progress.total)}</span>
-
           {/*
-            Three words for one number, because the number means three things. A finished run took that
-            long; a going one has been going that long; a paused one has merely been open that long -
-            nothing is being spent, and "running for" over a run standing still is a small lie.
+            How long it has genuinely worked (see runWorked) - a pause and a question waiting for a person
+            are not in it, so one word serves a going, a paused and a waiting run. A finished one took that.
           */}
           <span className={m.runFact}>
-            <span className={m.runFactKey}>
-              {over ? t.scenarios.run.took : run.state === 'paused' ? t.scenarios.run.openFor : t.scenarios.run.runningShort}
-            </span>
+            <span className={m.runFactKey}>{over ? t.scenarios.run.took : t.scenarios.run.active}</span>
             {elapsed}
           </span>
 
@@ -162,17 +157,9 @@ export const ScenarioRun = ({
           {run.cost > 0 && <span className={m.runFact}>{`$${run.cost.toFixed(2)}`}</span>}
         </div>
 
-        <div className={m.runTrack}>
-          <span
-            className={[
-              m.runFill,
-              run.state === 'done' ? m.runFillDone : '',
-              run.state === 'failed' ? m.runFillFailed : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            style={{ width: `${share}%` }}
-          />
+        {/* The road of its cards, where a bar used to be - the same one the run's card draws (see Roadmap). */}
+        <div className={m.runRoad}>
+          <Roadmap stops={roadOf(run)} state={run.state} />
         </div>
       </header>
 
@@ -238,7 +225,7 @@ export const ScenarioRun = ({
                 step={row.step}
                 passes={row.passes}
                 untilDone={row.untilDone}
-                now={now}
+                worked={stepWorked(row.step, now, run)}
                 onOpen={() => onOpenStep(row.step)}
               />
             )
@@ -383,21 +370,21 @@ const StepRow = ({
   step,
   passes,
   untilDone,
-  now,
+  worked,
   onOpen,
 }: {
   step: ScenarioRunStep
   /** How many passes its stage was given. One means the row has no loop to place itself in. */
   passes: number
   untilDone: boolean
-  now: number
+  /** How long it has genuinely worked so far (see stepWorked) - it stands still while the run does. */
+  worked: number
   onOpen: () => void
 }) => {
   const t = useT()
   const going = step.state === 'running' || step.state === 'asking' || step.state === 'judging'
   const ahead = step.state === 'waiting' || step.state === 'skipped'
-  const elapsed =
-    step.startedAt > 0 ? formatDuration((step.finishedAt > 0 ? step.finishedAt : now) - step.startedAt) : ''
+  const elapsed = step.startedAt > 0 ? formatDuration(worked) : ''
 
   /*
    * One line, and which line depends on what there is: what the card finished with once its turn is over,

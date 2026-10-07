@@ -137,6 +137,27 @@ internal data class ScenarioRun(
      * and continued after breakfast would say it took nine hours.
      */
     val idle: Long = 0,
+    /**
+     * Time the run stood still while it was still a run: paused, or standing on a question a person has to
+     * answer. Subtracted from its clock the way [idle] is, and for the same reason - a question asked at
+     * eleven and answered after breakfast is not nine hours of work. A head deciding a question is work and
+     * is not counted here (see RunClock).
+     *
+     * A sum of lengths rather than a list of stretches, so that [ScenarioEngine.carryOn] moving a stage's
+     * stamps past a gap does not have to move anything here as well.
+     */
+    val rested: Long = 0,
+    /** When the stretch it is standing still in began, and 0 while it works or once it is over. */
+    val restingSince: Long = 0,
+    /**
+     * When this record was last written by the IDE walking it (see RunStore.keep).
+     *
+     * The moment the run was last known to be alive. An IDE that went away mid-run leaves a record that
+     * says "running", and it is closed at the next start (see RunStore.repairAbandoned) - at this moment
+     * rather than at that start, or the hours the machine lay with nobody walking the run are counted as
+     * work. The desk writes a live run at least every half a minute for exactly this (see ScenarioDesk.pulse).
+     */
+    val writtenAt: Long = 0,
 )
 
 @Serializable
@@ -192,6 +213,11 @@ internal data class RunStep(
      * the next time the run is picked up (see ScenarioEngine.carryOn).
      */
     val takeOver: String = "",
+    /**
+     * Time the run stood still while this card was the one on the board - see [ScenarioRun.rested].
+     * Subtracted from the card's own span, so the row and the run's clock agree about the same pause.
+     */
+    val rested: Long = 0,
 )
 
 /**
@@ -258,21 +284,48 @@ internal data class RunSummary(
     val tokens: Long = 0,
     /** See [ScenarioRun.idle]. */
     val idle: Long = 0,
-    /** Which stage of how many it is standing in, counting from one. Zero before anything has begun. */
-    val stage: Int = 0,
-    val stages: Int = 0,
-    /** The card it is on right now, by name. */
+    /**
+     * See [ScenarioRun.rested] and [ScenarioRun.restingSince]. Stamps and sums rather than a running
+     * figure: the live frame goes out every second and is only sent on when it changed (see
+     * RemoteAgent.newFacts), and a clock worked out here would change it every time.
+     */
+    val rested: Long = 0,
+    val restingSince: Long = 0,
+    /**
+     * The name of the stage the run stands in - the one line over the road on its card.
+     *
+     * Read off the road rather than off [at]: the stage of the first stop that is not over, so the name and
+     * the lit stop never disagree, and a run that has not begun a card yet - the head reading its brief - is
+     * already standing in its first stage. Left empty there, the line came a few seconds after the card and
+     * pushed everything under it down.
+     */
+    val stageTitle: String = "",
+    /** The card it is on right now, by name - what the card says over its road for an IDE with no stage name. */
     val at: String = "",
-    /** Which pass of that stage, and how many it may have. Zero when the stage does not loop. */
-    val pass: Int = 0,
-    val passes: Int = 0,
-    /** How many times the head has sent the card it is on back to work. */
-    val nudges: Int = 0,
     /** What it has stopped to ask, in the CLI's own words. Empty when it is not standing on anything. */
     val asking: String = "",
-    /** Whether the card it is on is being finished by the head itself (see RunStep.takeOver). */
-    val takingOver: Boolean = false,
+    /**
+     * Every card of every pass, in order, as the row of stops on the card of a going run draws it.
+     *
+     * Only while the run goes. The table of finished runs draws no road, and the list of them goes out
+     * whole - a hundred nights carrying a hundred roads nobody draws, to a phone whose frame has a cap.
+     */
+    val roadmap: List<RoadmapStop> = emptyList(),
 )
+
+/** One card of one pass on the road of a going run: how it stands, and where it belongs. */
+@Serializable
+internal data class RoadmapStop(
+    val state: String = "",
+    /** Which stage it belongs to, counting from one - what the tint behind the stage the run is in follows. */
+    val stage: Int = 0,
+    val pass: Int = 1,
+    /** Its name, cut short: read in a hint over the stop, and beside the stop the run is on. */
+    val title: String = "",
+)
+
+/** How much of a card's name its stop on the road carries - a hint's line, not the card's prompt. */
+private const val ROADMAP_TITLE = 80
 
 internal fun ScenarioRun.summarise(): RunSummary {
     /*
@@ -284,8 +337,24 @@ internal fun ScenarioRun.summarise(): RunSummary {
      */
     val here = steps.firstOrNull { !StepState.over(it.state) && StepState.begun(it.state) }
         ?: steps.lastOrNull { StepState.begun(it.state) }
-    val stage = snapshot.stages.indexOfFirst { it.id == here?.stageId }
-    val passes = snapshot.stages.getOrNull(stage)?.let { ScenarioRules.passesOf(it) } ?: 0
+    val stageOf = snapshot.stages.mapIndexed { index, one -> one.id to index + 1 }.toMap()
+
+    /*
+     * The road, and the stage it stands in.
+     *
+     * Before its plan is written down (the first moment of a run, see ScenarioEngine.begin) the road is the
+     * plan itself, every stop ahead: a card that grows its road a second after it appears jumps under the
+     * eye, and it is the same road a moment later anyway.
+     */
+    val road = if (steps.isNotEmpty()) {
+        steps.map { RoadmapStop(state = it.state, stage = stageOf[it.stageId] ?: 0, pass = it.pass, title = it.title) }
+    } else {
+        ScenarioRules.plan(snapshot).map {
+            RoadmapStop(state = StepState.WAITING, stage = stageOf[it.stageId] ?: 0, pass = it.pass, title = it.title)
+        }
+    }
+    val standing = road.firstOrNull { !StepState.over(it.state) } ?: road.lastOrNull()
+    val standingTitle = snapshot.stages.getOrNull((standing?.stage ?: 1) - 1)?.title.orEmpty()
 
     return RunSummary(
         id = id,
@@ -302,15 +371,13 @@ internal fun ScenarioRun.summarise(): RunSummary {
         inputs = inputs,
         tokens = tokens,
         idle = idle,
-        stage = if (stage >= 0) stage + 1 else 0,
-        stages = snapshot.stages.size,
+        rested = rested,
+        restingSince = restingSince,
+        stageTitle = standingTitle,
         at = here?.title.orEmpty(),
-        pass = if (passes > 1) here?.pass ?: 0 else 0,
-        passes = if (passes > 1) passes else 0,
-        nudges = here?.nudges?.size ?: 0,
         // The words rather than the tool's name: a row that says "Bash" has said nothing about what it is
         // being asked. The tool is the fallback for a permission the CLI worded no other way.
         asking = question?.let { it.title.ifBlank { it.tool } }.orEmpty(),
-        takingOver = here != null && here.takeOver.isNotEmpty() && !StepState.over(here.state),
+        roadmap = if (RunState.finished(state)) emptyList() else road.map { it.copy(title = it.title.take(ROADMAP_TITLE)) },
     )
 }

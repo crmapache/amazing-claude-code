@@ -139,7 +139,8 @@ const standingOf = (steps: ScenarioRunStep[]): StageStanding => {
  *
  * The span rather than the sum of its cards: a stage is a stretch of the evening, and two cards of six
  * minutes each with the head thinking between them took more than twelve. Zero while anything in it is
- * still open, because the number would go on changing under the heading.
+ * still open, because the number would go on changing under the heading. What its cards stood still for
+ * is not in it (see ScenarioRunStep.rested) - the heading and the run's clock agree about a pause.
  */
 const tookBy = (steps: ScenarioRunStep[]): number => {
   const begun = steps.filter((step) => step.startedAt > 0)
@@ -147,7 +148,8 @@ const tookBy = (steps: ScenarioRunStep[]): number => {
 
   const from = Math.min(...begun.map((step) => step.startedAt))
   const to = Math.max(...begun.map((step) => step.finishedAt))
-  return Math.max(0, to - from)
+  const rested = begun.reduce((sum, step) => sum + (step.rested ?? 0), 0)
+  return Math.max(0, to - from - rested)
 }
 
 /**
@@ -166,29 +168,48 @@ export const resumable = (run: ScenarioRun): boolean =>
 export const cutCardOf = (run: ScenarioRun): string =>
   [...run.steps].reverse().find((step) => step.startedAt > 0)?.title ?? ''
 
-/**
- * How long the run has been a run: the clock minus the time it stood picked-up-later (see
- * ScenarioRun.idle). `now` is the IDE's clock on a phone, not the phone's (see hooks/useNow).
- */
-export const runElapsed = (run: { startedAt: number; finishedAt: number; idle?: number }, now: number): number =>
-  Math.max(0, (run.finishedAt > 0 ? run.finishedAt : now) - run.startedAt - (run.idle ?? 0))
-
-/** How far the run has got, as the bar over the timeline draws it. */
-export interface Progress {
-  done: number
-  failed: number
-  /** Cards that had a go and have not finished it - at most one, but a paused run leaves it standing. */
-  running: number
-  total: number
+/** What a clock is worked out of - a whole run and a summary of one carry the same fields. */
+export interface RunClock {
+  startedAt: number
+  finishedAt: number
+  idle?: number
+  rested?: number
+  restingSince?: number
 }
 
-export const progressOf = (run: ScenarioRun): Progress => ({
-  done: run.steps.filter((step) => step.state === 'done').length,
-  failed: run.steps.filter((step) => step.state === 'failed').length,
-  running: run.steps.filter((step) => step.state === 'running' || step.state === 'asking' || step.state === 'judging')
-    .length,
-  total: run.total || run.steps.length,
-})
+/**
+ * How long the run has genuinely worked: the span from its start to its end (or to now) without the
+ * stretches it was not working - waiting to be picked up again (`idle`), standing still on a pause or on a
+ * person's question (`rested`, and the stretch it is standing in now). The same sum as RunClock.kt.
+ *
+ * A run standing still does not tick: the open stretch grows exactly as fast as the span. A run whose IDE
+ * went away ends where it was last written (see RunStore.abandoned), so the night it lay is not here
+ * either. `now` is the IDE's clock on a phone, not the phone's (see hooks/useNow).
+ */
+export const runWorked = (run: RunClock, now: number): number => {
+  const end = run.finishedAt > 0 ? run.finishedAt : now
+  const standing = run.finishedAt === 0 && (run.restingSince ?? 0) > 0 ? Math.max(0, now - (run.restingSince ?? 0)) : 0
+  return Math.max(0, end - run.startedAt - (run.idle ?? 0) - (run.rested ?? 0) - standing)
+}
+
+/**
+ * How long one card has genuinely worked - its span without what the run stood still for while it was on
+ * the board. Only the card that is open can be standing still right now, so only its row stops with the
+ * run's clock; a finished card needs neither the clock nor its run. Zero for a card that never had its go.
+ */
+export const stepWorked = (
+  step: Pick<ScenarioRunStep, 'startedAt' | 'finishedAt' | 'rested'>,
+  now = 0,
+  run?: Pick<RunClock, 'restingSince' | 'finishedAt'>,
+): number => {
+  if (step.startedAt === 0) return 0
+  const open = step.finishedAt === 0
+  const end = open ? now : step.finishedAt
+  const resting = run?.restingSince ?? 0
+  const standing =
+    open && run?.finishedAt === 0 && resting > 0 ? Math.max(0, now - Math.max(resting, step.startedAt)) : 0
+  return Math.max(0, end - step.startedAt - (step.rested ?? 0) - standing)
+}
 
 /** Whether the run is over, however it ended. */
 export const finished = (state: ScenarioRun['state']): boolean =>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Scenario, ScenarioRun, ScenarioRunStep } from '../protocol'
-import { cutCardOf, progressOf, resumable, runElapsed, timelineOf } from './timeline'
+import { cutCardOf, resumable, runWorked, stepWorked, timelineOf } from './timeline'
 
 const snapshot: Scenario = {
   version: 1,
@@ -141,19 +141,6 @@ describe('a run read top to bottom', () => {
       's1:b:2',
     ])
   })
-
-  it('counts how far it has got', () => {
-    const counted = run({
-      steps: [
-        step('s1:a:1', 'a', 1, 'done'),
-        step('s1:b:1', 'b', 1, 'running'),
-        step('s1:a:2', 'a', 2, 'failed'),
-        step('s1:b:2', 'b', 2, 'skipped'),
-      ],
-    })
-
-    expect(progressOf(counted)).toEqual({ done: 1, failed: 1, running: 1, total: 4 })
-  })
 })
 
 describe('a run that ended', () => {
@@ -191,9 +178,47 @@ describe('a run that ended', () => {
    * breakfast took the minutes it worked, not the night in between.
    */
   it('does not count the time it stood between an ending and a pick-up', () => {
-    expect(runElapsed({ startedAt: 1_000, finishedAt: 61_000, idle: 20_000 }, 0)).toBe(40_000)
-    expect(runElapsed({ startedAt: 1_000, finishedAt: 0, idle: 5_000 }, 31_000)).toBe(25_000)
+    expect(runWorked({ startedAt: 1_000, finishedAt: 61_000, idle: 20_000 }, 0)).toBe(40_000)
+    expect(runWorked({ startedAt: 1_000, finishedAt: 0, idle: 5_000 }, 31_000)).toBe(25_000)
     // A record written before there was such a thing.
-    expect(runElapsed({ startedAt: 1_000, finishedAt: 4_000 }, 0)).toBe(3_000)
+    expect(runWorked({ startedAt: 1_000, finishedAt: 4_000 }, 0)).toBe(3_000)
+  })
+
+  /*
+   * A pause and a question nobody has answered are not work either: a question asked at eleven and answered
+   * after breakfast is not nine hours of the run's.
+   */
+  it('does not count what it stood still for, and stands still while it stands', () => {
+    // Ten seconds of a pause, already over.
+    expect(runWorked({ startedAt: 0, finishedAt: 60_000, rested: 10_000 }, 0)).toBe(50_000)
+    // Standing still since 40s: the clock reads 40s - 5s rested, whenever it is looked at.
+    const paused = { startedAt: 0, finishedAt: 0, rested: 5_000, restingSince: 40_000 }
+    expect(runWorked(paused, 50_000)).toBe(35_000)
+    expect(runWorked(paused, 900_000)).toBe(35_000)
+    // A stamp left on an ended run is not read: the end closes the stretch.
+    expect(runWorked({ ...paused, finishedAt: 70_000 }, 900_000)).toBe(65_000)
+  })
+
+  it('takes a pause off the card that was on the board, and only off that one', () => {
+    const live = { finishedAt: 0, restingSince: 50_000 }
+    // The open card stops with the run.
+    expect(stepWorked({ startedAt: 10_000, finishedAt: 0, rested: 1_000 }, 80_000, live)).toBe(39_000)
+    // A finished card keeps what it had.
+    expect(stepWorked({ startedAt: 1_000, finishedAt: 11_000, rested: 2_000 })).toBe(8_000)
+    // One that never had its go has no time at all.
+    expect(stepWorked({ startedAt: 0, finishedAt: 0 }, 80_000, live)).toBe(0)
+  })
+
+  it('takes what its cards stood still for off a stage heading', () => {
+    const done = timelineOf(
+      run({
+        steps: [
+          { ...begun('s1:a:1', 'a', 1, 'done'), startedAt: 1_000, finishedAt: 61_000, rested: 20_000 },
+          { ...begun('s2:b:1', 'b', 1, 'done'), stageId: 's2', startedAt: 61_000, finishedAt: 62_000 },
+        ],
+      }),
+    )
+    const stage = done.find((row) => row.kind === 'stage')
+    expect(stage?.kind === 'stage' ? stage.took : -1).toBe(40_000)
   })
 })

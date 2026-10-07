@@ -6,17 +6,19 @@ import type { FeedItem } from '../../feed/types'
 import {
   cutCardOf,
   finished,
-  progressOf,
   resumable,
-  runElapsed,
+  runWorked,
+  stepWorked,
   timelineOf,
   type StageStanding,
 } from '../../scenarios/timeline'
+import { roadOf, roadWidth } from '../../scenarios/roadmap'
 import { useTicking } from '../../hooks/useTicking'
 import { useT } from '../../i18n'
 import { Confirm } from '../Confirm'
 import { Glance } from '../items/Glance'
 import { SkeletonBar } from '../Skeleton'
+import { Roadmap } from './Roadmap'
 import { StatePill } from './StatePill'
 import { StepLog, stepFacts } from './StepLog'
 import s from './scenarios.module.css'
@@ -118,9 +120,8 @@ export const ScenarioRunTab = ({
   }
 
   const over = finished(run.state)
-  const progress = progressOf(run)
-  const elapsed = formatDuration(runElapsed(run, now))
-  const share = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0
+  const road = roadOf(run)
+  const elapsed = formatDuration(runWorked(run, now))
 
   /**
    * The step whose window is open, found again on every draw rather than kept as a copy.
@@ -155,8 +156,12 @@ export const ScenarioRunTab = ({
         title={opened === HEAD ? run.scenarioName : openedStep?.title ?? ''}
         facts={
           openedStep
-            ? stepFacts(openedStep.startedAt, openedStep.finishedAt, openedStep.tokens, openedStep.cost)
-            : stepFacts(run.startedAt, run.finishedAt, run.tokens, run.cost)
+            ? stepFacts(
+                openedStep.finishedAt > 0 ? stepWorked(openedStep) : 0,
+                openedStep.tokens,
+                openedStep.cost,
+              )
+            : stepFacts(over ? runWorked(run, now) : 0, run.tokens, run.cost)
         }
         items={log && log.key === opened ? log.items : []}
         found={log?.key === opened && log.found}
@@ -215,45 +220,40 @@ export const ScenarioRunTab = ({
       <div className={s.runBar}>
         <StatePill state={run.state} failure={run.failure} />
 
-        <span className={s.progress}>
-          <span
-            className={[
-              s.progressFill,
-              run.state === 'done' ? s.progressDone : '',
-              run.state === 'failed' ? s.progressFailed : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            style={{ width: `${share}%` }}
-          />
+        {/* The same road as the run's card in the hub (see Roadmap), where a bar and "6/6 cards" used to be.
+            As wide as it needs and no wider, so the readings follow it; on a narrow panel it takes a line of
+            its own and folds there. */}
+        <span className={s.runBarRoad} style={{ flexBasis: `${roadWidth(road.length)}px` }}>
+          <Roadmap stops={road} state={run.state} />
         </span>
-        <span className={s.runValue}>{t.scenarios.run.cards(progress.done, progress.total)}</span>
 
         {/*
-          Three words for one number, because the number means three things. A finished run took that
-          long; a going one has been going that long; a paused one has merely been open that long -
-          nothing is being spent, and "running for" over a run that is standing still is a small lie.
+          How long it has genuinely worked (see runWorked): a pause, a question waiting for a person and an
+          IDE that went away are not in it, so a run standing still stands still here too - which is why one
+          word serves a going, a paused and a waiting run alike. A finished one took that long.
+          The three readings travel together: a long road leaves room for one of them, and a strip that broke
+          between "active" and "tokens" read as two unrelated lines.
         */}
-        <span className={s.runSegment}>
-          <span className={s.runKey}>
-            {over ? t.scenarios.run.took : run.state === 'paused' ? t.scenarios.run.openFor : t.scenarios.run.running}
+        <span className={s.runBarReadings}>
+          <span className={s.runSegment}>
+            <span className={s.runKey}>{over ? t.scenarios.run.took : t.scenarios.run.active}</span>
+            <span className={s.runValue}>{elapsed}</span>
           </span>
-          <span className={s.runValue}>{elapsed}</span>
+
+          {run.tokens > 0 ? (
+            <span className={s.runSegment}>
+              <span className={s.runKey}>{t.scenarios.run.tokens}</span>
+              <span className={s.runValue}>{formatTokens(run.tokens)}</span>
+            </span>
+          ) : null}
+
+          {run.cost > 0 ? (
+            <span className={s.runSegment}>
+              <span className={s.runKey}>{t.scenarios.run.cost}</span>
+              <span className={s.runValue}>${run.cost.toFixed(2)}</span>
+            </span>
+          ) : null}
         </span>
-
-        {run.tokens > 0 ? (
-          <span className={s.runSegment}>
-            <span className={s.runKey}>{t.scenarios.run.tokens}</span>
-            <span className={s.runValue}>{formatTokens(run.tokens)}</span>
-          </span>
-        ) : null}
-
-        {run.cost > 0 ? (
-          <span className={s.runSegment}>
-            <span className={s.runKey}>{t.scenarios.run.cost}</span>
-            <span className={s.runValue}>${run.cost.toFixed(2)}</span>
-          </span>
-        ) : null}
       </div>
 
       <div className={s.body}>
@@ -438,7 +438,7 @@ export const ScenarioRunTab = ({
                 step={row.step}
                 passes={row.passes}
                 untilDone={row.untilDone}
-                now={now}
+                worked={stepWorked(row.step, now, run)}
                 onOpen={() => openStep(row.step)}
               />
             )
@@ -478,20 +478,20 @@ const StepRow = ({
   step,
   passes,
   untilDone,
-  now,
+  worked,
   onOpen,
 }: {
   step: ScenarioRunStep
   /** How many passes its stage was given. One means the row has no loop to place itself in. */
   passes: number
   untilDone: boolean
-  now: number
+  /** How long it has genuinely worked so far (see stepWorked) - it stands still while the run does. */
+  worked: number
   onOpen: () => void
 }) => {
   const t = useT()
   const going = step.state === 'running' || step.state === 'asking' || step.state === 'judging'
-  const elapsed =
-    step.startedAt > 0 ? formatDuration((step.finishedAt > 0 ? step.finishedAt : now) - step.startedAt) : ''
+  const elapsed = step.startedAt > 0 ? formatDuration(worked) : ''
 
   /*
    * One line, and which line depends on what there is.

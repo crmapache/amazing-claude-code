@@ -2,6 +2,7 @@ import type { ScenarioRunStep } from '../../protocol'
 import { Feed } from '../../components/Feed'
 import { Glance } from '../../components/items/Glance'
 import { stepFacts } from '../../components/scenarios/StepLog'
+import { stepWorked } from '../../scenarios/timeline'
 import type { FeedItem } from '../../feed/types'
 import { useCardState } from '../../hooks/useCardState'
 import { useT } from '../../i18n'
@@ -42,7 +43,7 @@ export const ScenarioStep = ({
   const cards = useCardState()
   const items = log?.items ?? []
 
-  const facts = step ? stepFacts(step.startedAt, step.finishedAt, step.tokens, step.cost) : ''
+  const facts = step ? stepFacts(step.finishedAt > 0 ? stepWorked(step) : 0, step.tokens, step.cost) : ''
 
   return (
     <>
