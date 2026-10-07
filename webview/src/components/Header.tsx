@@ -189,8 +189,9 @@ export interface PanelTab {
   at: number
   active: boolean
   /**
-   * The stripe over it. A colour out of the same cool arc the groups draw from, but fixed rather than
-   * hashed: the statistics is always the statistics, and it should always look it.
+   * The stripe over it, and the light it is lit by when open (see .tabActive). A colour out of the same
+   * cool arc the groups draw from, but fixed rather than hashed: the statistics is always the statistics,
+   * and it should always look it.
    */
   color: string
   closeLabel: string
@@ -916,6 +917,9 @@ export const Header = ({
           .filter(Boolean)
           .join(' ')}
         style={{
+          // To the styles rather than onto the stripe: the stripe, the fork sign and the light of the open tab
+          // all paint with it, and the theme decides how deep (see --acc-group-paint).
+          ['--acc-group' as string]: color,
           paddingLeft: 11 + session.depth * 9,
           // The whole group travels at once, unless the hand took a fork by itself - see [drag] above.
           ...dragStyle(session.groupId, session.id),
@@ -941,13 +945,9 @@ export const Header = ({
         }}
       >
         <TabGlow call={calls[session.id]} />
-        <span className={s.tabGroupBar} style={{ background: color }} />
+        <span className={s.tabGroupBar} />
         <span className={`${s.dot} ${DOT_CLASS[session.state]}`} data-tooltip={dotTitle(t)[session.state]} />
-        {session.depth > 0 ? (
-          <span className={s.tabFork} style={{ color }}>
-            ⑂
-          </span>
-        ) : null}
+        {session.depth > 0 ? <span className={s.tabFork}>⑂</span> : null}
         {naming === session.id ? (
           <TabNameField
             title={session.title}
@@ -1009,7 +1009,7 @@ export const Header = ({
       ]
         .filter(Boolean)
         .join(' ')}
-      style={dragStyle(tab.id)}
+      style={{ ['--acc-group' as string]: tab.color, ...dragStyle(tab.id) }}
       onMouseDown={(event) => startDrag(event, { kind: 'group', id: tab.id, groupId: tab.id })}
       onClick={() => {
         if (dragged.current) return
@@ -1021,7 +1021,7 @@ export const Header = ({
         onPickPanelTab?.(tab.id)
       }}
     >
-      <span className={s.tabGroupBar} style={{ background: tab.color }} />
+      <span className={s.tabGroupBar} />
       {/* A run of a scenario is work, and its dot answers for it exactly as a conversation's does: the
           word beside it is the name of the scenario, so the state is written nowhere else in the strip.
           The statistics passes neither, and its dot stays grey and silent - a hint there would answer

@@ -5258,23 +5258,20 @@ export const App = () => {
 
   // The harness opens the statistics tab the way the menu's row does - dev builds only, like the hooks
   // above. Here, before the sign-in gate below, so the count of hooks does not change when it opens.
+  // Through the strip's own door (see openPanelTab): opened past it, the screen showed with no tab for it.
   useEffect(() => {
     if (!import.meta.env.DEV) return
 
     window.__accHarnessOpenStatistics = (view) => {
       setSideMenu((current) => ({ ...current, open: false }))
       setMenu(null)
-      setStatsTab((current) =>
-        current.open
-          ? { ...current, view }
-          : { open: true, view, place: placeAtEnd(groupOrder(sessions)) },
-      )
-      setActive(STATISTICS_GROUP)
+      setStatsTab({ open: true, view })
+      openPanelTab(STATISTICS_GROUP)
     }
     return () => {
       window.__accHarnessOpenStatistics = undefined
     }
-  }, [sessions])
+  }, [])
 
   // And the search window, as the magnifier beside the slash opens it - dev builds only, like the rest.
   useEffect(() => {

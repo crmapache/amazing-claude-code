@@ -346,6 +346,13 @@
   --acc-ice-hover: linear-gradient(180deg, #c1ecf9 0%, #8ad6f1 46%, #55b5de 100%);
   --acc-ice-active: linear-gradient(180deg, #8fd3ea 0%, #5eb6dc 46%, #3892c1 100%);
 
+  /* --- The tab groups' colours ---------------------------------------------
+     Hashed in Header.tsx out of one arc of light pastels, and written there as literals, the same on
+     either theme - so the light theme's palette never reaches them. The theme says instead how far to take
+     them towards --acc-group-deep (see --acc-group-paint in shell.module.css): on ink not at all. */
+  --acc-group-deep: hsl(none 100% 0%);
+  --acc-group-depth: 0%;
+
   /* The status line's shimmer. The warm orange was the only warm spot in the whole panel and stood out;
      now the wave runs over the primary. */
   --acc-stream-1: var(--acc-c-moon-4);
@@ -648,6 +655,11 @@
 
   /* White on a filled button: every paint above, the pressed shade included, is past 4.5:1 against white. */
   --acc-on-accent: #ffffff;
+
+  /* The groups' pastels on white: the stripes faded into the strip, and the open tab, lit in its group's
+     colour, came out a pale smudge. Taken this far, a pastel at 70% lightness lands near 43% and
+     saturates, the depth the accents above have. */
+  --acc-group-depth: 38%;
 
   /* The shimmer runs from the strongest blue towards a lighter one, as it ran towards a dimmer one on ink:
      the wave is the text losing a little contrast, whichever way that goes. */

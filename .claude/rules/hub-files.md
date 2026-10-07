@@ -138,7 +138,7 @@ paths:
 
 **`webview/src/tokens.css`**: `--acc-hit` и плотность `touch` - remote-access; `--acc-chip-*` - tool-cards;
 шрифтовой стек CJK - i18n; ступени `--acc-gauge-*` - calm-colors; светлая тема, `--acc-scrim`/`--acc-drop`,
-`color-scheme` - appearance.
+`color-scheme` - appearance; `--acc-group-deep`/`--acc-group-depth` - active-tab.
 
 **`webview/src/catalog.ts`**: `panelCommands` (`/design-login`) - accounts.
 

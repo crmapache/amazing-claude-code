@@ -407,6 +407,24 @@
      background and its name: over the background, or the hover and the active tab would cover it; under
      the name, or the name would be tinted with it. */
   isolation: isolate;
+  /* The group's colour as this theme paints it. Header hands over the colour as it was hashed (--acc-group),
+     the same pastel on either theme; the theme says how much deeper to take it (see --acc-group-depth in
+     tokens.css). Without the mix below the pastel itself is used - a browser too old for it keeps the strip
+     as it was rather than losing its colours. */
+  --acc-group-paint: var(--acc-group, var(--acc-fg-ghost));
+}
+
+/* In hsl and towards a black that keeps no hue and full saturation: the hue is the group's own, and the
+   colour gets darker and richer at once. Towards plain black, or in oklab, it went grey on the way - on white
+   the groups read as five shades of slate. */
+@supports (color: color-mix(in hsl, red, hsl(none 100% 0%) 10%)) {
+  .tab {
+    --acc-group-paint: color-mix(
+      in hsl,
+      var(--acc-group, var(--acc-fg-ghost)),
+      var(--acc-group-deep) var(--acc-group-depth)
+    );
+  }
 }
 
 /* The stripe on top is the group's colour: a conversation and all its forks share one, so the belonging is
@@ -417,16 +435,23 @@
   left: 0;
   right: 0;
   height: 2px;
+  background: var(--acc-group-paint);
   opacity: 0.55;
 }
 
+/* On the open tab the stripe is the lamp the tab is lit by (see .tabActive): at full strength, a pixel
+   thicker, and rounded with the tab's top corners. */
 .tabActive .tabGroupBar {
+  height: 3px;
+  border-radius: inherit;
   opacity: 1;
 }
 
 /* The statistics tab holds no conversation and takes no fork's indent: its padding is the plain one,
-   whatever the depth arithmetic would have said. */
-.tabStatistics {
+   whatever the depth arithmetic would have said. Two classes, or compact's padding (see .headerCompact .tab)
+   took it down to 3px - a conversation's tab gets its 11px inline and kept them, and the open one's lit
+   edge stood right against the dot. */
+.tab.tabStatistics {
   padding-left: 11px;
 }
 
@@ -444,23 +469,50 @@
 .tabFork {
   flex: none;
   font: 11px/15px var(--acc-mono);
+  color: var(--acc-group-paint);
   opacity: 0.85;
 }
 
 .tab:hover {
-  background: var(--acc-bg-card);
+  background-color: var(--acc-bg-card);
 }
 
+/*
+ * The open tab is the lit one: its group's stripe turns into a lamp, and the light falls into the tab -
+ * a wash of the group's colour, strongest under the stripe, and two edges of the same light running down
+ * its sides. The only coloured surface in the strip, so it is found at a glance among a dozen tabs, on ink
+ * and on white alike. It used to be the feed's background and nothing else: a step darker than the strip on
+ * ink, and on white (#f7f8fa against the white strip) all but invisible - with many tabs open the person
+ * could not tell which one they were in.
+ *
+ * In the group's colour rather than the primary blue: the stripe already says which conversation this is,
+ * and a second colour over it would make two signals argue on one tab - the very reason the old bottom
+ * underline was taken away. The light falls from the top, while a calling tab's light rises from the
+ * bottom (see .tabGlow), and the two never read as one another.
+ *
+ * Only paint: no border and no weight that would change the tab's width, or the strip would shift on every
+ * switch. Painted as background layers, the light stays under a call's glow (see isolation on .tab).
+ */
 .tabActive {
-  background: var(--acc-bg);
-  color: var(--acc-fg);
-}
+  --acc-tab-edge: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--acc-group-paint) 85%, transparent),
+    color-mix(in srgb, var(--acc-group-paint) 30%, transparent)
+  );
 
-/* The active one is darker than the panel anyway - a second signal (the bottom stripe) was superfluous and
-   only confused things beside the group's stripe on top. The hover is kept separate for each: the active one
-   darkens more than an inactive one so that the difference reads. */
-.tabActive:hover {
-  background: var(--acc-bg-sunken);
+  color: var(--acc-fg);
+  border-radius: var(--acc-r-lg) var(--acc-r-lg) 0 0;
+  background-image:
+    var(--acc-tab-edge),
+    var(--acc-tab-edge),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--acc-group-paint) 34%, transparent),
+      color-mix(in srgb, var(--acc-group-paint) 14%, transparent)
+    );
+  background-position: left, right, center;
+  background-size: 1px 100%, 1px 100%, 100% 100%;
+  background-repeat: no-repeat;
 }
 
 /* While a group is dragged, its tabs travel after the cursor (the shift is set by Header itself) and rise
@@ -478,7 +530,8 @@
   cursor: grabbing;
   z-index: 2;
   border-radius: var(--acc-r-md);
-  background: var(--acc-bg-card);
+  /* The colour alone: the open tab keeps its light in the hand (see .tabActive). */
+  background-color: var(--acc-bg-card);
   box-shadow: var(--acc-shadow-menu);
 }
 
