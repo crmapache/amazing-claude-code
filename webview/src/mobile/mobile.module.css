@@ -1695,8 +1695,11 @@
   gap: var(--acc-sp-3);
   padding: var(--acc-sp-4);
   /* Inset like the project cards below it, and by the same token: this band and they are one list, and
-     one list has one left edge. The width is left to the box - a full one plus these margins is a card
-     wider than the screen. */
+     one list has one left edge. The width is spelled out because this is a button, and a button is as
+     wide as its content rather than as its box: a conversation's title longer than the line pushed the
+     card past the right edge of the screen and took the Answer button with it. Full width plus these
+     margins is too wide the other way, hence the subtraction. */
+  width: calc(100% - 2 * var(--acc-sp-5));
   margin: 0 var(--acc-sp-5) var(--acc-sp-2);
   border: 1px solid var(--acc-accent-line);
   border-radius: var(--acc-r-card);
