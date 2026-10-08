@@ -1172,6 +1172,12 @@ export const es: Dict = {
       withdrawn: 'El agente dejó de esperar una decisión',
     },
 
+    mods: {
+      asks: 'PREGUNTA UN MOD',
+      label: 'MODS',
+      pane: (name: string): string =>
+        `${name} abrió su propia ventana. El panel aún no muestra las ventanas de los mods: si el turno está parado, es esa ventana la que lo retiene, y Stop lo cancela.`,
+    },
     ask: {
       label: 'CLAUDE PREGUNTA',
       blocks: (n) => `${n} ${n === 1 ? 'pregunta' : 'preguntas'} · bloquea la ejecución`,

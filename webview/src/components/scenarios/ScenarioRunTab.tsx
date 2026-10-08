@@ -22,6 +22,7 @@ import { SkeletonBar } from '../Skeleton'
 import { Roadmap } from './Roadmap'
 import { StatePill } from './StatePill'
 import { StepLog, stepFacts } from './StepLog'
+import { useRunPlace } from './useRunPlace'
 import { SentTokens } from '../items/UserCard'
 import s from './scenarios.module.css'
 
@@ -134,6 +135,15 @@ export const ScenarioRunTab = ({
     seenTold.current = lastTold
     body.current?.querySelector(`[data-note="${lastTold}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [lastTold])
+
+  // Opened on what is happening, come back to where it was left - after a step's log, or another tab (see
+  // useRunPlace). Here a finished run's ending, an error and a question stand above the timeline, so a run with
+  // any of them opens at the top.
+  const onScroll = useRunPlace(
+    body,
+    run?.id ?? '',
+    run !== null && (finished(run.state) || run.error.length > 0 || run.question !== null) ? 'top' : 'present',
+  )
 
   if (!run) {
     return (
@@ -291,7 +301,7 @@ export const ScenarioRunTab = ({
         </span>
       </div>
 
-      <div className={s.body} ref={body}>
+      <div className={s.body} ref={body} onScroll={onScroll}>
         {run.error ? <div className={s.outcome}>{run.error}</div> : null}
 
         {/*
@@ -429,7 +439,12 @@ export const ScenarioRunTab = ({
           {rows.map((row) => {
             if (row.kind === 'stage') {
               return (
-                <div key={row.key} className={`${s.stageRow} ${standingClass(row.standing)}`}>
+                <div
+                  key={row.key}
+                  className={`${s.stageRow} ${standingClass(row.standing)}`}
+                  data-row={row.key}
+                  data-ahead={row.standing === 'ahead' || undefined}
+                >
                   <span className={s.stageNumber}>{row.index}</span>
                   <span className={s.stageTitle}>
                     {t.scenarios.editor.stageHead(row.index, row.title || t.scenarios.stage)}
@@ -460,7 +475,7 @@ export const ScenarioRunTab = ({
               // Only on a run that goes: a run that ended with words still waiting took them with it.
               const waiting = person && !over && !row.note.deliveredAt
               return (
-                <div key={row.key} className={s.note} data-note={row.note.at}>
+                <div key={row.key} className={s.note} data-note={row.note.at} data-row={row.key}>
                   <span className={s.noteRail} />
                   <span className={`${s.noteBody} ${person ? s.notePerson : ''}`}>
                     <span className={s.noteWho}>{person ? t.scenarios.run.youSaid : t.scenarios.run.headSaid}</span>
@@ -499,6 +514,7 @@ export const ScenarioRunTab = ({
             return (
               <StepRow
                 key={row.key}
+                anchor={row.key}
                 step={row.step}
                 passes={row.passes}
                 untilDone={row.untilDone}
@@ -552,12 +568,15 @@ const standingClass = (standing: StageStanding): string =>
   standing === 'here' ? s.stageHere : standing === 'ahead' ? s.stageAhead : s.stageDone
 
 const StepRow = ({
+  anchor,
   step,
   passes,
   untilDone,
   worked,
   onOpen,
 }: {
+  /** Its key in the timeline, for holding the reading place by (see useRunPlace). */
+  anchor: string
   step: ScenarioRunStep
   /** How many passes its stage was given. One means the row has no loop to place itself in. */
   passes: number
@@ -584,7 +603,7 @@ const StepRow = ({
   const ahead = step.state === 'waiting' || step.state === 'skipped'
 
   return (
-    <div className={s.stepRow}>
+    <div className={s.stepRow} data-row={anchor} data-ahead={ahead || undefined}>
       <span
         className={[
           s.stepRail,

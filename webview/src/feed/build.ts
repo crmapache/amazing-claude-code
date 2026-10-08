@@ -25,6 +25,7 @@ import {
 } from './tasks'
 import { replayedMessage } from './replayed'
 import { editorOfBlocks } from './editorContext'
+import { applyModEvent } from './mods'
 import { readPlan, readQuestions, readTodos } from './toolInput'
 import { readReview } from './findings'
 import {
@@ -1726,6 +1727,11 @@ const applySystem = (
   /** A past conversation's replay rather than a live turn - see applyAgentEvent. */
   replay = false,
 ): PanelState => {
+  // A mod speaking to the screen (see feed/mods.ts). None of it is about the conversation's model, its
+  // catalogue or its state, so it is folded in alone - and nothing below ever sees it.
+  const modded = applyModEvent(state, event, now)
+  if (modded) return modded
+
   const isMainStreamEvent = event.task_id === undefined
 
   // Only the main stream's events speak about the conversation's model: a subagent comes up with a model

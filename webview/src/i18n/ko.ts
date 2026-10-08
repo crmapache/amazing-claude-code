@@ -1164,6 +1164,12 @@ export const ko: Dict = {
       withdrawn: '에이전트가 결정을 기다리지 않게 됐어요',
     },
 
+    mods: {
+      asks: '모드의 질문',
+      label: '모드',
+      pane: (name: string): string =>
+        `${name}이(가) 자체 창을 열었습니다. 패널은 아직 모드 창을 표시할 수 없습니다. 턴이 멈춰 있다면 이 창이 붙잡고 있는 것이며, Stop으로 취소할 수 있습니다.`,
+    },
     ask: {
       label: 'CLAUDE의 질문',
       blocks: (n) => `질문 ${n}개 · 여기서 멈춰 있어요`,

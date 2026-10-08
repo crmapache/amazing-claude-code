@@ -304,8 +304,8 @@ export const Composer = ({
    * cannot creep into the calculation without appearing here too.
    */
   const commands = useMemo(
-    () => phoneCommands(t, facts.commands, facts.hints),
-    [t, facts.commands, facts.hints],
+    () => phoneCommands(t, facts.commands, facts.hints, facts.added),
+    [t, facts.commands, facts.hints, facts.added],
   )
 
   /** Which ring burns, when one does: the window being paid past, not always the five-hour one. */

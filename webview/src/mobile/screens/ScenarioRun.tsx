@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { formatTokens } from '../../feed/build'
 import { formatDuration } from '../../feed/tools'
 import { useTicking } from '../../hooks/useTicking'
@@ -8,6 +8,7 @@ import { Chevron } from '../../components/Chevron'
 import { Glance } from '../../components/items/Glance'
 import { Roadmap } from '../../components/scenarios/Roadmap'
 import { StatePill } from '../../components/scenarios/StatePill'
+import { useRunPlace } from '../../components/scenarios/useRunPlace'
 import { roadOf } from '../../scenarios/roadmap'
 import { cutCardOf, finished, resumable, runWorked, stepWorked, timelineOf } from '../../scenarios/timeline'
 import { dayAndHour } from '../../scenarios/moments'
@@ -95,6 +96,15 @@ export const ScenarioRun = ({
 
   const rows = useMemo(() => (run ? timelineOf(run) : []), [run])
 
+  // Opened on what is happening, come back to where it was left after a step's screen (see useRunPlace). A
+  // question stands at the top, over its answers in the footer; how a run ended stands at the foot here.
+  const list = useRef<HTMLDivElement>(null)
+  const onScroll = useRunPlace(
+    list,
+    run?.id ?? '',
+    run?.question ? 'top' : run && finished(run.state) ? 'foot' : 'present',
+  )
+
   if (!run) {
     return (
       <>
@@ -178,7 +188,7 @@ export const ScenarioRun = ({
         </div>
       </header>
 
-      <div className={m.pageList}>
+      <div className={m.pageList} ref={list} onScroll={onScroll}>
         {/* A refusal of something pressed in the header - holding the run or ending it - stands where the
             header is. One of a finished run's own doors is answered under those doors, below. */}
         {problem && !over ? <p className={m.noteBad}>{outcomeText(t, problem)}</p> : null}
@@ -212,7 +222,12 @@ export const ScenarioRun = ({
           {rows.map((row) => {
             if (row.kind === 'stage') {
               return (
-                <div key={row.key} className={`${m.stageRow} ${row.standing === 'here' ? m.stageHere : ''}`}>
+                <div
+                  key={row.key}
+                  className={`${m.stageRow} ${row.standing === 'here' ? m.stageHere : ''}`}
+                  data-row={row.key}
+                  data-ahead={row.standing === 'ahead' || undefined}
+                >
                   <span className={m.stageRowTitle}>{row.title || t.scenarios.stage}</span>
                   <span className={m.stageRowVerdict}>
                     {row.standing === 'done'
@@ -229,7 +244,7 @@ export const ScenarioRun = ({
               // The person's own words as well as the main thread's - the same two voices the desk draws.
               const person = row.note.who === 'person'
               return (
-                <div key={row.key} className={`${m.note} ${person ? m.notePerson : ''}`}>
+                <div key={row.key} className={`${m.note} ${person ? m.notePerson : ''}`} data-row={row.key}>
                   <span className={m.noteWho}>{person ? t.scenarios.run.youSaid : t.scenarios.run.headSaid}</span>
                   {person ? (
                     <span className={m.notePersonText}>{row.note.text}</span>
@@ -252,6 +267,7 @@ export const ScenarioRun = ({
             return (
               <StepRow
                 key={row.key}
+                anchor={row.key}
                 step={row.step}
                 passes={row.passes}
                 untilDone={row.untilDone}
@@ -439,12 +455,15 @@ export const ScenarioRun = ({
  * The same rule the live run's card on the list follows - a middle that does nothing reads as broken.
  */
 const StepRow = ({
+  anchor,
   step,
   passes,
   untilDone,
   worked,
   onOpen,
 }: {
+  /** Its key in the timeline, for holding the reading place by (see useRunPlace). */
+  anchor: string
   step: ScenarioRunStep
   /** How many passes its stage was given. One means the row has no loop to place itself in. */
   passes: number
@@ -534,11 +553,13 @@ const StepRow = ({
   )
 
   return opens ? (
-    <button type="button" className={className} onClick={onOpen}>
+    <button type="button" className={className} onClick={onOpen} data-row={anchor} data-ahead={ahead || undefined}>
       {body}
     </button>
   ) : (
-    <div className={className}>{body}</div>
+    <div className={className} data-row={anchor} data-ahead={ahead || undefined}>
+      {body}
+    </div>
   )
 }
 

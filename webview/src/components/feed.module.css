@@ -2403,6 +2403,33 @@
   flex-wrap: wrap;
 }
 
+/* A mod's line in the transcript (see ModLogRow): the turn's own result row's quiet, with the mod's name
+   leading it the way the terminal's "●" does. */
+.modLog {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 4px 0 10px;
+  font: 10.5px/1.5 var(--acc-mono);
+  color: var(--acc-fg-ghost);
+  min-width: 0;
+}
+
+.modLogName {
+  flex: none;
+  color: var(--acc-fg-faint);
+}
+
+.modLogName::before {
+  content: '● ';
+}
+
+.modLogText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 /* The pause before a repeated request - the same row as the context compaction (see .compact), but on a
    warning background: a compaction runs its course, while here the conversation stands because of someone
    else's breakage, and that has to be visible without reading. */

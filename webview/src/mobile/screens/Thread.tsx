@@ -20,6 +20,7 @@ import { Back } from './Back'
 import { Magnifier, SearchCapsule } from '../../components/SearchCapsule'
 import { Composer, type OutgoingPrompt } from './Composer'
 import { SideQuestionCard } from '../../components/SideQuestion'
+import { ModDock } from '../../components/ModDock'
 import type { SideExchange, SideThread } from '../../feed/side'
 import { dotClass, groupColor } from './TabsSheet'
 import type { PhoneDictation } from '../useDictation'
@@ -434,6 +435,9 @@ export const Thread = ({
           field and a phone does not, and the same screen carries the subagents and the background
           commands - which is what somebody away from the desk is actually asking about.
         */}
+        {/* What the conversation's mods say, as the desk shows it over its field (see ModDock). */}
+        <ModDock status={feed.modStatus} panes={feed.modPanes} toast={feed.modToast} />
+
         {todo && todo.todos.length > 0 && (
           <button type="button" className={m.taskRow} onClick={onTasks}>
             <span className={m.taskRowLabel}>{t.mobile.tasks.label}</span>

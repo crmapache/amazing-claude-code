@@ -111,6 +111,13 @@ internal class SessionPermissions(private val hub: ClaudeSessionHub) {
             }
 
             if (request.toolName == PLAN_TOOL) plans[itemId] = pending else asks[itemId] = pending
+            // A mod's question comes with no call in the conversation to draw its card from: the mod asked
+            // through the CLI rather than through the model. Without a card it was a turn stopped dead with
+            // nothing on the screen, so the card is drawn from the request itself; everything after it -
+            // the answer, a dismissal, the question taken back, the phone - goes the way any question's does.
+            if (request.toolName == ClaudeLaunch.ASK_TOOL && ModLines.isModQuestion(itemId)) {
+                hub.broadcast(sessionId, ModLines.questionCard(sessionId, itemId, request.input))
+            }
             notePending(sessionId)
             return
         }

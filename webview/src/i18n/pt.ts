@@ -1172,6 +1172,12 @@ export const pt: Dict = {
       withdrawn: 'O agente parou de esperar uma decisão',
     },
 
+    mods: {
+      asks: 'UM MOD PERGUNTA',
+      label: 'MODS',
+      pane: (name: string): string =>
+        `${name} abriu a própria janela. O painel ainda não mostra janelas de mods: se o turno está parado, é essa janela que o segura, e Stop o cancela.`,
+    },
     ask: {
       label: 'CLAUDE PERGUNTA',
       blocks: (n) => `${n} ${n === 1 ? 'pergunta' : 'perguntas'} · segura a execução`,

@@ -174,6 +174,8 @@ export const Decision = ({
             count says how far along this is - the footer only ever holds one question's options. */}
         {ask && question && (
           <>
+            {/* A mod's question is answered the same way - only who is asking differs (see AskItem.fromMod). */}
+            {ask.fromMod && <p className={m.decisionContext}>{t.feed.mods.asks}</p>}
             <h1 className={m.decisionVerb}>{question.title}</h1>
             {question.hint && <p className={m.decisionTarget}>{question.hint}</p>}
             {ask.questions.length > 1 && (

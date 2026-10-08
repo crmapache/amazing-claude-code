@@ -15,6 +15,7 @@ import type {
   ErrorItem,
   LimitItem,
   MetaItem,
+  ModLogItem,
   ModelStuckItem,
   ModelSwitchItem,
   OutrankedItem,
@@ -444,6 +445,17 @@ export const LimitRow = ({ item }: { item: LimitItem }) => {
     </div>
   )
 }
+
+/**
+ * A line a mod put into the transcript - dim, under the mod's name, the way the terminal draws it
+ * ("● my-mod: build finished"). The model never reads it, and the feed keeps it just as quiet.
+ */
+export const ModLogRow = ({ item }: { item: ModLogItem }) => (
+  <div className={s.modLog}>
+    <span className={s.modLogName}>{item.plugin}</span>
+    <span className={s.modLogText}>{item.text}</span>
+  </div>
+)
 
 /** The process died on its own - an unambiguous mark rather than a silent "idle". */
 export const CrashRow = ({ item }: { item: CrashItem }) => {

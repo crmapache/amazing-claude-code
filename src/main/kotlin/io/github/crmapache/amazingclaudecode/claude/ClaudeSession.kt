@@ -193,6 +193,12 @@ internal class ClaudeSession(
      * on showing the account nobody is paying with.
      */
     private val onAccountOutranked: (List<String>) -> Unit = {},
+    /**
+     * A process of this conversation has just come up. Whatever the previous one's mods had put on the
+     * screens went with it - a process that is replaced rather than stopped reports no finish (see
+     * processTerminated) - so this is the moment that state is let go of (see ModLines).
+     */
+    private val onProcessStarted: () -> Unit = {},
 ) : Disposable {
 
     private var handler: OSProcessHandler? = null
@@ -1892,6 +1898,7 @@ internal class ClaudeSession(
         )
 
         process.startNotify()
+        onProcessStarted()
         startedAt = System.currentTimeMillis()
         announcedOnce = false
         namedAs = null

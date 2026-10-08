@@ -1,0 +1,70 @@
+/*
+ * The mods' card over the field (see ModDock): a toast, a status line per mod, a word about an open pane.
+ *
+ * A module of its own for the reason the scenario road has one: the phone draws the same card over its own
+ * field, and the composer's stylesheet is the desk's. Quiet on purpose - a status line is there all day, and
+ * a card that looked like the agent's question would be read as one.
+ */
+
+.dock {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 7px 11px 8px;
+  border: 1px solid var(--acc-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-bg-raised);
+  min-width: 0;
+}
+
+.label {
+  font: 600 9px/1.4 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-fg-faint);
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--acc-fg-dim);
+}
+
+/* The mod's name, as the terminal puts it before its words. */
+.name {
+  flex: none;
+  font: 11px/1.45 var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
+.text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A toast is the one thing here that just happened: it stands out for the seconds it lasts. */
+.toast .name {
+  color: var(--acc-accent);
+}
+
+.toast .text {
+  color: var(--acc-fg);
+}
+
+/* The terminal's mark for a mod's status row. */
+.status .name::before {
+  content: '⚠ ';
+  color: var(--acc-warn);
+}
+
+/* A pane nothing here can draw: said in a sentence, with the warning tone of something to do. */
+.pane {
+  display: block;
+  color: var(--acc-warn-light);
+  overflow-wrap: anywhere;
+}

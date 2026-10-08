@@ -13,6 +13,7 @@ import {
   replaceCommandHead,
   sameHints,
   slashQuery,
+  withAdded,
   type CommandEntry,
 } from './slash'
 import { tokensText } from './tokens'
@@ -130,6 +131,37 @@ describe('buildCommands', () => {
 
     expect(ids.indexOf('zebra')).toBeLessThan(ids.indexOf('apple'))
     expect(ids[0]).toBe('resume')
+  })
+})
+
+/**
+ * The commands a conversation came to know after its catalogue - a mod's - folded under the hints off the
+ * disk (see the `addedCommands` message).
+ */
+describe('withAdded', () => {
+  const disk = { deploy: { description: 'build, sign and publish', argumentHint: '' } }
+
+  /** The lock on everyone else: without a mod the list is built from the very same object as before. */
+  it('gives back the same object when nothing was added', () => {
+    expect(withAdded(disk, {})).toBe(disk)
+  })
+
+  it('adds a mod command with its description', () => {
+    const added = { replay: { description: "step through the last turn's edits", argumentHint: '' } }
+    const commands = buildCommands(en, [], withAdded(disk, added))
+
+    expect(commands.find((command) => command.id === 'replay')).toEqual({
+      id: 'replay',
+      hint: "step through the last turn's edits",
+      argumentHint: '',
+      group: 'project',
+    })
+  })
+
+  it('lets a file on disk win over the same name added later', () => {
+    const added = { deploy: { description: 'from the mod', argumentHint: '[x]' } }
+
+    expect(withAdded(disk, added).deploy).toEqual(disk.deploy)
   })
 })
 

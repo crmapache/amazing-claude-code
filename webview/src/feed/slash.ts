@@ -90,6 +90,16 @@ export const sameHints = (
 }
 
 /**
+ * The hints with the commands a conversation came to know after its catalogue folded in - a mod's (see the
+ * `addedCommands` message). Under the ones off the disk, which win: a file is the definition. The very same
+ * object comes back when there is nothing to add, so a panel without mods builds its list exactly as before.
+ */
+export const withAdded = (
+  hints: Record<string, CommandHint>,
+  added: Record<string, CommandHint>,
+): Record<string, CommandHint> => (Object.keys(added).length === 0 ? hints : { ...added, ...hints })
+
+/**
  * The agent's slash command list arrives with the session whole - it is the same catalogue the terminal
  * sees, the commands of every connected MCP server included. Our own panel commands and the built-in
  * ones described in advance come first and are always available, even before the session's first event;

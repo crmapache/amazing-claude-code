@@ -32,6 +32,7 @@ import {
   ErrorRow,
   LimitRow,
   MetaRow,
+  ModLogRow,
   ModelStuckRow,
   ModelSwitchRow,
   OutrankedRow,
@@ -1051,6 +1052,9 @@ const ItemView = memo(({
 
     case 'crash':
       return <CrashRow item={item} />
+
+    case 'modLog':
+      return <ModLogRow item={item} />
 
     case 'outranked':
       return <OutrankedRow item={item} onOpen={onSettingSources} />

@@ -107,6 +107,7 @@ import { useHoverTarget } from './hooks/useHoverTarget'
 import { useLowPanel } from './hooks/useLowPanel'
 import { StreamSwitcher } from './components/StreamSwitcher'
 import { TaskListPanel } from './components/TaskListPanel'
+import { ModDock } from './components/ModDock'
 import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
 import { askReply, EMPTY_ASK_DRAFT, type AskDraft } from './feed/askDraft'
@@ -139,6 +140,7 @@ import {
   localCommand,
   plainText,
   sameHints,
+  withAdded,
   type CommandEntry,
   type LocalCommand,
 } from './feed/slash'
@@ -246,6 +248,7 @@ import {
 import { liveDot, pressedAgain, runDot, runMarks, type Presses } from './scenarios/runs'
 import { toldTokens } from './scenarios/timeline'
 import { ScenarioRunTab } from './components/scenarios/ScenarioRunTab'
+import { forgetRunPlace } from './components/scenarios/useRunPlace'
 import { useSelection } from './hooks/useSelection'
 
 const MAIN_SESSION = 'main'
@@ -1156,6 +1159,8 @@ export const App = () => {
   const [files, setFiles] = useState<string[]>([])
   /** The slash commands' descriptions and argument syntax - of the same nature as files. */
   const [commandHints, setCommandHints] = useState<Record<string, { description: string; argumentHint: string }>>({})
+  /** The commands a conversation came to know after its catalogue - a mod's (see `addedCommands`). */
+  const [addedCommands, setAddedCommands] = useState<Record<string, { description: string; argumentHint: string }>>({})
   /**
    * The names of the commands the agent knows, as it named them last time round (see the `commands`
    * message). Stands in for the conversation's own list until the first message of the tab brings it:
@@ -3145,6 +3150,10 @@ export const App = () => {
             setKnownCommands(message.commands)
             break
 
+          case 'addedCommands':
+            setAddedCommands((current) => (sameHints(current, message.hints) ? current : message.hints))
+            break
+
           case 'dockAnchor':
             setDockAnchor(message.anchor)
             break
@@ -4982,8 +4991,13 @@ export const App = () => {
     // The tab's own catalogue while it has one, and the project's remembered one until then: this tab's
     // process may not have come up yet, and the two disagree only about a server switched on or off
     // since - where the live one is the truth.
-    () => buildCommands(t, panel.slashCommands.length > 0 ? panel.slashCommands : knownCommands, commandHints),
-    [t, panel.slashCommands, knownCommands, commandHints],
+    () =>
+      buildCommands(
+        t,
+        panel.slashCommands.length > 0 ? panel.slashCommands : knownCommands,
+        withAdded(commandHints, addedCommands),
+      ),
+    [t, panel.slashCommands, knownCommands, commandHints, addedCommands],
   )
 
   const submit = useCallback((queued: boolean, overrideText?: string) => {
@@ -5618,6 +5632,8 @@ export const App = () => {
     // The tab first, then the asking. The record is filed only into a tab that is already there, and a run
     // that has ended answers once and never again - asked first, its whole timeline is dropped on arrival
     // and the tab stays empty for as long as it is open.
+    // Opened, not come back to: it opens on what is happening, not where it was read last (see useRunPlace).
+    forgetRunPlace(runId)
     openPanelTab(runTabId(runId))
     send({ type: 'scenarioOpen', runId })
   }
@@ -6025,6 +6041,9 @@ export const App = () => {
       />
 
       <TaskListPanel item={latestTodo(panel.items)} layout={composerLayout} />
+
+      {/* What the conversation's mods say - nothing without a mod (see ModDock). */}
+      <ModDock status={panel.modStatus} panes={panel.modPanes} toast={panel.modToast} />
 
       {/* Nearest the field of everything that answers: it answers what was typed in it a moment ago. */}
       <SideQuestionCard

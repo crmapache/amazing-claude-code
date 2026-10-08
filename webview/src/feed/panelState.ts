@@ -3,6 +3,8 @@ import type {
   BackgroundTask,
   CheckpointItem,
   FeedItem,
+  ModPane,
+  ModToast,
   PermDecision,
   RetryReason,
   TodoEntry,
@@ -388,6 +390,14 @@ export interface PanelState {
    * otherwise would stop the asking exactly where it should go on.
    */
   lastPageRows: number
+  /**
+   * What this conversation's mods have on the screen - none of it exists without a mod, and none of it is
+   * set until one speaks (see feed/mods.ts). A status line per mod, by its name; the panes they hold open,
+   * which the panel can only name; and the last toast, while it lasts.
+   */
+  modStatus?: Record<string, string>
+  modPanes?: ModPane[]
+  modToast?: ModToast
 }
 
 export type PanelAction =

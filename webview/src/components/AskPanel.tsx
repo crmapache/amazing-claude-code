@@ -245,7 +245,9 @@ export const AskPanel = ({ item, draft, onDraft, composerEmpty, hotkeys, onSubmi
         {/* The label and the count go in a group of their own: the cross keeps the middle of the row,
             while text of two different sizes lines up on the baseline (as in TaskListPanel). */}
         <span className={s.askTitle}>
-          <span className={s.askLabel}>{t.feed.ask.label}</span>
+          {/* Who is asking: a mod's question is answered the same way, but it is not the model's (see
+              AskItem.fromMod). */}
+          <span className={s.askLabel}>{item.fromMod ? t.feed.mods.asks : t.feed.ask.label}</span>
           {/* A question out of a conversation that was abandoned on it says what it is instead of what a
               live one says: there is no run for it to block (see AskItem.reopened). */}
           <span className={s.askMeta}>

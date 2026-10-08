@@ -22,13 +22,16 @@
   }
 }
 
-/* The tone of the present: working, waiting for a person, or paused by one. */
+/*
+ * The tone of the present: working, waiting for a person, or paused by one. The band is the stage the run is
+ * in and has to read as one on a dark card at a glance: at 8% accent (6% sand) it was asked to be brighter.
+ */
 .toneGoing {
   --road-tone: var(--acc-accent);
   --road-light: var(--acc-accent-light);
   --road-fill: var(--acc-accent-16);
   --road-ring: var(--acc-accent-32);
-  --road-band: var(--acc-accent-08);
+  --road-band: rgb(var(--acc-ch-moon) / 14%);
 }
 
 .toneAsks {
@@ -36,14 +39,14 @@
   --road-light: var(--acc-warn-light);
   --road-fill: var(--acc-warn-16);
   --road-ring: var(--acc-warn-32);
-  --road-band: var(--acc-warn-06);
+  --road-band: var(--acc-warn-12);
 }
 
 .tonePaused {
   --road-tone: var(--acc-fg-ghost);
   --road-light: var(--acc-fg-soft);
   --road-fill: var(--acc-neutral-12);
-  --road-band: var(--acc-neutral-12);
+  --road-band: var(--acc-neutral-16);
 }
 
 /* Its own stacking context, so the tint's round ends sit behind the stops and still above the card. */

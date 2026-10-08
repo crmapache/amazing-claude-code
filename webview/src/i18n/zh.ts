@@ -1164,6 +1164,12 @@ export const zh: Dict = {
       withdrawn: '智能体不再等待你的决定了',
     },
 
+    mods: {
+      asks: '模组提问',
+      label: '模组',
+      pane: (name: string): string =>
+        `${name} 打开了自己的窗口。面板暂时无法显示模组窗口：如果当前回合停住不动，就是这个窗口在等待，按 Stop 即可取消。`,
+    },
     ask: {
       label: 'CLAUDE 提问',
       blocks: (n) => `${n} 个问题 · 回合在等你`,

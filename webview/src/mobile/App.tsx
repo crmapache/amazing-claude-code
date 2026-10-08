@@ -90,6 +90,7 @@ import { Projects, type HomeAnchor } from './screens/Projects'
 import { ScenarioCardScreen } from './screens/ScenarioCardScreen'
 import { ScenarioEditor } from './screens/ScenarioEditor'
 import { ScenarioRun } from './screens/ScenarioRun'
+import { forgetRunPlace } from '../components/scenarios/useRunPlace'
 import { ScenarioStep } from './screens/ScenarioStep'
 import { Scenarios } from './screens/Scenarios'
 import { RunSheet } from './screens/RunSheet'
@@ -1565,6 +1566,8 @@ export const App = () => {
       // Named before the asking, not at the next render: the answer is what the screen is opened for,
       // and a record that arrives before the screen is known would be let go of as somebody else's.
       watchedRun.current = runId
+      // Opened, not come back to: it opens on what is happening, not where it was read last (see useRunPlace).
+      forgetRunPlace(runId)
       setScreen({ at: 'scenarioRun', agentId, projectKey, runId, from })
       if (from === 'sessions') links.current[agentId]?.watch(projectKey, '', 0)
       command(agentId, projectKey, { type: 'scenarioOpen', runId })

@@ -576,6 +576,12 @@ export interface AskItem {
    * the IDE. The answer goes on as the next message instead, and the card says so.
    */
   reopened?: boolean
+  /**
+   * A mod asked it through the CLI rather than the model through a tool call - its card was drawn by the
+   * IDE out of the request itself, there being no call to draw it from (see the `acc_mod_question` case in
+   * feed/mods.ts). Answered exactly like any other; the card only says who is asking.
+   */
+  fromMod?: boolean
 }
 
 export interface CheckpointItem {
@@ -786,6 +792,31 @@ export interface OutrankedItem {
   names: string[]
 }
 
+/**
+ * A line a mod put into the transcript (`$.ui.log`): its words, under its name, dim - the CLI keeps it from
+ * the model, and the feed keeps it out of the way. See feed/mods.ts.
+ */
+export interface ModLogItem {
+  id: string
+  kind: 'modLog'
+  plugin: string
+  text: string
+}
+
+/** One pane a mod has open - which the panel cannot draw, only name (see PanelState.modPanes). */
+export interface ModPane {
+  id: string
+  title: string
+  plugin: string
+}
+
+/** A mod's toast (`$.ui.toast`): shown until [until] and never again - it is not kept (see feed/mods.ts). */
+export interface ModToast {
+  plugin: string
+  text: string
+  until: number
+}
+
 /** The conversation's process died on its own - a separate, unambiguous mark in the feed. */
 export interface CrashItem {
   id: string
@@ -886,6 +917,7 @@ export type FeedItem =
   | ModelSwitchItem
   | ModelStuckItem
   | CrashItem
+  | ModLogItem
   | OutrankedItem
   | ErrorItem
   | LimitItem

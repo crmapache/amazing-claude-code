@@ -1175,6 +1175,12 @@ export const de: Dict = {
       withdrawn: 'Der Agent wartet nicht mehr auf eine Entscheidung',
     },
 
+    mods: {
+      asks: 'EIN MOD FRAGT',
+      label: 'MODS',
+      pane: (name: string): string =>
+        `${name} hat ein eigenes Fenster geöffnet. Das Panel kann Mod-Fenster noch nicht anzeigen: Steht der Durchlauf still, hält ihn dieses Fenster fest, und Stop bricht ihn ab.`,
+    },
     ask: {
       label: 'CLAUDE FRAGT',
       blocks: (n) => `${n} ${n === 1 ? 'Frage' : 'Fragen'} · hält den Lauf an`,

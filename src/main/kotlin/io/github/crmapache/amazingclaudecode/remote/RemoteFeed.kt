@@ -581,6 +581,7 @@ internal object RemoteFeed {
         "usage",
         "commandHints",
         "commands",
+        "addedCommands",
         FILES,
         LOCALE,
         CALM_COLORS,

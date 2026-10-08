@@ -74,7 +74,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             onEvent = { sessionId, line -> onAgentLine(sessionId, line) },
             onError = { sessionId, text -> sendError(sessionId, text) },
             onDiagnostic = { sessionId, text -> diagnostics.forEach { it(sessionId, text) } },
-            onFinished = { sessionId -> sendStatus(sessionId, SessionSnapshot.STATUS_IDLE) },
+            onFinished = { sessionId ->
+                letModsGo(sessionId)
+                sendStatus(sessionId, SessionSnapshot.STATUS_IDLE)
+            },
             onCrashed = { sessionId, exitCode -> sendProcessExited(sessionId, exitCode) },
             onToolPermission = { sessionId, request -> permissionListener?.invoke(sessionId, request) },
             // Straight to the owner of the cards rather than through a listener of its own: a question
@@ -135,6 +138,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // conversations are open, and the next process must come up the way it was just left.
             settingSources = { SettingSources.of(project) },
             onAccountOutranked = { sessionId, names -> sendAccountOutranked(sessionId, names) },
+            onProcessStarted = { sessionId ->
+                letModsGo(sessionId)
+                catalog.commandsProcessStarted(sessionId)
+            },
         )
     }
 
@@ -235,6 +242,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     private val journals = ConcurrentHashMap<String, SessionJournal>()
     private val snapshots = ConcurrentHashMap<String, AtomicReference<SessionSnapshot>>()
     private val streams = ConcurrentHashMap<String, SessionStream>()
+
+    /** What each conversation's mods have on the screens - see ModStates. */
+    private val modStates = ModStates()
 
     /** What each conversation is waiting to say once the turn in progress ends - see [SessionQueue]. */
     private val queued = SessionQueue()
@@ -492,6 +502,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             }
 
             batch += restoreFinished(sessionId, upTo = journal.lastSeq())
+
+            // What its mods have standing now - a status line, the panes they hold open. Not in the journal
+            // (see ModStates), so this is the only way a client joining now learns it.
+            modStates.of(sessionId).forEach { line -> batch += agentEnvelope(sessionId, line) }
 
             // What this conversation is waiting to say. Not in the journal (see sendQueue), so a client
             // that was not listening when the list last changed has no other way to learn it - and one
@@ -865,11 +879,27 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // such a line this far (see ClaudeSession.noteDiagnostic), but an old transcript may hold one.
         if (!line.startsWith("{")) return
 
+        // A mod speaking to a surface: decided before anything else here, because what it says most often -
+        // "draw me again", up to ten times a second - must never reach the journal (see ModLines). Only a
+        // live process says it; a transcript read off disk goes on as it always has.
+        if (!replay) {
+            val kind = ModLines.kindOf(line)
+            if (kind != null) {
+                takeModLine(sessionId, line, kind)
+                return
+            }
+        }
+
         // A process reporting what it came up with names every command it knows, the MCP servers' ones
         // included - the one place they can be learned from at all (see ProjectCatalog.noteCommands).
         // Not from a replay: an old transcript holds no such event, and a line read off disk says
         // nothing about what is connected right now.
-        if (!replay) catalog.noteCommands(line)
+        //
+        // The CLI's later catalogue is read there for the commands a mod added, and goes no further: no screen
+        // draws it - the feed passes over it - and it is the whole catalogue with descriptions, tens of
+        // kilobytes, sent again on every change (measured on 2.1.293). Kept, it was journaled and carried to
+        // the phone every time a process came up.
+        if (!replay && catalog.noteCommands(sessionId, line)) return
 
         // The limit picture changes on its own, without anyone asking: extra usage begins the moment a
         // window runs out. Not from a replay for the same reason - an old transcript says nothing about
@@ -897,6 +927,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             snapshot(sessionId).set(SessionSnapshot(title = "", titleSource = SessionSnapshot.TITLE_DEFAULT))
             tabs.resetTitle(sessionId)
             broadcast(sessionId, envelope)
+            // The mods live on in the same process, and so does what they have standing - but the screens
+            // have just let go of the conversation's state with everything else (see ModStates).
+            modStates.of(sessionId).forEach { kept -> emitLive(agentEnvelope(sessionId, kept)) }
             broadcastSessions()
             return
         }
@@ -911,6 +944,33 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // beside it (see SessionJournal.Strand).
         broadcast(sessionId, envelope, JournalStrands.of(line))
     }
+
+    /** One of a mod's lines, sent the way its kind says - see ModLines.Kind. */
+    private fun takeModLine(sessionId: String, line: String, kind: ModLines.Kind) {
+        when (kind) {
+            ModLines.Kind.DROP -> Unit
+            ModLines.Kind.STATE -> {
+                ModLines.slotOf(line)?.let { slot -> modStates.keep(sessionId, slot, line) }
+                emitLive(agentEnvelope(sessionId, line))
+            }
+            ModLines.Kind.LIVE -> emitLive(agentEnvelope(sessionId, line))
+            ModLines.Kind.FEED -> broadcast(sessionId, agentEnvelope(sessionId, line), ModLines.strandOf(line))
+        }
+    }
+
+    /**
+     * The process whose mods put a state on the screens is gone or replaced, and the state with it: take it
+     * off every screen. Nothing at all for a conversation whose mods never said anything - which is every
+     * conversation without a mod.
+     */
+    private fun letModsGo(sessionId: String) {
+        modStates.clear(sessionId).forEach { slot ->
+            ModLines.cleared(slot)?.let { line -> emitLive(agentEnvelope(sessionId, line)) }
+        }
+    }
+
+    private fun agentEnvelope(sessionId: String, line: String): String =
+        """{"type":"agent","sessionId":"$sessionId","event":$line}"""
 
     fun sendStatus(sessionId: String, state: String) {
         stats.noteStatus(sessionId, running = state == SessionSnapshot.STATUS_RUNNING)
@@ -1073,6 +1133,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         journals.remove(id)
         snapshots.remove(id)
         streams.remove(id)
+        modStates.clear(id)
+        catalog.forgetCommands(id)
         locks.remove(id)
         tabs.close(id)
         broadcastSessions()
@@ -2713,6 +2775,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             "files",
             "commandHints",
             "commands",
+            // The commands a conversation came to know after its catalogue - a mod's (see AddedCommands).
+            "addedCommands",
             "clients",
             "remoteState",
             "mcpServers",

@@ -1166,6 +1166,12 @@ export const ja: Dict = {
       withdrawn: 'エージェントは決定を待つのをやめました',
     },
 
+    mods: {
+      asks: 'MOD からの質問',
+      label: 'MOD',
+      pane: (name: string): string =>
+        `${name} が独自のウィンドウを開きました。パネルはまだ MOD のウィンドウを表示できません。ターンが止まっている場合はこのウィンドウが待機しているので、Stop で取り消せます。`,
+    },
     ask: {
       label: 'CLAUDE からの質問',
       blocks: (n) => `${n} 件の質問 · ここで止まっています`,

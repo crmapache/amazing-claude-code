@@ -198,6 +198,27 @@ describe('phoneCommands', () => {
     expect(phoneCommands(en, facts.commands, facts.hints).map((command) => command.id)).toContain('mcp__snakein__analyze')
   })
 
+  /** A mod's command is on no disk and missing from the first catalogue - the IDE says it apart. */
+  it('offers the commands a mod added, under the ones on disk', () => {
+    let facts = applyFact(emptyFacts(), {
+      type: 'commandHints',
+      hints: { deploy: { description: 'build, sign and publish', argumentHint: '' } },
+    } as ShellMessage)
+    facts = applyFact(facts, {
+      type: 'addedCommands',
+      hints: {
+        replay: { description: 'step through the edits', argumentHint: '' },
+        deploy: { description: 'from the mod', argumentHint: '' },
+      },
+    } as ShellMessage)
+
+    const commands = phoneCommands(en, facts.commands, facts.hints, facts.added)
+
+    expect(isFact({ type: 'addedCommands', hints: {} } as ShellMessage)).toBe(true)
+    expect(commands.find((command) => command.id === 'replay')?.hint).toBe('step through the edits')
+    expect(commands.find((command) => command.id === 'deploy')?.hint).toBe('build, sign and publish')
+  })
+
   it('keeps the built-in ones and adds whatever the project keeps on disk', () => {
     const facts = applyFact(emptyFacts(), {
       type: 'commandHints',

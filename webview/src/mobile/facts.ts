@@ -1,7 +1,7 @@
 import { ASIDE_COMMAND } from '../feed/side'
 import { calmVividOf } from '../calmColors'
 import type { CommandEntry, CommandHint } from '../feed/slash'
-import { buildCommands } from '../feed/slash'
+import { buildCommands, withAdded } from '../feed/slash'
 import { withBranch, type BranchFacts } from '../feed/branch'
 import { emptyUsageBook, mergeUsageBook, usageOf, type UsageBook, type UsageFacts } from '../feed/usage'
 import type { Dict } from '../i18n/en'
@@ -44,6 +44,8 @@ export interface ProjectFacts extends UsageFacts, BranchFacts {
   /** The project's paths, for the "@" hint. Trimmed on the way out - see RemoteFeed.forPhone. */
   files: string[]
   hints: Record<string, CommandHint>
+  /** The commands a conversation came to know after its catalogue - a mod's (see `addedCommands`). */
+  added: Record<string, CommandHint>
   /**
    * The names of the commands the agent knows, as the IDE last heard them (see the `commands` message).
    * A phone never sees a conversation start, so this is the only route by which the MCP servers'
@@ -143,6 +145,7 @@ export interface ScenarioShelves {
 export const emptyFacts = (): ProjectFacts => ({
   files: [],
   hints: {},
+  added: {},
   commands: [],
   runs: {},
   usage: emptyUsageBook(),
@@ -171,6 +174,7 @@ export const isFact = (message: ShellMessage): boolean =>
   message.type === 'project' ||
   message.type === 'files' ||
   message.type === 'commandHints' ||
+  message.type === 'addedCommands' ||
   message.type === 'commands' ||
   message.type === 'locale' ||
   message.type === 'calmColors' ||
@@ -205,6 +209,9 @@ export const applyFact = (facts: ProjectFacts, message: ShellMessage, watching =
 
     case 'commandHints':
       return { ...facts, hints: message.hints }
+
+    case 'addedCommands':
+      return { ...facts, added: message.hints }
 
     case 'commands':
       return { ...facts, commands: message.commands }
@@ -315,8 +322,11 @@ export const phoneCommands = (
   t: Dict,
   commands: ProjectFacts['commands'],
   hints: ProjectFacts['hints'],
+  added: ProjectFacts['added'] = {},
 ): CommandEntry[] =>
-  buildCommands(t, commands, hints).filter((command) => command.group !== 'panel' || command.id === ASIDE_COMMAND)
+  buildCommands(t, commands, withAdded(hints, added)).filter(
+    (command) => command.group !== 'panel' || command.id === ASIDE_COMMAND,
+  )
 
 /**
  * The runs going in a project right now, or nothing.

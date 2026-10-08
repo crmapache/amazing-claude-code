@@ -56,6 +56,8 @@ internal class ClaudeSessions(
      * doing it - see ClaudeSession.onAccountOutranked.
      */
     private val onAccountOutranked: (sessionId: String, names: List<String>) -> Unit = { _, _ -> },
+    /** A process of this conversation has just come up - see ClaudeSession.onProcessStarted. */
+    private val onProcessStarted: (sessionId: String) -> Unit = {},
     /**
      * A conversation has just been born, and this is the effort it was born with.
      *
@@ -1274,6 +1276,7 @@ internal class ClaudeSessions(
             onTurnStarted = { if (current()) onTurnStarted(sessionId) },
             settingSources = settingSources,
             onAccountOutranked = { names -> onAccountOutranked(sessionId, names) },
+            onProcessStarted = { if (current()) onProcessStarted(sessionId) },
         ).also { slot[0] = it }
     }
 

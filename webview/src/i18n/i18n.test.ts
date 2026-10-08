@@ -111,6 +111,8 @@ const SHARED_WITH_ENGLISH: Record<string, Locale[]> = {
   'feed.limit.label': ['de'],
   'feed.findings.label': ['de'],
   'feed.crash.label': ['fr'],
+  // "Mods" is the word the Latin languages use for them as well.
+  'feed.mods.label': ['es', 'pt-BR', 'de', 'fr'],
   'mobile.sessions.agent.offline': ['pt-BR', 'de'],
   // The phone's own screens, where the Latin languages happen to spell a word exactly as English does.
   'mobile.sessions.kind.permission': ['fr'],

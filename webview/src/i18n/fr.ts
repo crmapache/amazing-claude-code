@@ -1176,6 +1176,12 @@ export const fr: Dict = {
       withdrawn: 'L’agent n’attend plus de décision',
     },
 
+    mods: {
+      asks: 'UN MOD DEMANDE',
+      label: 'MODS',
+      pane: (name: string): string =>
+        `${name} a ouvert sa propre fenêtre. Le panneau n'affiche pas encore les fenêtres des mods : si le tour est à l'arrêt, c'est cette fenêtre qui le retient, et Stop l'annule.`,
+    },
     ask: {
       label: 'CLAUDE DEMANDE',
       blocks: (n) => `${n} ${n === 1 ? 'question' : 'questions'} · bloque l’exécution`,

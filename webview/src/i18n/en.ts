@@ -1537,6 +1537,19 @@ export const en = {
       withdrawn: 'The agent stopped waiting for a decision',
     },
 
+    /**
+     * A mod speaking (Claude Code 2.1.287 and later; see feed/mods.ts). The mod's own words are shown as it
+     * wrote them - only what the panel says about them is here.
+     */
+    mods: {
+      /** The label of a question a mod asked through the CLI - "CLAUDE ASKS" stands on the model's own. */
+      asks: 'A MOD ASKS',
+      /** The label of the card over the field that holds a mod's toast, status lines and open windows. */
+      label: 'MODS',
+      /** A pane a mod holds open, which the panel cannot draw; [name] is its title and the mod's name. */
+      pane: (name: string): string =>
+        `${name} opened its own window. The panel can't show mod windows yet: if the turn is standing still, that window is holding it, and Stop cancels it.`,
+    },
     ask: {
       label: 'CLAUDE ASKS',
       blocks: (n: number): string => `${n} ${n === 1 ? 'question' : 'questions'} · blocks the run`,

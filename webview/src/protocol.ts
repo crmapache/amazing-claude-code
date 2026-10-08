@@ -1728,6 +1728,13 @@ type ShellMessageBody =
    */
   | { type: 'commandHints'; hints: Record<string, { description: string; argumentHint: string }> }
   /**
+   * The commands this project's conversations came to know after reporting their catalogue - a mod
+   * registers its commands while it loads, after the catalogue is out, and they are on no disk (see
+   * AddedCommands on the plugin's side). Shaped like the hints off the disk, and drawn under them: a file
+   * is the definition.
+   */
+  | { type: 'addedCommands'; hints: Record<string, { description: string; argumentHint: string }> }
+  /**
    * The names of the slash commands the agent itself knows - the catalogue it named the last time a
    * conversation's process came up in this project (see ClaudeCommandNames on the plugin's side).
    *
@@ -3131,6 +3138,21 @@ export interface AgentSystemEvent {
   retry_delay_ms?: number
   error_status?: number | null
   error?: string
+  /**
+   * A mod speaking (Claude Code 2.1.287 and later; see feed/mods.ts): subtypes `ui_status`, `ui_toast`,
+   * `ui_log` carry the mod's name and its words (a status of null clears it), `ui_panes` the panes the mods
+   * hold open, and the toast how long it stays. The IDE drops what is only for drawing and keeps the states
+   * out of the journal (see ModLines on the plugin's side).
+   */
+  plugin?: string
+  text?: string | null
+  timeout_ms?: number
+  panes?: { id?: string; title?: string; plugin?: string }[]
+  /**
+   * A mod's question, as the IDE draws it (subtype `acc_mod_question`, of the IDE's own making): the
+   * question's input exactly as AskUserQuestion takes it, under [tool_use_id] - see feed/mods.ts.
+   */
+  input?: Record<string, unknown>
 }
 
 /**

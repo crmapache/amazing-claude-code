@@ -629,19 +629,62 @@ internal class ProjectCatalog(
 
     /**
      * A line of a conversation's stream: if it is a process reporting what it came up with, the command
-     * catalogue in it is worth keeping (see [sendCommands]). Everything else passes through untouched -
-     * the check inside is a substring search, because this runs on every line of every stream.
+     * catalogue in it is worth keeping (see [sendCommands]); if it is the later catalogue, the commands it
+     * adds are (see AddedCommands). Everything else passes through untouched - the check inside is a
+     * substring search, because this runs on every line of every stream.
+     *
+     * Answers true for the later catalogue: it has said all it has to say here, and the stream need not
+     * carry it on (see ClaudeSessionHub.onAgentLine).
      */
-    fun noteCommands(line: String) {
-        val names = ClaudeCommandNames.of(line) ?: return
+    fun noteCommands(sessionId: String, line: String): Boolean {
+        ClaudeCommandNames.changed(line)?.let { commands ->
+            if (added.noteChanged(sessionId, commands)) sendAddedCommands()
+            return true
+        }
+
+        val names = ClaudeCommandNames.of(line) ?: return false
+        added.noteCatalogue(sessionId, names)
 
         val store = PropertiesComponent.getInstance(project)
-        if (store.getList(COMMANDS_KEY).orEmpty() == names) return
+        if (store.getList(COMMANDS_KEY).orEmpty() == names) return false
 
         store.setList(COMMANDS_KEY, names)
         // Said out loud rather than left for the next opening: the conversation that has just started
         // knows the list from its own event, the tab beside it and a phone across the city do not.
         broadcastCommands(names)
+        return false
+    }
+
+    /**
+     * The commands this project's conversations came to know after reporting their catalogue - see
+     * AddedCommands. One fact for the project, the latest kept for whoever joins (see broadcastProject).
+     */
+    private val added = AddedCommands()
+
+    /** A conversation's process was replaced: its later commands are learned again from the new one. */
+    fun commandsProcessStarted(sessionId: String) {
+        if (added.processStarted(sessionId)) sendAddedCommands()
+    }
+
+    /** A conversation was closed: the commands only it had learned leave the hint with it. */
+    fun forgetCommands(sessionId: String) {
+        if (added.forget(sessionId)) sendAddedCommands()
+    }
+
+    private fun sendAddedCommands() {
+        hub.broadcastProject(
+            buildJsonObject {
+                put("type", "addedCommands")
+                putJsonObject("hints") {
+                    added.all().forEach { (name, hint) ->
+                        putJsonObject(name) {
+                            put("description", hint.description)
+                            put("argumentHint", hint.argumentHint)
+                        }
+                    }
+                }
+            }.toString(),
+        )
     }
 
     private fun broadcastCommands(names: List<String>) {
