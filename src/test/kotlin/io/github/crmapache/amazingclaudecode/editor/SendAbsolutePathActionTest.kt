@@ -14,7 +14,10 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import java.awt.event.InputEvent
+import java.awt.event.KeyEvent
 import java.io.File
+import javax.swing.JPanel
 
 /**
  * What "Send Absolute Path…" - "Send to Amazing Claude Code GUI" in the project tree - takes from the menu
@@ -84,22 +87,30 @@ class SendAbsolutePathActionTest : BasePlatformTestCase() {
 
     fun testOfMenusOnlyTheEditorTheProjectTreeAndTheCommitWindowShowIt() {
         val file = local("README.md")
-        val shown = { place: String ->
-            val event = event(SendAbsolutePathAction(), CommonDataKeys.VIRTUAL_FILE_ARRAY to arrayOf(file), place = place)
+        val shown = { place: String, uiKind: ActionUiKind, input: InputEvent? ->
+            val event = event(
+                SendAbsolutePathAction(),
+                CommonDataKeys.VIRTUAL_FILE_ARRAY to arrayOf(file),
+                place = place,
+                uiKind = uiKind,
+                input = input,
+            )
             SendAbsolutePathAction().update(event)
             event.presentation.isEnabledAndVisible
         }
 
-        assertTrue(shown(ActionPlaces.PROJECT_VIEW_POPUP))
-        assertTrue(shown(ActionPlaces.EDITOR_POPUP))
-        assertTrue(shown(ActionPlaces.CHANGES_VIEW_POPUP))
+        assertTrue(shown(ActionPlaces.PROJECT_VIEW_POPUP, ActionUiKind.POPUP, null))
+        assertTrue(shown(ActionPlaces.EDITOR_POPUP, ActionUiKind.POPUP, null))
+        assertTrue(shown(ActionPlaces.CHANGES_VIEW_POPUP, ActionUiKind.POPUP, null))
         // The clipboard group the tree's item stands in is shared with these - none of them is for sending a file.
-        assertFalse(shown(ActionPlaces.MAIN_MENU))
-        assertFalse(shown(ActionPlaces.STRUCTURE_VIEW_POPUP))
-        assertFalse(shown(ActionPlaces.NAVIGATION_BAR_POPUP))
-        // Not menus: a shortcut and Search Everywhere work wherever there is a file.
-        assertTrue(shown(ActionPlaces.KEYBOARD_SHORTCUT))
-        assertTrue(shown(ActionPlaces.ACTION_SEARCH))
+        assertFalse(shown(ActionPlaces.MAIN_MENU, ActionUiKind.MAIN_MENU, null))
+        assertFalse(shown(ActionPlaces.STRUCTURE_VIEW_POPUP, ActionUiKind.POPUP, null))
+        assertFalse(shown(ActionPlaces.NAVIGATION_BAR_POPUP, ActionUiKind.POPUP, null))
+        // Not menus: a shortcut and Search Everywhere work wherever there is a file. The shortcut comes with
+        // its key press, as it does in the IDE - the old check for the macOS menu bar took that for a menu.
+        val keyPress = KeyEvent(JPanel(), KeyEvent.KEY_PRESSED, 0, 0, KeyEvent.VK_A, 'a')
+        assertTrue(shown(ActionPlaces.KEYBOARD_SHORTCUT, ActionUiKind.NONE, keyPress))
+        assertTrue(shown(ActionPlaces.ACTION_SEARCH, ActionUiKind.SEARCH_POPUP, null))
     }
 
     private fun local(name: String, directory: Boolean = false): VirtualFile {
@@ -114,10 +125,12 @@ class SendAbsolutePathActionTest : BasePlatformTestCase() {
         action: AnAction,
         vararg data: Pair<DataKey<*>, Any>,
         place: String = ActionPlaces.PROJECT_VIEW_POPUP,
+        uiKind: ActionUiKind = ActionUiKind.POPUP,
+        input: InputEvent? = null,
     ): AnActionEvent {
         val context = SimpleDataContext.builder().add(CommonDataKeys.PROJECT, project)
         for ((key, value) in data) context.add(key as DataKey<Any>, value)
 
-        return AnActionEvent.createEvent(action, context.build(), Presentation(), place, ActionUiKind.NONE, null)
+        return AnActionEvent.createEvent(action, context.build(), Presentation(), place, uiKind, input)
     }
 }

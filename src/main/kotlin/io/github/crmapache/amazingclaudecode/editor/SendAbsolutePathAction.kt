@@ -52,15 +52,15 @@ internal class SendAbsolutePathAction : AnAction(), DumbAware {
  * that group is shared with the main Edit menu, the structure view, the console and the navigation bar.
  * There the item has no business: a person did not open those to send a file. A shortcut and Search
  * Everywhere are not menus, and go through.
+ *
+ * A menu is told by the kind of UI the event came from, not by its place. The place-based checks are
+ * closed to a plugin: the popup one is deprecated, and the one for the macOS menu bar is internal API -
+ * the Marketplace verifier flags it and moderation turns the version down. That one also counts a
+ * shortcut on a Mac as a menu, so it hid the item from its own shortcut there. The macOS menu bar
+ * reports itself as the main menu, like the menu inside the window.
  */
-internal fun offeredIn(event: AnActionEvent): Boolean {
-    val place = event.place
-    if (place in OFFERING_MENUS) return true
-
-    val menu = ActionPlaces.isPopupPlace(place) || place == ActionPlaces.MAIN_MENU ||
-        ActionPlaces.isMacSystemMenuAction(event)
-    return !menu
-}
+internal fun offeredIn(event: AnActionEvent): Boolean =
+    event.place in OFFERING_MENUS || !(event.isFromContextMenu || event.isFromMainMenu)
 
 /**
  * What the menu was opened on, as files the agent can open.
