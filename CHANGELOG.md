@@ -9,6 +9,17 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.27] - 2026-10-08
+
+- Changed: opening a scenario run no longer starts at the top of its timeline, among stages finished hours ago. It opens where the run is: the card it is on and what the main thread last said to it. When everything still ahead fits on the screen, it goes all the way to the bottom; when it does not, as with a loop written out as five passes, the current card stands low on the screen with the start of what comes next under it. The screen keeps up with the run as it goes until you scroll away, and follows again when you scroll back. A question waiting for you still opens the run at the top, and so does a finished run on the desk, where its result and the buttons to continue stand. Coming back from a card's log, or to the run's tab from another tab, returns you to where you were reading instead of the top. The same on the phone.
+- Changed: the shading behind the stage a scenario run is in is brighter, so the stage stands out on its road at a glance, on the phone too.
+- Fixed: with a Claude Code mod installed (mods arrived in Claude Code 2.1.287), a mod asking you something left the conversation standing with nothing on the screen until you pressed Stop. The question now comes up as an ordinary question card marked "A MOD ASKS", answered the same way, on the phone too.
+- Fixed: a mod that redraws itself often, such as a clock or an animation, pushed the conversation out of what the IDE keeps for a phone, a second window or a reloaded panel within minutes, and they came up with an empty feed. Its redraws are no longer kept or sent anywhere.
+- Added: what a mod says now shows in the panel. Its notices and status lines stand in a small card above the input field, and its lines in the transcript appear dimly in the feed. A mod that opens a window of its own, which the panel cannot draw yet, is named there too, with a word that if the turn is standing still, that window is holding it and Stop cancels it.
+- Fixed: a mod's own slash commands appeared in the "/" list only after the second message of a conversation. They are now there as soon as the conversation starts, with their descriptions.
+- Fixed: on macOS the keyboard shortcut for "Send Absolute Path to Amazing Claude Code GUI" did nothing: the check that keeps the item out of menus where it does not belong took the shortcut for a menu. It now tells a menu from a shortcut by where the action came from.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.26] - 2026-10-07
 
 - Added: right-click a file or a folder in the project tree, or a changed file in the Commit tool window, and "Send to Amazing Claude Code GUI" stands right under "Copy Path/Reference...". It puts what you clicked into the input field as an attachment with its full path, the same as dragging it into the panel; select several files and folders and they all go in at once. In the editor's own menu the two items stay where they were: the selected lines first, then "Send Absolute Path to Amazing Claude Code GUI" for the whole file, and that one now works on folders as well.
@@ -931,7 +942,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.26...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.27...HEAD
+[0.13.27]: https://github.com/crmapache/amazing-claude-code/compare/0.13.26...0.13.27
 [0.13.26]: https://github.com/crmapache/amazing-claude-code/compare/0.13.25...0.13.26
 [0.13.25]: https://github.com/crmapache/amazing-claude-code/compare/0.13.24...0.13.25
 [0.13.24]: https://github.com/crmapache/amazing-claude-code/compare/0.13.23...0.13.24
