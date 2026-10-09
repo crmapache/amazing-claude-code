@@ -161,7 +161,7 @@ const REVIEW: Scenario = {
   createdAt: Date.now() - 9 * 24 * 60 * 60 * 1000,
   updatedAt: Date.now() - 2 * 24 * 60 * 60 * 1000,
   inputs: [
-    { id: 'i1', name: 'branch', label: 'Branch', placeholder: 'mzolotoi/checkout-totals', required: true },
+    { id: 'i1', name: 'branch', label: 'Branch', placeholder: 'alex/checkout-totals', required: true },
   ],
   head: {
     briefing:
@@ -302,7 +302,7 @@ const reset = (): void => {
       done: 7,
       failure: '',
       cost: 4.18,
-      inputs: { branch: 'mzolotoi/checkout-totals' },
+      inputs: { branch: 'alex/checkout-totals' },
     },
     {
       id: 'run-monday',
@@ -396,7 +396,7 @@ const blankRun = (scenario: Scenario, id: string, inputs: Record<string, string>
 /** A run of last night, whole: three passes of the loop, the last of them never needed. */
 const finishedRun = (): ScenarioRun => {
   const started = Date.now() - 26 * 60 * 60 * 1000
-  const run = blankRun(structuredClone(REVIEW), 'run-yesterday', { branch: 'mzolotoi/checkout-totals' })
+  const run = blankRun(structuredClone(REVIEW), 'run-yesterday', { branch: 'alex/checkout-totals' })
   const findings = '/tmp/acc/run-yesterday/findings.md'
 
   run.startedAt = started
@@ -420,9 +420,9 @@ const finishedRun = (): ScenarioRun => {
       slots: step.cardId === 'c-diff' ? ({} as Record<string, string>) : { findings },
       prompt:
         step.cardId === 'c-diff'
-          ? 'Read the diff of mzolotoi/checkout-totals against main and write down what it touches.'
+          ? 'Read the diff of alex/checkout-totals against main and write down what it touches.'
           : step.cardId === 'c-review'
-            ? `Review the changes on mzolotoi/checkout-totals and write every finding to ${findings}.`
+            ? `Review the changes on alex/checkout-totals and write every finding to ${findings}.`
             : `Fix the findings written in ${findings}. Leave the ones you disagree with.`,
       // Written the way a card really answers - in markdown, with a heading, code spans and a list - since
       // that is what the row has to make readable.
@@ -449,7 +449,7 @@ const finishedRun = (): ScenarioRun => {
     {
       at: started + 60_000,
       stepKey: '',
-      text: 'Read the briefing. This is a review of `mzolotoi/checkout-totals` at `fc649af`, and **nothing is to be pushed**.',
+      text: 'Read the briefing. This is a review of `alex/checkout-totals` at `fc649af`, and **nothing is to be pushed**.',
     },
     { at: started + 9 * 60 * 1000, stepKey: 's-round:c-review:1', text: `Pointing the reviewer at ${findings}, which is empty so far.` },
     {

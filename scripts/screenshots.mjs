@@ -1,11 +1,12 @@
 /**
  * The pictures of the Marketplace listing.
  *
- * Every frame is a scenario of the harness played in shot mode (`?shot=<id>`, see
- * webview/src/harness/harness.tsx) and photographed at 1200x800 CSS pixels with a device pixel ratio of
- * 2 - a 2400x1600 PNG, well over the 1200x760 the Marketplace asks for. What is in each frame lives in
- * webview/src/harness/scenarios/showcase.ts; this file only presses the shutter, so a frame that needs
- * different data is changed there rather than here.
+ * The panel alone, in a browser: every frame of scripts/listing/frames.mjs played in the harness's shot
+ * mode (`?shot=<id>`, see webview/src/harness/harness.tsx) and photographed at 1200x800 CSS pixels with a
+ * device pixel ratio of 2 - a 2400x1600 PNG. The listing itself is now pictures of a whole IDE window
+ * (scripts/listing/ide-shots.mjs); this camera stays for frames of the panel on its own. What is in a
+ * frame lives in webview/src/harness/scenarios/showcase.ts and what is done to it in frames.mjs - the two
+ * cameras share both.
  *
  * How to run it:
  *
@@ -21,6 +22,7 @@
  */
 
 import { mkdir } from 'node:fs/promises'
+import { FRAMES, sleep } from './listing/frames.mjs'
 
 /**
  * Playwright is looked for wherever it was installed - PLAYWRIGHT points at it when that is not this
@@ -36,389 +38,6 @@ const ONLY = process.argv.slice(2)
 const WIDTH = 1200
 const HEIGHT = 800
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-
-/** Click the first button whose text contains every one of the given fragments. */
-const clickButton = async (page, ...fragments) => {
-  const found = await page.evaluate((parts) => {
-    const button = [...document.querySelectorAll('button')].find((b) => {
-      const text = b.textContent ?? ''
-      return parts.every((part) => text.includes(part))
-    })
-    if (!button) return false
-    button.click()
-    return true
-  }, fragments)
-  if (!found) throw new Error(`no button matching ${fragments.join(' + ')}`)
-  await sleep(220)
-}
-
-/** The same, but the last match rather than the first - the newest group in the feed. */
-const clickLastButton = async (page, ...fragments) => {
-  const found = await page.evaluate((parts) => {
-    const buttons = [...document.querySelectorAll('button')].filter((b) => {
-      const text = b.textContent ?? ''
-      return parts.every((part) => text.includes(part))
-    })
-    const button = buttons[buttons.length - 1]
-    if (!button) return false
-    button.click()
-    return true
-  }, fragments)
-  if (!found) throw new Error(`no button matching ${fragments.join(' + ')}`)
-  await sleep(220)
-}
-
-const openMenu = async (page) => {
-  await page.click('[aria-label="Menu"]')
-  await sleep(420)
-}
-
-/** The feed is the tallest scrollable box on the page. */
-const scrollFeed = async (page, where) => {
-  await page.evaluate((target) => {
-    const boxes = [...document.querySelectorAll('div')].filter((el) => el.scrollHeight - el.clientHeight > 24)
-    const feed = boxes.sort((a, b) => b.clientHeight - a.clientHeight)[0]
-    if (!feed) return
-    if (target === 'bottom') feed.scrollTop = feed.scrollHeight
-    else if (target === 'top') feed.scrollTop = 0
-    else feed.scrollTop = feed.scrollHeight * target
-  }, where)
-  await sleep(260)
-}
-
-/** Scroll the feed so that the button whose text matches sits near the top, with a little air above it. */
-const scrollTo = async (page, ...fragments) => {
-  await page.evaluate((parts) => {
-    const button = [...document.querySelectorAll('button')].find((b) => {
-      const text = b.textContent ?? ''
-      return parts.every((part) => text.includes(part))
-    })
-    if (!button) return
-    const boxes = [...document.querySelectorAll('div')].filter((el) => el.scrollHeight - el.clientHeight > 24)
-    const feed = boxes.sort((a, b) => b.clientHeight - a.clientHeight)[0]
-    if (!feed) return
-    const shift = button.getBoundingClientRect().top - feed.getBoundingClientRect().top - 40
-    feed.scrollTop += shift
-  }, fragments)
-  await sleep(240)
-}
-
-/**
- * A card with a scroll of its own (a long plan, say) starts at the top rather than wherever it was left.
- * The feed itself - the tallest scrollable box - is left alone.
- */
-const resetInnerScrolls = async (page) => {
-  await page.evaluate(() => {
-    const boxes = [...document.querySelectorAll('div')].filter((el) => el.scrollHeight - el.clientHeight > 8)
-    const feed = boxes.sort((a, b) => b.clientHeight - a.clientHeight)[0]
-    for (const box of boxes) if (box !== feed) box.scrollTop = 0
-  })
-  await sleep(200)
-}
-
-/**
- * Drag the mouse across a line of an answer, the way a person marks a sentence they want to branch from:
- * the menu over a selection appears on mouseup and on nothing else (see useSelection).
- */
-const selectLine = async (page, fragment) => {
-  const box = await page.evaluate((part) => {
-    const card = [...document.querySelectorAll('[data-copyable]')].find((el) => (el.textContent ?? '').includes(part))
-    if (!card) return null
-    const line = [...card.querySelectorAll('p, li, div')].find((el) => (el.textContent ?? '').includes(part)) ?? card
-    const rect = line.getBoundingClientRect()
-    return { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
-  }, fragment)
-  if (!box) throw new Error(`no answer text containing "${fragment}"`)
-
-  const y = box.y + 10
-  await page.mouse.move(box.x + 6, y)
-  await page.mouse.down()
-  await page.mouse.move(box.x + box.width * 0.45, y, { steps: 12 })
-  await page.mouse.move(box.x + box.width * 0.62, y, { steps: 8 })
-  await page.mouse.up()
-  await sleep(400)
-}
-
-const typeInComposer = async (page, text) => {
-  await page.click('[contenteditable="true"]')
-  await sleep(120)
-  await page.keyboard.type(text, { delay: 24 })
-  await sleep(420)
-}
-
-/** The button whose whole text is this - "Run" on a scenario's row is not the "Runs" tab beside it. */
-const clickExact = async (page, label, { last = false } = {}) => {
-  const found = await page.evaluate(([text, useLast]) => {
-    const all = [...document.querySelectorAll('button')].filter((b) => (b.textContent ?? '').trim() === text)
-    const button = useLast ? all[all.length - 1] : all[0]
-    if (!button) return false
-    button.click()
-    return true
-  }, [label, last])
-  if (!found) throw new Error(`no button whose text is exactly "${label}"`)
-  await sleep(320)
-}
-
-/**
- * The scenarios hub.
- *
- * The button beside the magnifier opens it, and it is only on a conversation's screen: a run started
- * from the hub takes a tab of its own, and there is no composer on that one. So the way back is the tab
- * in the strip, which is what this falls back to.
- */
-const openScenarios = async (page) => {
-  const pressed = await page.evaluate(() => {
-    const button = document.querySelector('[aria-label="Scenarios"]')
-    if (button) {
-      button.click()
-      return true
-    }
-
-    // A tab of the strip is a div with role="tab" - the cross inside it is the button.
-    const tab = [...document.querySelectorAll('[role="tab"]')].find((el) =>
-      (el.textContent ?? '').trim().startsWith('Scenarios'),
-    )
-    if (!tab) return false
-    tab.click()
-    return true
-  })
-  if (!pressed) throw new Error('the scenarios hub is neither a button nor a tab on this screen')
-  await sleep(900)
-}
-
-/**
- * The hub's shelf of scenarios - its first band. The hub opens on its runs (see AT_FIRST in
- * components/scenarios/view.ts), so a frame that starts, edits or schedules a scenario goes here first.
- * The band tabs are the tablist without a name; the strip of conversations is the one that has one.
- */
-const toShelf = async (page) => {
-  const found = await page.evaluate(() => {
-    const band = document.querySelector('[role="tablist"]:not([aria-label]) [role="tab"]')
-    if (!band) return false
-    band.click()
-    return true
-  })
-  if (!found) throw new Error('the hub shows no band tabs on this screen')
-  await sleep(400)
-}
-
-/** Start the scenario on the first shelf, answering the one thing it asks. */
-const startTheScenario = async (page, branch) => {
-  await clickExact(page, 'Run')
-  await sleep(320)
-  await page.locator('input').last().fill(branch)
-  await sleep(200)
-  await clickExact(page, 'Run', { last: true })
-}
-
-const FRAMES = [
-  {
-    file: '01-a-turn-in-progress',
-    shot: 'shot-turn',
-    run: async (page) => {
-      await clickLastButton(page, 'tools')
-      await scrollFeed(page, 'bottom')
-    },
-  },
-  {
-    file: '02-edits-as-diffs',
-    shot: 'shot-diff',
-    run: async (page) => {
-      await clickLastButton(page, 'tools')
-      await clickLastButton(page, 'paymentMethods.ts', '+11')
-      await scrollFeed(page, 'bottom')
-    },
-  },
-  {
-    file: '03-a-plan-to-approve',
-    shot: 'shot-plan',
-    run: async (page) => {
-      await scrollFeed(page, 'bottom')
-      await resetInnerScrolls(page)
-    },
-  },
-  {
-    file: '04-permission-request',
-    shot: 'shot-permission',
-    run: async (page) => {
-      await clickLastButton(page, 'tools')
-      await scrollFeed(page, 'bottom')
-    },
-  },
-  {
-    file: '05-a-question-with-options',
-    shot: 'shot-question',
-    run: async (page) => {
-      await scrollFeed(page, 'bottom')
-    },
-  },
-  {
-    file: '06-subagents-in-parallel',
-    shot: 'shot-subagents',
-    run: async (page) => {
-      await scrollFeed(page, 'bottom')
-    },
-  },
-  {
-    file: '07-forks-of-a-conversation',
-    shot: 'shot-fork',
-    run: async (page) => {
-      await scrollFeed(page, 'bottom')
-      await selectLine(page, 'On rotation the new certificate')
-    },
-  },
-  {
-    file: '08-composer-and-queue',
-    shot: 'shot-composer',
-    run: async (page) => {
-      await scrollFeed(page, 'bottom')
-    },
-  },
-  {
-    file: '09-slash-commands',
-    shot: 'shot-commands',
-    run: async (page) => {
-      await scrollFeed(page, 'bottom')
-      await typeInComposer(page, '/e')
-    },
-  },
-  {
-    file: '10-shell-commands',
-    shot: 'shot-bash',
-    run: async (page) => {
-      await scrollFeed(page, 'bottom')
-      await typeInComposer(page, '!pnpm exec playwright test e2e/apple-pay.spec.ts')
-    },
-  },
-  {
-    file: '11-model-effort-and-mode',
-    shot: 'shot-diff',
-    run: async (page) => {
-      await scrollFeed(page, 'bottom')
-      await clickButton(page, 'MODEL')
-      await sleep(500)
-    },
-  },
-  {
-    file: '12-statistics',
-    shot: 'shot-stats',
-    run: async (page) => {
-      await clickButton(page, '30 days')
-      await sleep(500)
-    },
-  },
-  { file: '13-achievements', shot: 'shot-achievements' },
-  {
-    file: '14-remote-access',
-    shot: 'shot-remote',
-    run: async (page) => {
-      await scrollFeed(page, 'bottom')
-      await openMenu(page)
-      await clickButton(page, 'Remote access')
-      await sleep(600)
-    },
-  },
-  {
-    file: '15-mcp-servers',
-    shot: 'shot-mcp',
-    run: async (page) => {
-      await scrollFeed(page, 'bottom')
-      await openMenu(page)
-      await clickButton(page, 'MCP servers')
-      await sleep(600)
-    },
-  },
-  {
-    file: '16-plugins',
-    shot: 'shot-plugins',
-    run: async (page) => {
-      await scrollFeed(page, 'bottom')
-      await openMenu(page)
-      await clickButton(page, 'Plugins')
-      await sleep(600)
-      await clickButton(page, 'Browse (')
-      await sleep(500)
-    },
-  },
-  {
-    file: '17-sound-alerts',
-    shot: 'shot-sounds',
-    run: async (page) => {
-      await scrollFeed(page, 'bottom')
-      await openMenu(page)
-      await clickButton(page, 'Sound alerts')
-      await sleep(600)
-    },
-  },
-  {
-    file: '18-past-conversations',
-    shot: 'shot-history',
-    run: async (page) => {
-      await scrollFeed(page, 'bottom')
-      await openMenu(page)
-      await clickButton(page, 'History')
-      await sleep(700)
-    },
-  },
-  {
-    file: '19-scenarios-and-their-runs',
-    shot: 'shot-turn',
-    run: async (page) => {
-      await openScenarios(page)
-      await toShelf(page)
-      await startTheScenario(page, 'feature/apple-pay-sheet')
-      await sleep(2600)
-      await openScenarios(page)
-      await clickButton(page, 'Runs')
-      await sleep(600)
-    },
-  },
-  {
-    file: '20-a-run-in-progress',
-    shot: 'shot-turn',
-    run: async (page) => {
-      await openScenarios(page)
-      await toShelf(page)
-      await startTheScenario(page, 'feature/apple-pay-sheet')
-      // Long enough for the walk to reach the card that stops to ask - the one state the whole screen
-      // is arranged around (see scenarioDesk).
-      await sleep(6200)
-    },
-  },
-  {
-    file: '21-the-scenario-editor',
-    shot: 'shot-turn',
-    run: async (page) => {
-      await openScenarios(page)
-      await toShelf(page)
-      await clickButton(page, 'Review and fix')
-      await sleep(700)
-      // A stage rather than the name: the cards are what the editor is about - what each session is
-      // told, with the slot names lit up in it, and what has to be true before the main thread moves on.
-      await clickButton(page, 'Review, then fix')
-      await sleep(600)
-    },
-  },
-  {
-    file: '22-a-scenario-on-a-clock',
-    shot: 'shot-turn',
-    run: async (page) => {
-      await openScenarios(page)
-      await toShelf(page)
-      // One for each shelf, so the day has more than a single hour standing in it.
-      for (const index of [0, 1]) {
-        await page.locator('[aria-label="Schedule a run"]').nth(index).click()
-        await sleep(500)
-        await clickButton(page, 'Set the time')
-        await sleep(700)
-      }
-      await clickButton(page, 'Schedule')
-      await sleep(600)
-    },
-  },
-]
-
 const main = async () => {
   await mkdir(OUT, { recursive: true })
   const browser = await chromium.launch()
@@ -432,8 +51,9 @@ const main = async () => {
     if (msg.type() === 'error') console.log('   console error:', msg.text().slice(0, 160))
   })
 
-  for (const frame of FRAMES) {
-    if (ONLY.length && !ONLY.some((mask) => frame.file.includes(mask))) continue
+  for (const [index, frame] of FRAMES.entries()) {
+    const file = `${String(index + 1).padStart(2, '0')}-${frame.id}`
+    if (ONLY.length && !ONLY.some((mask) => file.includes(mask))) continue
 
     await page.goto(`${BASE}?shot=${frame.shot}`, { waitUntil: 'load' })
     await page.waitForFunction(() => window.__accShotReady === true, null, { timeout: 15_000 })
@@ -446,9 +66,9 @@ const main = async () => {
     await page.mouse.move(WIDTH / 2, HEIGHT - 2)
     await sleep(200)
 
-    const path = `${OUT}/${frame.file}.png`
+    const path = `${OUT}/${file}.png`
     await page.screenshot({ path })
-    console.log('shot', frame.file)
+    console.log('shot', file)
   }
 
   await browser.close()

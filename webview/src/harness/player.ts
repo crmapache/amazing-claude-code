@@ -9,12 +9,54 @@ import type {
   VoiceHotkeySlot,
   WebviewMessage,
 } from '../protocol'
+import { flushSync } from 'react-dom'
 import { answerScenarios } from './scenarioDesk'
 import { bootstrap, SESSION } from './events'
 import { SHOWCASE_HISTORY } from './scenarios/showcase'
 import type { Scenario, ScenarioStep } from './types'
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * The clock the panel reads while a frame is photographed.
+ *
+ * The panel measures work by the wall clock - the time under an answer runs from the person's message
+ * (see stintElapsed in feed/build.ts), a call's from its start to its result - and it reads the clock
+ * when it reduces an event, that is, when it renders. A jump plays a whole turn within a few milliseconds
+ * and React renders it once at the end, so every frame of the listing said "Worked 0.0s" beside calls
+ * of 0.0s each. In shot mode the player therefore renders every event as it delivers it (flushSync) and
+ * moves the clock on in between: a little for every event, the pause a `wait` step stands for, and up
+ * to the CLI's own figure for the turn at its result - so a frame reads as the minute of work it depicts.
+ * Live playback keeps the real clock (its pauses are real), and an ordinary jump keeps React's batching:
+ * a long scenario rendered event by event would take seconds to step through.
+ */
+const realNow = Date.now.bind(Date)
+let clockShift = 0
+let promptedAt = realNow()
+
+/** How long one event of a photographed turn seems to take: enough for a call to read as work, not as a blink. */
+const SHOT_STEP_MS = 1_300
+
+const advanceClock = (step: ScenarioStep): void => {
+  if (step.kind === 'wait') {
+    clockShift += step.ms
+    return
+  }
+  if (step.kind === 'user') {
+    promptedAt = Date.now()
+    return
+  }
+  if (step.kind !== 'agent') return
+
+  const event = step.event as { type?: string; duration_ms?: number }
+  // The pieces of a typed answer are skipped by a jump altogether (see dispatch), so they take no time.
+  if (event.type === 'stream_event') return
+  if (event.type === 'result' && typeof event.duration_ms === 'number') {
+    clockShift += Math.max(0, promptedAt + event.duration_ms - Date.now())
+    return
+  }
+  clockShift += SHOT_STEP_MS
+}
 
 /**
  * The number of the command the panel has just sent to the "shell".
@@ -1559,6 +1601,20 @@ export interface PlayerProgress {
 export class ScenarioPlayer {
   private runId = 0
 
+  /** Shot mode: every event rendered as it arrives, on a clock that moves (see SHOT_STEP_MS). */
+  private photographed = false
+
+  photograph(): void {
+    this.photographed = true
+    Date.now = () => realNow() + clockShift
+  }
+
+  /** In shot mode a step reaches the panel and is rendered at once, so it is reduced at its own moment. */
+  private deliver(apply: () => void): void {
+    if (this.photographed) flushSync(apply)
+    else apply()
+  }
+
   cancel(): void {
     this.runId += 1
   }
@@ -1596,6 +1652,9 @@ export class ScenarioPlayer {
    */
   async jumpTo(scenario: Scenario, targetIndex: number): Promise<void> {
     const myRun = (this.runId += 1)
+    // The panel is rebuilt before every jump, so its clock may start over with it instead of drifting
+    // further ahead with each one.
+    clockShift = 0
     const previousBridge = window.__accReceive
     listenToPanel()
     await waitForFreshBridge(previousBridge)
@@ -1616,6 +1675,8 @@ export class ScenarioPlayer {
   }
 
   private async dispatch(step: ScenarioStep, realPacing: boolean): Promise<void> {
+    if (this.photographed && !realPacing) advanceClock(step)
+
     if (step.kind === 'wait') {
       if (realPacing) await sleep(step.ms)
       return
@@ -1626,7 +1687,7 @@ export class ScenarioPlayer {
     if (!realPacing && step.kind === 'agent' && step.event.type === 'stream_event') return
 
     if (step.kind === 'user') {
-      window.__accHarnessSend?.(step.text)
+      this.deliver(() => window.__accHarnessSend?.(step.text))
       return
     }
 
@@ -1705,7 +1766,7 @@ export class ScenarioPlayer {
       )
     }
 
-    window.__accReceive?.(message)
+    this.deliver(() => window.__accReceive?.(message))
   }
 
   /**

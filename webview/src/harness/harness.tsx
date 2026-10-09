@@ -91,6 +91,7 @@ const Harness = () => {
     const clamped = Math.max(0, Math.min(index, target.checkpoints.length - 1))
 
     player.cancel()
+    player.photograph()
     setActiveScenario(target)
     setCheckpointIndex(clamped)
     setRunId((id) => id + 1)
