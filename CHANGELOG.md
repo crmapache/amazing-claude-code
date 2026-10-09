@@ -9,6 +9,14 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.28] - 2026-10-08
+
+- Fixed: a scenario run kept working on the account it was started on after you chose another account in the panel, and went on spending the account you had left until its limit ran out. A run now follows your choice the way open chats do: the work in progress is interrupted, the main thread and the card come up again on the chosen account over their own conversations, and the run carries on where it stood.
+- Fixed: when an account's usage limit refused a scenario run, the card was judged on the "You've hit your session limit" message, the main thread was refused too, and the run ended as "No verdict" while your other accounts had room. Now the run pauses at the refusal and goes on on another of your accounts that has room - the account you chose first, then the least used one. If no account has room, it waits and carries on by itself when the first limit resets. The timeline says what happened, and a waiting run says on its card whose limit it is waiting for and until when; Resume tries at once.
+- Fixed: an account the run moved to by itself that cannot take it - signed out, or without the model the run uses - no longer ends the run. It is set aside for an hour and the run goes on elsewhere.
+- Changed: the Claude accounts screen says that running scenarios move with the chosen account, along with open chats.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.27] - 2026-10-08
 
 - Changed: opening a scenario run no longer starts at the top of its timeline, among stages finished hours ago. It opens where the run is: the card it is on and what the main thread last said to it. When everything still ahead fits on the screen, it goes all the way to the bottom; when it does not, as with a loop written out as five passes, the current card stands low on the screen with the start of what comes next under it. The screen keeps up with the run as it goes until you scroll away, and follows again when you scroll back. A question waiting for you still opens the run at the top, and so does a finished run on the desk, where its result and the buttons to continue stand. Coming back from a card's log, or to the run's tab from another tab, returns you to where you were reading instead of the top. The same on the phone.
@@ -942,7 +950,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.27...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.28...HEAD
+[0.13.28]: https://github.com/crmapache/amazing-claude-code/compare/0.13.27...0.13.28
 [0.13.27]: https://github.com/crmapache/amazing-claude-code/compare/0.13.26...0.13.27
 [0.13.26]: https://github.com/crmapache/amazing-claude-code/compare/0.13.25...0.13.26
 [0.13.25]: https://github.com/crmapache/amazing-claude-code/compare/0.13.24...0.13.25
