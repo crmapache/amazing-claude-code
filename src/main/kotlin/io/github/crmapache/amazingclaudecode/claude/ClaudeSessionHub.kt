@@ -215,7 +215,23 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * from elsewhere - is enough for the hours and the queue to be watched. Behind the button it was not:
      * a morning alarm needed somebody to have pressed it in that project first.
      */
-    val scenarios: ScenarioDesk by lazy { ScenarioDesk(project, this) }
+    // Declared before the property it backs: a delegate is read when the property is initialised.
+    private val scenariosDesk = lazy { ScenarioDesk(project, this) }
+
+    val scenarios: ScenarioDesk by scenariosDesk
+
+    /**
+     * Everything of this project's that works on an account, onto the one now chosen: its conversations
+     * (see ClaudeSessions.switchAllTo) and the runs going in it (see ScenarioEngine.follow).
+     *
+     * One door for both, because a choice of account that moved the tabs and left a run behind is the one
+     * state the choice may not leave: on 8 October a run went on spending the account the person had left for
+     * forty minutes, until it ran out under the run. A desk nobody built has no runs, and is not built for this.
+     */
+    fun followChosenAccount() {
+        conversations.switchAllTo()
+        if (scenariosDesk.isInitialized()) scenarios.followAccount()
+    }
 
     /**
      * What the agent changes on disk, read back into the IDE - the other half of [UnsavedEdits]. One

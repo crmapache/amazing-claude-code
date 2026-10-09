@@ -647,6 +647,50 @@ export interface ScenarioRun {
    * from an IDE older than the conversation.
    */
   answering?: boolean
+  /**
+   * The limit the run is waiting out, while it waits: every account it could work on was refused, and it carries
+   * on by itself at `until`. The state is `paused` meanwhile, and this is what tells such a pause from a
+   * person's. Absent at every other moment, and from an IDE older than the wait.
+   */
+  limit?: ScenarioRunLimit
+}
+
+/** A limit a run is waiting out - see ScenarioRun.limit. */
+export interface ScenarioRunLimit {
+  /** Whose limit, as the person named the account - empty for the CLI's own sign-in with no name. */
+  account: string
+  /** Which window ran out, in the CLI's own words (`five_hour`, `seven_day`...) - see limitWindowName. */
+  window: string
+  /** When the run looks again, in milliseconds. */
+  until: number
+  /**
+   * Why the account cannot take the run: `limit` - its limit refused it; `unfit` - an account the run moved to
+   * by itself failed before a turn went through. Absent from an IDE older than the second reason.
+   */
+  reason?: 'limit' | 'unfit'
+}
+
+/**
+ * The run moved to another account, or stood still because none had room - what the panel itself did to keep
+ * a run going (a note with `who: 'panel'`). Names and figures rather than a sentence: the sentence is chosen
+ * here, in the reader's language.
+ */
+export interface ScenarioRunMove {
+  /**
+   * `limit` - the account it was on ran out; `unfit` - an account it had moved to by itself could not take it (a
+   * dead sign-in, a model its plan does not have); `choice` - the person chose another account.
+   */
+  reason: 'limit' | 'unfit' | 'choice'
+  /** The account it left - empty for the CLI's own sign-in with no name. */
+  from: string
+  /** The account it went to - empty for the CLI's own sign-in with no name, and when it waits. */
+  to: string
+  /** Nothing had room and the run waits rather than moving. */
+  waits?: boolean
+  /** For a limit: which window ran out, in the CLI's own words. */
+  window: string
+  /** For a limit: when the window resets - or, for a wait, when the run looks again. 0 when unknown. */
+  until: number
 }
 
 export interface ScenarioRunStep {
@@ -691,10 +735,11 @@ export interface ScenarioRunNote {
   stepKey: string
   text: string
   /**
-   * Who said it: the main thread (absent or empty), or the person running the scenario, who can write to
-   * the main thread while the run goes (see `scenarioTell`).
+   * Who said it: the main thread (absent or empty), the person running the scenario, who can write to
+   * the main thread while the run goes (see `scenarioTell`), or the panel itself - it moved the run to
+   * another account, or put it to wait for a limit (see `move`).
    */
-  who?: '' | 'person'
+  who?: '' | 'person' | 'panel'
   /**
    * For the person's words: when they reached the main thread, and 0 while they wait for it to be free -
    * it is not interrupted in the middle of judging a card to read them.
@@ -707,6 +752,8 @@ export interface ScenarioRunNote {
    * - see toldTokens), for the timeline to draw them as a chat draws a sent message. Without image bytes.
    */
   tokens?: unknown
+  /** For the panel's own note: the account it moved the run to, and why. */
+  move?: ScenarioRunMove
 }
 
 export interface ScenarioRunQuestion {
@@ -763,6 +810,8 @@ export interface ScenarioRunSummary {
   roadmap?: ScenarioRoadmapStop[]
   /** A star a person put on it in the table of past runs. Absent from an IDE older than the star. */
   starred?: boolean
+  /** The limit it is waiting out, while it waits - see ScenarioRun.limit. */
+  limit?: ScenarioRunLimit
 }
 
 /** One card of one pass on the road of a going run. */

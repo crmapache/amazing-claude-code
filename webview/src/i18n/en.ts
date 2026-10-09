@@ -762,6 +762,30 @@ export const en = {
       answering: 'The main thread is writing a reply…',
       /** Over what the main thread passed on to the card at work. */
       passedOn: 'Passed on to the card',
+      /** Over what the panel itself did to keep the run going: moved it to another account, or put it to wait for a limit. */
+      panelSaid: 'PANEL',
+      /** The run followed the account the person chose (see ScenarioRunMove). `to` is the account's name. */
+      movedByChoice: (to: string): string =>
+        `Moved the run to ${to} - the account you chose.`,
+      /** The account's limit refused the run and it went on on another one. `window` is the window's name and may be empty. */
+      limitMoved: (from: string, window: string, to: string): string =>
+        `${window ? `The ${window} limit` : 'The usage limit'} of ${from} ran out. Moved the run to ${to}.`,
+      /** No account had room: the run waits. `clock` is when it looks again, and may be empty. */
+      limitWait: (from: string, window: string, clock: string): string =>
+        `${window ? `The ${window} limit` : 'The usage limit'} of ${from} ran out, and no other account has room. The run waits${clock ? ` and goes on by itself at ${clock}` : ''}.`,
+      /** Over the line on a run's card and screen while it waits out a limit. */
+      limitLabel: 'LIMIT',
+      limitResting: (account: string, window: string, clock: string): string =>
+        `${window ? `The ${window} limit` : 'The usage limit'} of ${account} ran out - the run goes on by itself at ${clock}`,
+      /** An account the run had moved to by itself failed before a turn went through, and the run went on on another. */
+      unfitMoved: (from: string, to: string): string =>
+        `${from} could not take the run. Moved the run to ${to}.`,
+      /** The same, and no account had room: the run waits. `clock` may be empty. */
+      unfitWait: (from: string, clock: string): string =>
+        `${from} could not take the run, and no other account has room. The run waits${clock ? ` and goes on by itself at ${clock}` : ''}.`,
+      /** The line on a run waiting because the account it had moved to could not take it and no other had room. */
+      unfitResting: (account: string, clock: string): string =>
+        `${account} could not take the run, and no other account has room - the run goes on by itself at ${clock}`,
     },
     help: {
       button: 'What scenarios are',
@@ -1679,7 +1703,7 @@ export const en = {
     /** Nothing added yet: what the feature buys, and one thing to press. */
     empty: { title: 'Work and personal, side by side', body: 'Switch between Claude accounts without signing out. Skills, hooks, settings and history stay shared.' },
     intro:
-      'Everything runs on the account chosen here - every open chat moves onto it, and one in the middle of a turn is stopped so it can move.',
+      'Everything runs on the account chosen here - every open chat and every running scenario moves onto it, and one in the middle of a turn is stopped so it can move.',
     /** An account whose sign-in has not landed, so nobody knows its address yet. */
     unnamed: 'Signing in…',
     /**

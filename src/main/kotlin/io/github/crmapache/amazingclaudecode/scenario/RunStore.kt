@@ -164,6 +164,8 @@ internal class RunStore(workingDirectory: String?) {
                 rested = run.rested + rest,
                 restingSince = 0,
                 question = null,
+                // Nobody is left to carry it on at the reset: an ended run is not waiting for anything.
+                limit = null,
                 steps = run.steps.map { step ->
                     if (StepState.over(step.state)) {
                         step

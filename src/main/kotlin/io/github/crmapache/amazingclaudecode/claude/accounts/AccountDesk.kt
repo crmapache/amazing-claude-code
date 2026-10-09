@@ -494,7 +494,7 @@ internal class AccountDesk(
      * window would otherwise show the previous account's rings until somebody noticed.
      */
     private fun moveEverything() {
-        ClaudeSessionHub.everyHub { it.conversations.switchAllTo() }
+        ClaudeSessionHub.everyHub { it.followChosenAccount() }
         ClaudeSessionHub.everyHub { it.accountsChanged() }
     }
 

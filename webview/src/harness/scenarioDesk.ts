@@ -67,6 +67,12 @@ let drafted = 0
  * could not be seen without an IDE and a scenario written to stop.
  */
 const asked: Record<string, boolean> = {}
+
+/**
+ * Which runs have already met their account's limit - the third card moves the run to another account, the
+ * fourth finds no account with room and waits (see ScenarioEngine.ranIntoLimit). Once each, like the question.
+ */
+const limited: Record<string, 'moved' | 'waiting'> = {}
 /** Every third step opened answers "no record", so that state is seen rather than merely written. */
 let opened = 0
 /** Every third run picked up again is refused, so the refusal is seen as often as the pick-up. */
@@ -662,6 +668,7 @@ const summarise = (run: ScenarioRun): ScenarioRunSummary => {
           })),
     at: here?.title ?? '',
     asking: run.question ? run.question.title || run.question.tool : '',
+    limit: run.limit,
   }
 }
 
@@ -763,6 +770,50 @@ const walk = (id: string, from = 0, startIn: 'run' | 'judge' = 'run'): void => {
             ? { ...one, state: 'asking', startedAt: Date.now(), conversationId: `conv-${one.key}` }
             : one,
         ),
+      })
+      return
+    }
+
+    /*
+     * The account runs out under the run, the way a long night does: the third card's turn is refused and the
+     * run goes on on another account with room, and at the fourth no account has room and it waits for the
+     * reset (see LimitRelief). The person sees why in the timeline, and Resume tries at once.
+     */
+    if (phase === 'run' && at === 2 && !limited[id]) {
+      limited[id] = 'moved'
+      keep({
+        ...run,
+        notes: [
+          ...run.notes,
+          {
+            at: Date.now(),
+            stepKey: step.key,
+            text: '',
+            who: 'panel',
+            move: { reason: 'limit', from: 'Main', to: 'Proton', window: 'five_hour', until: Date.now() + 52 * 60_000 },
+          },
+        ],
+      })
+      return
+    }
+    if (phase === 'run' && at === 3 && limited[id] === 'moved') {
+      limited[id] = 'waiting'
+      const until = Date.now() + 38 * 60_000
+      keep({
+        ...clockFollows(run, true),
+        state: 'paused',
+        limit: { account: 'Proton', window: 'five_hour', until },
+        steps: run.steps.map((one) => (one.key === step.key ? { ...one, state: 'paused', startedAt: Date.now() } : one)),
+        notes: [
+          ...run.notes,
+          {
+            at: Date.now(),
+            stepKey: step.key,
+            text: '',
+            who: 'panel',
+            move: { reason: 'limit', from: 'Proton', to: '', waits: true, window: 'five_hour', until },
+          },
+        ],
       })
       return
     }
@@ -1264,6 +1315,8 @@ export const answerScenarios = (message: WebviewMessage): void => {
       const waits = run.question !== null
       keep({
         ...clockFollows(run, waits),
+        // Resuming a run that waits out a limit tries at once, as the IDE does: the wait is over either way.
+        limit: undefined,
         state: waits ? 'blocked' : 'running',
         steps: run.steps.map((one) => (one.state === 'paused' ? { ...one, state: waits ? 'asking' : 'running' } : one)),
       })

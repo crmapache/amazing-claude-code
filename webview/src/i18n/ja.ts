@@ -562,6 +562,22 @@ export const ja: Dict = {
       answering: 'メインスレッドが返信を書いています…',
       /** Over what the main thread passed on to the card at work. */
       passedOn: 'カードに伝えた内容',
+      panelSaid: 'パネル',
+      movedByChoice: (to) =>
+        `実行を${to}に移しました。選んだアカウントです。`,
+      limitMoved: (from, window, to) =>
+        `${from}の${window ? `${window}の上限` : '利用の上限'}を使い切りました。実行を${to}に移しました。`,
+      limitWait: (from, window, clock) =>
+        `${from}の${window ? `${window}の上限` : '利用の上限'}を使い切り、ほかのアカウントにも余裕がありません。${clock ? `実行は待機し、${clock}に自動で再開します。` : '実行は待機します。'}`,
+      limitLabel: '上限',
+      limitResting: (account, window, clock) =>
+        `${account}の${window ? `${window}の上限` : '利用の上限'}を使い切りました - ${clock}に自動で再開します`,
+      unfitMoved: (from, to) =>
+        `${from}ではこの実行を引き受けられませんでした。実行を${to}に移しました。`,
+      unfitWait: (from, clock) =>
+        `${from}ではこの実行を引き受けられず、ほかのアカウントにも余裕がありません。${clock ? `実行は待機し、${clock}に自動で再開します。` : '実行は待機します。'}`,
+      unfitResting: (account, clock) =>
+        `${account}ではこの実行を引き受けられず、ほかにも余裕がありません - ${clock}に自動で再開します`,
     },
     help: {
       button: 'シナリオとは',
@@ -1274,7 +1290,7 @@ export const ja: Dict = {
 
   accounts: {
     empty: { title: '仕事用と個人用を並べて', body: 'サインアウトせずに Claude アカウントを切り替えられます。スキル、フック、設定、履歴は共有されたままです。' },
-    intro: 'すべてがここで選んだアカウントで動きます。開いている会話はすべてそこへ移り、実行中のものは移るためにいったん停止します。',
+    intro: 'すべてがここで選んだアカウントで動きます。開いている会話と実行中のシナリオはすべてそこへ移り、実行中のものは移るためにいったん停止します。',
     /** An account whose sign-in has not landed, so nobody knows its address yet. */
     unnamed: 'サインイン中…',
     defaultName: 'Claude Code のサインイン',

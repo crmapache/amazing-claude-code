@@ -564,6 +564,22 @@ export const es: Dict = {
       answering: 'El hilo principal está escribiendo una respuesta…',
       /** Over what the main thread passed on to the card at work. */
       passedOn: 'Pasado a la tarjeta',
+      panelSaid: 'PANEL',
+      movedByChoice: (to) =>
+        `La ejecución pasó a ${to}, la cuenta que elegiste.`,
+      limitMoved: (from, window, to) =>
+        `${window ? `El límite ${window}` : 'El límite de uso'} de ${from} se ha agotado. La ejecución pasó a ${to}.`,
+      limitWait: (from, window, clock) =>
+        `${window ? `El límite ${window}` : 'El límite de uso'} de ${from} se ha agotado y ninguna otra cuenta tiene margen. La ejecución espera${clock ? ` y seguirá sola a las ${clock}` : ''}.`,
+      limitLabel: 'LÍMITE',
+      limitResting: (account, window, clock) =>
+        `${window ? `El límite ${window}` : 'El límite de uso'} de ${account} se ha agotado - la ejecución seguirá sola a las ${clock}`,
+      unfitMoved: (from, to) =>
+        `${from} no pudo asumir la ejecución. La ejecución pasó a ${to}.`,
+      unfitWait: (from, clock) =>
+        `${from} no pudo asumir la ejecución y ninguna otra cuenta tiene margen. La ejecución espera${clock ? ` y seguirá sola a las ${clock}` : ''}.`,
+      unfitResting: (account, clock) =>
+        `${account} no pudo asumir la ejecución y ninguna otra cuenta tiene margen - la ejecución seguirá sola a las ${clock}`,
     },
     help: {
       button: 'Qué son los escenarios',
@@ -1281,7 +1297,7 @@ export const es: Dict = {
   accounts: {
     empty: { title: 'El del trabajo y el personal, a la vez', body: 'Cambia entre cuentas de Claude sin cerrar sesión. Skills, hooks, ajustes e historial se comparten.' },
     intro:
-      'Todo funciona con la cuenta elegida aquí: todos los chats abiertos pasan a ella, y el que esté a mitad de un turno se detiene para poder pasarse.',
+      'Todo funciona con la cuenta elegida aquí: todos los chats abiertos y los escenarios en marcha pasan a ella, y el que esté a mitad de un turno se detiene para poder pasarse.',
     unnamed: 'Iniciando sesión…',
     defaultName: 'Sesión de Claude Code',
     current: 'en uso',

@@ -373,15 +373,17 @@ internal class ClaudeSession(
      * [uuid] is the name the message goes into the conversation under - made up by the client that sent
      * it (see ClaudeSessionHub.deliverPrompt), and the one a rewind names it by later (see [rewind]). The
      * CLI takes a client's uuid for its own line in the transcript, so the two are one and the same.
+     *
+     * Returns whether the message went into a process: false when none would come up, and then onError has
+     * already said why. A scenario run reads it to keep what it handed over waiting for the next process
+     * rather than marking it given (see ScenarioEngine.askAgain).
      */
     fun sendPrompt(
         text: String,
         images: List<ImageAttachment> = emptyList(),
         context: String? = null,
         uuid: String? = null,
-    ) {
-        sendPrompt(text, images, context, repeat = false, uuid = uuid)
-    }
+    ): Boolean = sendPrompt(text, images, context, repeat = false, uuid = uuid)
 
     /**
      * Whether the message went into the process. Outside this is not needed, but a resend tells by it

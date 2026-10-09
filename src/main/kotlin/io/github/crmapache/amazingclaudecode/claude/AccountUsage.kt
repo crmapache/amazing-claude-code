@@ -2,6 +2,7 @@ package io.github.crmapache.amazingclaudecode.claude
 
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import java.time.Instant
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -91,7 +92,28 @@ internal class AccountUsage(
          * project, each time over the answer the first one has already brought.
          */
         var forgottenFor: String? = null
+
+        /**
+         * Until when this account's own limit is known to refuse requests, in milliseconds, and 0 when
+         * nothing says it does.
+         *
+         * Learned from the refusals themselves rather than only from the shares, because the shares lag:
+         * the rings of an account that is not the current one are filled by an occasional ping, and a tab or
+         * a scenario run that has just been refused knows it before any answer to `get_usage` does. Read by
+         * a run looking for an account with room left (see [standing]).
+         */
+        var refusedUntil = 0L
     }
+
+    /**
+     * What is known about whether [account] can take work right now - see [standing].
+     *
+     * [refusedUntil] is the later of the two ways of knowing it cannot: a refusal heard in a stream, and a
+     * window at a hundred percent whose reset is still ahead. [fullest] is the larger share of the two
+     * windows the plan is measured by, for telling a nearly spent account from a fresh one; null when no
+     * share of the present windows is known at all.
+     */
+    data class Standing(val refusedUntil: Long? = null, val fullest: Int? = null)
 
     private val books = HashMap<String, Book>()
 
@@ -159,6 +181,13 @@ internal class AccountUsage(
 
         val (wasActive, message) = synchronized(this) {
             val held = book(account)
+            // A genuine stop of a window the whole plan is measured by is a refusal until its reset, whoever
+            // heard it: the next run to look for room must not land where a tab has just run out. A model's
+            // own week is not: it refuses that model, and the account goes on serving the others.
+            if (verdict.stopped && verdict.resetsAt != null && verdict.window in SHARED_WINDOWS) {
+                held.refusedUntil = maxOf(held.refusedUntil, verdict.resetsAt)
+            }
+
             val was = held.extraActive
             val changed = was != active || held.extraWindow != window
 
@@ -215,6 +244,7 @@ internal class AccountUsage(
             held.extraKnown = null
             held.extraActive = null
             held.extraWindow = ""
+            held.refusedUntil = 0
 
             // The panels are told to forget too, and told separately: their own state is merged field by
             // field (see mergeUsage in feed/usage.ts), so silence about a window means "nothing new", not
@@ -229,6 +259,40 @@ internal class AccountUsage(
 
         publish(message)
         return true
+    }
+
+    /**
+     * A refusal whose end nobody said - the stream refused a request without a limit event before it.
+     * [until] is the caller's own guess at when to look again; a known reset later than it stays.
+     */
+    @Synchronized
+    fun noteRefused(account: String, until: Long) {
+        val held = book(account)
+        held.refusedUntil = maxOf(held.refusedUntil, until)
+    }
+
+    /**
+     * Whether [account] can take work at [now], as far as the IDE knows (see [Standing]).
+     *
+     * Only the five-hour and the weekly windows count as full. A model's own week (Fable) refuses only the
+     * models it is about, and which models those are the answer does not say - a run that needs one of them
+     * learns it from the refusal itself, which [Book.refusedUntil] keeps. Nor does a full window refuse while
+     * extra usage is being spent past it: the work goes on, billed on top of the plan (see ClaudeRateLimit).
+     */
+    @Synchronized
+    fun standing(account: String, now: Long = System.currentTimeMillis()): Standing {
+        val held = books[account] ?: return Standing()
+        val instant = Instant.ofEpochMilli(now)
+        val present = listOfNotNull(held.picture?.session, held.picture?.week).filter { it.isCurrent(instant) }
+        val fullUntil = present.filter { it.percent >= 100 && held.extraActive != true }
+            .mapNotNull { it.resetsAt?.toEpochMilli() }
+            .maxOrNull()
+        val refused = held.refusedUntil.takeIf { it > now }
+
+        return Standing(
+            refusedUntil = listOfNotNull(fullUntil, refused).maxOrNull(),
+            fullest = present.maxOfOrNull { it.percent },
+        )
     }
 
     private fun pictureOf(account: String, merged: ClaudeUsage.Snapshot, held: Book): String =
@@ -286,6 +350,12 @@ internal class AccountUsage(
     }
 
     companion object {
+
+        /**
+         * The windows that refuse every model of the account when they run out, in the CLI's words - the rest
+         * (`seven_day_opus`, `seven_day_sonnet`, the Fable week) refuse only their own (see [standing]).
+         */
+        val SHARED_WINDOWS = setOf("five_hour", "seven_day")
 
         fun getInstance(): AccountUsage = service()
     }

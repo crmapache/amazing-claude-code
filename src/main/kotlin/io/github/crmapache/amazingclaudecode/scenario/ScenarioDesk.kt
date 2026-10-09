@@ -1038,6 +1038,19 @@ internal class ScenarioDesk(private val project: Project, private val hub: Claud
         }
     }
 
+    /**
+     * The person chose another account: every run going in this project goes there with them, as the tabs do
+     * (see ScenarioEngine.follow). A run that cannot be told is left where it is rather than taking the others
+     * down with it.
+     */
+    fun followAccount() {
+        val to = ClaudeAccounts.getInstance().currentId
+        live.values.toList().forEach { holder ->
+            runCatching { holder.engine.follow(to) }
+                .onFailure { thisLogger().warn("A scenario run could not follow the chosen account", it) }
+        }
+    }
+
     fun pause(runId: String) = live[runId]?.engine?.pause() ?: Unit
 
     fun resume(runId: String) = live[runId]?.engine?.resume() ?: Unit

@@ -568,6 +568,22 @@ export const fr: Dict = {
       answering: 'Le fil principal écrit une réponse…',
       /** Over what the main thread passed on to the card at work. */
       passedOn: 'Transmis à la carte',
+      panelSaid: 'PANNEAU',
+      movedByChoice: (to) =>
+        `L’exécution est passée sur ${to}, le compte que vous avez choisi.`,
+      limitMoved: (from, window, to) =>
+        `${window ? `La limite ${window}` : 'La limite d’usage'} de ${from} est épuisée. L’exécution est passée sur ${to}.`,
+      limitWait: (from, window, clock) =>
+        `${window ? `La limite ${window}` : 'La limite d’usage'} de ${from} est épuisée, et aucun autre compte n’a de marge. L’exécution attend${clock ? ` et reprendra d’elle-même à ${clock}` : ''}.`,
+      limitLabel: 'LIMITE',
+      limitResting: (account, window, clock) =>
+        `${window ? `La limite ${window}` : 'La limite d’usage'} de ${account} est épuisée - l’exécution reprendra d’elle-même à ${clock}`,
+      unfitMoved: (from, to) =>
+        `${from} n’a pas pu prendre l’exécution. L’exécution est passée sur ${to}.`,
+      unfitWait: (from, clock) =>
+        `${from} n’a pas pu prendre l’exécution, et aucun autre compte n’a de marge. L’exécution attend${clock ? ` et reprendra d’elle-même à ${clock}` : ''}.`,
+      unfitResting: (account, clock) =>
+        `${account} n’a pas pu prendre l’exécution, et aucun autre compte n’a de marge - l’exécution reprendra d’elle-même à ${clock}`,
     },
     help: {
       button: 'Ce que sont les scénarios',
@@ -1291,7 +1307,7 @@ export const fr: Dict = {
    */
   accounts: {
     empty: { title: 'Pro et perso, côte à côte', body: "Passez d'un compte Claude à l'autre sans vous déconnecter. Skills, hooks, réglages et historique restent partagés." },
-    intro: 'Tout tourne sur le compte choisi ici : toutes les conversations ouvertes y passent, et celle qui est en plein tour est arrêtée pour pouvoir passer.',
+    intro: 'Tout tourne sur le compte choisi ici : toutes les conversations ouvertes et les scénarios en cours y passent, et celle qui est en plein tour est arrêtée pour pouvoir passer.',
     /** An account whose sign-in has not landed, so nobody knows its address yet. */
     unnamed: 'Connexion…',
     defaultName: 'Connexion Claude Code',

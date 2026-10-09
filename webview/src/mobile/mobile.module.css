@@ -3699,6 +3699,46 @@
   color: var(--acc-fg-body);
 }
 
+/* What the panel itself did to keep the run going (see the desk's .notePanel): neither voice's colour, and the
+   limit's own tone when a limit is why. */
+.notePanel {
+  border-left-color: var(--acc-line);
+}
+
+.notePanel .noteWho {
+  color: var(--acc-fg-ghost);
+}
+
+.notePanelLimit {
+  border-left-color: var(--acc-warn-line);
+}
+
+.notePanelLimit .noteWho {
+  color: var(--acc-warn-light);
+}
+
+/* A limit the run is waiting out (see ScenarioRun.limit): on the run's screen over the timeline, and under the
+   facts on its card in the list. */
+.limitWait {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 0 var(--acc-sp-3);
+  padding: var(--acc-sp-2) var(--acc-sp-3);
+  border: 1px solid var(--acc-warn-line);
+  border-radius: var(--acc-r-card);
+  background: var(--acc-warn-soft);
+  font-size: var(--acc-fs-meta);
+  line-height: 1.5;
+  color: var(--acc-fg-body);
+}
+
+.limitWaitLabel {
+  font-family: var(--acc-mono);
+  letter-spacing: 0.06em;
+  color: var(--acc-warn-light);
+}
+
 /* Under words the main thread has not read yet - it is judging a card and is not interrupted for them. */
 .noteWaiting {
   font-style: italic;

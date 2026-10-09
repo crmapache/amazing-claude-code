@@ -2,6 +2,7 @@ import type { ScenarioRunSummary } from '../../protocol'
 import { formatTokens } from '../../feed/build'
 import { formatDuration } from '../../feed/tools'
 import { momentLabel } from '../../scenarios/moments'
+import { limitText } from '../../scenarios/moves'
 import { answerLabel, runMarks } from '../../scenarios/runs'
 import { runWorked } from '../../scenarios/timeline'
 import { useTicking } from '../../hooks/useTicking'
@@ -316,6 +317,14 @@ const LiveRun = ({
           <span className={s.runCardAskLabel}>{t.scenarios.run.asking}</span>
           <span className={s.runCardAskText}>{run.asking}</span>
         </button>
+      ) : null}
+
+      {/* Paused by a limit no account had room past, not by a person: whose, and when it goes on by itself. */}
+      {run.limit ? (
+        <div className={s.limitWait}>
+          <span className={s.limitWaitLabel}>{t.scenarios.run.limitLabel}</span>
+          <span className={s.limitWaitText}>{limitText(t, run.limit)}</span>
+        </div>
       ) : null}
     </div>
   )

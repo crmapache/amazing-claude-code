@@ -1,5 +1,9 @@
 package io.github.crmapache.amazingclaudecode.scenario
 
+import java.time.Instant
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
@@ -170,7 +174,96 @@ internal data class ScenarioRun(
      * timeline shows as the main thread writing. Only ever true on a live run.
      */
     val answering: Boolean = false,
+    /**
+     * The limit the run is waiting out, while it waits: every account it could work on was refused, and it
+     * carries on by itself at [RunLimit.until] (see ScenarioEngine.restOnLimit). The run's state is
+     * [RunState.PAUSED] meanwhile - nothing is spent and the clock stands - and this is what tells such a
+     * pause from one a person took. Null at every other moment.
+     */
+    val limit: RunLimit? = null,
 )
+
+/** A limit a run is waiting out - see [ScenarioRun.limit]. */
+@Serializable
+internal data class RunLimit(
+    /** Whose limit, as the person named the account - empty for the CLI's own sign-in with no name. */
+    val account: String = "",
+    /** Which window ran out, in the CLI's own words (`five_hour`, `seven_day`...); empty when it did not say. */
+    val window: String = "",
+    /** When the run looks again, in milliseconds. */
+    val until: Long = 0,
+    /**
+     * Why the account the run is on cannot take it: [RunMove.LIMIT] - its limit refused it; [RunMove.UNFIT] - it
+     * is one the run moved to by itself and it failed before a turn went through.
+     */
+    val reason: String = RunMove.LIMIT,
+)
+
+/**
+ * The run moved to another account, or stood still because none had room - what the panel itself did to
+ * keep a run going, written into the timeline where it happened (see [RunNote.PANEL]).
+ *
+ * Names and figures rather than a sentence: the panel speaks ten languages, and the sentence is chosen there.
+ */
+@Serializable
+internal data class RunMove(
+    /**
+     * [LIMIT] - the account it was on ran out; [UNFIT] - an account it had moved to by itself could not take it
+     * (a dead sign-in, a model its plan does not have); [CHOICE] - the person chose another account.
+     */
+    val reason: String = "",
+    /** The account it left, as the person named it - empty for the CLI's own sign-in with no name. */
+    val from: String = "",
+    /** The account it went to, named the same way - empty for an unnamed CLI sign-in, and when it waits. */
+    val to: String = "",
+    /**
+     * Nothing had room and the run waits rather than moving. Its own flag rather than an empty [to]: the CLI's
+     * own sign-in with no name and no known address is an empty name too, and a move onto it read as a wait.
+     */
+    val waits: Boolean = false,
+    /** For [LIMIT]: which window ran out, in the CLI's own words. */
+    val window: String = "",
+    /** For [LIMIT]: when that window resets - or, for a wait, when the run looks again. 0 when unknown. */
+    val until: Long = 0,
+) {
+    /**
+     * The sentence in English, for a phone whose page is older than the panel's own notes: it draws [RunNote.text]
+     * under the main thread's name and knows nothing of [RunNote.move]. A screen that knows the move chooses its
+     * own words, in its own language (see scenarios/moves.ts).
+     */
+    fun inEnglish(): String {
+        val origin = from.ifBlank { "the Claude Code sign-in" }
+        val target = to.ifBlank { "the Claude Code sign-in" }
+        val clock = if (until > 0) LocalTime.ofInstant(Instant.ofEpochMilli(until), ZoneId.systemDefault()).format(CLOCK) else ""
+        val waiting = if (clock.isEmpty()) "The run waits." else "The run waits and goes on by itself at $clock."
+        val ranOut = WINDOW_NAMES[window]?.let { "The $it limit" } ?: "The usage limit"
+
+        return when {
+            reason == CHOICE -> "Moved the run to $target - the account you chose."
+            reason == UNFIT && waits -> "$origin could not take the run, and no other account has room. $waiting"
+            reason == UNFIT -> "$origin could not take the run. Moved the run to $target."
+            waits -> "$ranOut of $origin ran out, and no other account has room. $waiting"
+            else -> "$ranOut of $origin ran out. Moved the run to $target."
+        }
+    }
+
+    companion object {
+        const val LIMIT = "limit"
+        const val UNFIT = "unfit"
+        const val CHOICE = "choice"
+
+        private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
+
+        /** The windows by the names the panel's English uses for them (see limitWindowName in feed/usage.ts). */
+        private val WINDOW_NAMES = mapOf(
+            "five_hour" to "5-hour",
+            "seven_day" to "weekly",
+            "seven_day_opus" to "weekly Opus",
+            "seven_day_sonnet" to "weekly Sonnet",
+            "seven_day_overage_included" to "weekly Fable",
+        )
+    }
+}
 
 @Serializable
 internal data class RunStep(
@@ -265,10 +358,18 @@ internal data class RunNote(
      * the head was told; this is only for the eye, and carries no image bytes (see HeadMail.shown).
      */
     val tokens: JsonElement? = null,
+    /** For a note of the panel's own: the account it moved the run to, and why (see [PANEL]). */
+    val move: RunMove? = null,
 ) {
     companion object {
         /** [who] of a note the person wrote. */
         const val PERSON = "person"
+
+        /**
+         * [who] of a note the panel itself wrote: it moved the run to another account, or put it to wait for
+         * a limit. Neither the head's words nor the person's - drawn as the panel's, from [move].
+         */
+        const val PANEL = "panel"
     }
 }
 
@@ -349,6 +450,8 @@ internal data class RunSummary(
     val roadmap: List<RoadmapStop> = emptyList(),
     /** See [ScenarioRun.starred]. */
     val starred: Boolean = false,
+    /** See [ScenarioRun.limit]: the card of a run waiting out a limit says whose and until when. */
+    val limit: RunLimit? = null,
 )
 
 /** One card of one pass on the road of a going run: how it stands, and where it belongs. */
@@ -418,5 +521,6 @@ internal fun ScenarioRun.summarise(): RunSummary {
         asking = question?.let { it.title.ifBlank { it.tool } }.orEmpty(),
         roadmap = if (RunState.finished(state)) emptyList() else road.map { it.copy(title = it.title.take(ROADMAP_TITLE)) },
         starred = starred,
+        limit = limit,
     )
 }

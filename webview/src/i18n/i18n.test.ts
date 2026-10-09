@@ -109,6 +109,8 @@ const SHARED_WITH_ENGLISH: Record<string, Locale[]> = {
   'selectors.effort': ['fr'],
   'selectors.mode': ['fr'],
   'feed.limit.label': ['de'],
+  'scenarios.run.limitLabel': ['de'],
+  'scenarios.run.panelSaid': ['es', 'de'],
   'feed.findings.label': ['de'],
   'feed.crash.label': ['fr'],
   // "Mods" is the word the Latin languages use for them as well.

@@ -167,4 +167,74 @@ class AccountUsageTest {
 
         assertNull(published.last().extra)
     }
+
+    // --- Whether an account can take work (what a scenario run looks for room by) ----------------------
+
+    @Test
+    fun `an account nothing is known about is neither refused nor measured`() {
+        assertEquals(AccountUsage.Standing(), usage.standing("work"))
+    }
+
+    /** The stop a tab's stream heard is the next run's warning: it must not move onto that account. */
+    @Test
+    fun `a genuine stop heard in a stream refuses the account until its reset`() {
+        val now = System.currentTimeMillis()
+        val reset = now + 40 * 60 * 1000L
+        usage.noteRateLimit("work", ClaudeRateLimit.Verdict(extraUsage = false, stopped = true, window = "five_hour", resetsAt = reset))
+
+        assertEquals(reset, usage.standing("work", now).refusedUntil)
+        assertNull(usage.standing("work", reset + 1).refusedUntil)
+    }
+
+    /**
+     * A model's own week refuses that model only. Marked as the whole account's, a tab's Opus week running out
+     * held a scenario run on Sonnet off the same account - and its head off the person's words - for days.
+     */
+    @Test
+    fun `a model's own week running out does not refuse the account`() {
+        val reset = System.currentTimeMillis() + 3 * 24 * 60 * 60 * 1000L
+        usage.noteRateLimit("work", ClaudeRateLimit.Verdict(extraUsage = false, stopped = true, window = "seven_day_opus", resetsAt = reset))
+
+        assertNull(usage.standing("work").refusedUntil)
+    }
+
+    /** Extra usage carries on past the limit: the work is paid for, not stopped, and the account is usable. */
+    @Test
+    fun `a limit passed on extra usage refuses nothing`() {
+        usage.noteRateLimit("work", ClaudeRateLimit.Verdict(extraUsage = true, stopped = false, window = "five_hour", resetsAt = null))
+
+        assertNull(usage.standing("work").refusedUntil)
+    }
+
+    @Test
+    fun `a window at a hundred percent refuses until it resets, and the share says how spent the rest are`() {
+        usage.fold("work", session(100))
+        usage.fold("home", session(37))
+
+        val reset = Instant.parse(resets).toEpochMilli()
+        assertEquals(reset, usage.standing("work").refusedUntil)
+        assertEquals(100, usage.standing("work").fullest)
+        assertNull(usage.standing("home").refusedUntil)
+        assertEquals(37, usage.standing("home").fullest)
+    }
+
+    /** A refusal whose end nobody said is held until the guess, and a known later reset wins over the guess. */
+    @Test
+    fun `a refusal without a reset is held until the caller's guess`() {
+        val now = System.currentTimeMillis()
+        usage.noteRefused("work", now + 15 * 60 * 1000L)
+        assertEquals(now + 15 * 60 * 1000L, usage.standing("work", now).refusedUntil)
+
+        usage.noteRefused("work", now + 60 * 1000L)
+        assertEquals(now + 15 * 60 * 1000L, usage.standing("work", now).refusedUntil)
+    }
+
+    /** About somebody else's sign-in once it is forgotten - the refusal included. */
+    @Test
+    fun `a forgotten account is refused no longer`() {
+        usage.noteRefused("work", System.currentTimeMillis() + 60 * 60 * 1000L)
+        usage.forget("work")
+
+        assertNull(usage.standing("work").refusedUntil)
+    }
 }

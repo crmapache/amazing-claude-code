@@ -667,6 +667,22 @@ export const uk: Dict = {
       answering: 'Головний потік пише відповідь…',
       /** Over what the main thread passed on to the card at work. */
       passedOn: 'Передано картці',
+      panelSaid: 'ПАНЕЛЬ',
+      movedByChoice: (to) =>
+        `Запуск переїхав на ${to} - ви вибрали цей акаунт.`,
+      limitMoved: (from, window, to) =>
+        `${window ? `Ліміт «${window}»` : 'Ліміт підписки'} у ${from} вичерпано. Запуск переїхав на ${to}.`,
+      limitWait: (from, window, clock) =>
+        `${window ? `Ліміт «${window}»` : 'Ліміт підписки'} у ${from} вичерпано, і на інших акаунтах місця немає. Запуск чекає${clock ? ` і сам продовжить о ${clock}` : ''}.`,
+      limitLabel: 'ЛІМІТ',
+      limitResting: (account, window, clock) =>
+        `${window ? `Ліміт «${window}»` : 'Ліміт підписки'} у ${account} вичерпано - запуск сам продовжить о ${clock}`,
+      unfitMoved: (from, to) =>
+        `Акаунт ${from} не зміг прийняти запуск. Запуск переїхав на ${to}.`,
+      unfitWait: (from, clock) =>
+        `Акаунт ${from} не зміг прийняти запуск, і на інших акаунтах місця немає. Запуск чекає${clock ? ` і сам продовжить о ${clock}` : ''}.`,
+      unfitResting: (account, clock) =>
+        `Акаунт ${account} не зміг прийняти запуск, і на інших місця немає - запуск сам продовжить о ${clock}`,
     },
     help: {
       button: 'Що таке сценарії',
@@ -1470,7 +1486,7 @@ export const uk: Dict = {
   accounts: {
     empty: { title: 'Робочий і особистий — поруч', body: 'Перемикайтеся між акаунтами Claude без виходу. Скіли, хуки, налаштування та історія лишаються спільними.' },
     intro:
-      'Усе працює на вибраному тут акаунті - на нього переїжджають усі відкриті розмови, а той, де триває хід, для цього зупиняється.',
+      'Усе працює на вибраному тут акаунті - на нього переїжджають усі відкриті розмови й запущені сценарії, а той, де триває хід, для цього зупиняється.',
     /** An account whose sign-in has not landed, so nobody knows its address yet. */
     unnamed: 'Входимо…',
     defaultName: 'Вхід у Claude Code',

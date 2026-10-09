@@ -567,6 +567,22 @@ export const de: Dict = {
       answering: 'Der Hauptstrang schreibt eine Antwort…',
       /** Over what the main thread passed on to the card at work. */
       passedOn: 'An die Karte weitergegeben',
+      panelSaid: 'PANEL',
+      movedByChoice: (to) =>
+        `Der Lauf ist zu ${to} gewechselt - dem Konto, das du gewählt hast.`,
+      limitMoved: (from, window, to) =>
+        `${window ? `Das ${window}Limit` : 'Das Nutzungslimit'} von ${from} ist aufgebraucht. Der Lauf ist zu ${to} gewechselt.`,
+      limitWait: (from, window, clock) =>
+        `${window ? `Das ${window}Limit` : 'Das Nutzungslimit'} von ${from} ist aufgebraucht, und kein anderes Konto hat Platz. Der Lauf wartet${clock ? ` und geht um ${clock} von selbst weiter` : ''}.`,
+      limitLabel: 'LIMIT',
+      limitResting: (account, window, clock) =>
+        `${window ? `Das ${window}Limit` : 'Das Nutzungslimit'} von ${account} ist aufgebraucht - der Lauf geht um ${clock} von selbst weiter`,
+      unfitMoved: (from, to) =>
+        `${from} konnte den Lauf nicht übernehmen. Der Lauf ist zu ${to} gewechselt.`,
+      unfitWait: (from, clock) =>
+        `${from} konnte den Lauf nicht übernehmen, und kein anderes Konto hat Platz. Der Lauf wartet${clock ? ` und geht um ${clock} von selbst weiter` : ''}.`,
+      unfitResting: (account, clock) =>
+        `${account} konnte den Lauf nicht übernehmen, und kein anderes Konto hat Platz - der Lauf geht um ${clock} von selbst weiter`,
     },
     help: {
       button: 'Was Szenarien sind',
@@ -1283,7 +1299,7 @@ export const de: Dict = {
 
   accounts: {
     empty: { title: 'Arbeit und privat nebeneinander', body: 'Zwischen Claude-Konten wechseln, ohne sich abzumelden. Skills, Hooks, Einstellungen und Verlauf bleiben gemeinsam.' },
-    intro: 'Alles läuft auf dem hier gewählten Konto - alle offenen Chats wechseln dorthin, und einer mitten in einem Durchlauf wird dafür gestoppt.',
+    intro: 'Alles läuft auf dem hier gewählten Konto - alle offenen Chats und laufenden Szenarien wechseln dorthin, und einer mitten in einem Durchlauf wird dafür gestoppt.',
     unnamed: 'Anmeldung läuft…',
     defaultName: 'Claude-Code-Anmeldung',
     current: 'in Benutzung',

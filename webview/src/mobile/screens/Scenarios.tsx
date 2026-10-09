@@ -17,6 +17,7 @@ import { cardRuns, passesOf, problemsOf, blocking } from '../../scenarios/rules'
 import { pastRuns, runMarks, runningRuns } from '../../scenarios/runs'
 import { namedRun, queueBehind, queueMarks, queueStanding, queuedFor } from '../../scenarios/queue'
 import { endedLabel, momentLabel } from '../../scenarios/moments'
+import { limitText } from '../../scenarios/moves'
 import type { ScenarioShelves } from '../facts'
 import {
   outcomeText,
@@ -608,6 +609,14 @@ const LiveRun = ({
       </span>
 
       {run.asking ? <p className={m.runAskText}>{run.asking}</p> : null}
+
+      {/* Paused by a limit no account had room past, not by a person: whose, and when it goes on by itself. */}
+      {run.limit ? (
+        <div className={m.limitWait}>
+          <span className={m.limitWaitLabel}>{t.scenarios.run.limitLabel}</span>
+          <span>{limitText(t, run.limit)}</span>
+        </div>
+      ) : null}
 
       <div className={m.runCardButtons}>
         {asks ? (

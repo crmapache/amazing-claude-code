@@ -232,4 +232,44 @@ class AgentStreamTest {
 
         assertFalse(AgentStream.isAuthFailure(line))
     }
+
+    /** Recorded off a scenario's card on 2.1.293, the moment its account's five-hour window ran out. */
+    @Test
+    fun `a turn that died on the limit is recognised`() {
+        val line = """{"type":"assistant","message":{"model":"<synthetic>","content":[{"type":"text",""" +
+            """"text":"You've hit your session limit · resets 11:20pm (America/Sao_Paulo)"}]},""" +
+            """"parent_tool_use_id":null,"error":"rate_limit","is_api_error_message":true}"""
+
+        assertTrue(AgentStream.isLimitRefusal(line))
+        assertFalse(AgentStream.isAuthFailure(line))
+    }
+
+    /**
+     * The limit event that comes before the refusal carries the same letters in its type, and it is a picture
+     * of the windows rather than a turn that died - with extra usage it comes on turns that go on working.
+     */
+    @Test
+    fun `the limit event itself is not a refusal`() {
+        val line = """{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791512400,""" +
+            """"rateLimitType":"five_hour"}}"""
+
+        assertFalse(AgentStream.isLimitRefusal(line))
+    }
+
+    /** A helper refused by the limit: the conversation's own turn finds out for itself a moment later. */
+    @Test
+    fun `a subagent's limit is not the conversation's`() {
+        val line = """{"type":"assistant","message":{"content":[]},"parent_tool_use_id":"toolu_1",""" +
+            """"error":"rate_limit"}"""
+
+        assertFalse(AgentStream.isLimitRefusal(line))
+    }
+
+    @Test
+    fun `the limit's word quoted inside an answer is not a refusal`() {
+        val line = """{"type":"assistant","message":{"content":[{"type":"text",""" +
+            """"text":"the CLI marks it {\"error\":\"rate_limit\"}"}]}}"""
+
+        assertFalse(AgentStream.isLimitRefusal(line))
+    }
 }

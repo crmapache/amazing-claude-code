@@ -13,6 +13,7 @@ import {
   toldTokens,
   type StageStanding,
 } from '../../scenarios/timeline'
+import { limitText, moveText } from '../../scenarios/moves'
 import { roadOf, roadWidth } from '../../scenarios/roadmap'
 import { useTicking } from '../../hooks/useTicking'
 import { useT } from '../../i18n'
@@ -137,12 +138,14 @@ export const ScenarioRunTab = ({
   }, [lastTold])
 
   // Opened on what is happening, come back to where it was left - after a step's log, or another tab (see
-  // useRunPlace). Here a finished run's ending, an error and a question stand above the timeline, so a run with
-  // any of them opens at the top.
+  // useRunPlace). Here a finished run's ending, an error, a question and a limit being waited out stand above the
+  // timeline, so a run with any of them opens at the top.
   const onScroll = useRunPlace(
     body,
     run?.id ?? '',
-    run !== null && (finished(run.state) || run.error.length > 0 || run.question !== null) ? 'top' : 'present',
+    run !== null && (finished(run.state) || run.error.length > 0 || run.question !== null || run.limit != null)
+      ? 'top'
+      : 'present',
   )
 
   if (!run) {
@@ -349,6 +352,18 @@ export const ScenarioRunTab = ({
         ) : null}
 
         {/*
+          A limit the run is waiting out, because no account it could work on had room: whose, and when it goes
+          on by itself - a pause that says nothing about itself reads as one somebody forgot (see
+          ScenarioRun.limit). Resume above tries now rather than at that time.
+        */}
+        {!over && run.limit ? (
+          <div className={`${s.limitWait} ${s.limitWaitTop}`}>
+            <span className={s.limitWaitLabel}>{t.scenarios.run.limitLabel}</span>
+            <span className={s.limitWaitText}>{limitText(t, run.limit)}</span>
+          </div>
+        ) : null}
+
+        {/*
           The question the run is standing on, at the top where reading begins rather than buried in the
           timeline - only ever here when the scenario said to wait for a person rather than to let the
           head decide (see HeadSettings.onQuestion). Nothing is being spent while it stands: the card's
@@ -472,8 +487,21 @@ export const ScenarioRunTab = ({
 
             if (row.kind === 'note') {
               const person = row.note.who === 'person'
+              // The panel's own word: it moved the run to another account, or put it to wait for a limit.
+              const move = row.note.who === 'panel' ? row.note.move : undefined
               // Only on a run that goes: a run that ended with words still waiting took them with it.
               const waiting = person && !over && !row.note.deliveredAt
+              if (move) {
+                return (
+                  <div key={row.key} className={s.note} data-note={row.note.at} data-row={row.key}>
+                    <span className={s.noteRail} />
+                    <span className={`${s.noteBody} ${s.notePanel} ${move.reason === 'limit' ? s.notePanelLimit : ''}`}>
+                      <span className={s.noteWho}>{t.scenarios.run.panelSaid}</span>
+                      <span className={s.noteText}>{moveText(t, move)}</span>
+                    </span>
+                  </div>
+                )
+              }
               return (
                 <div key={row.key} className={s.note} data-note={row.note.at} data-row={row.key}>
                   <span className={s.noteRail} />

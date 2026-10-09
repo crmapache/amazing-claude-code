@@ -12,6 +12,7 @@ import { useRunPlace } from '../../components/scenarios/useRunPlace'
 import { roadOf } from '../../scenarios/roadmap'
 import { cutCardOf, finished, resumable, runWorked, stepWorked, timelineOf } from '../../scenarios/timeline'
 import { dayAndHour } from '../../scenarios/moments'
+import { limitText, moveText } from '../../scenarios/moves'
 import { outcomeText } from '../scenarios'
 import { Back } from './Back'
 import { Composer, type OutgoingPrompt } from './Composer'
@@ -193,6 +194,15 @@ export const ScenarioRun = ({
             header is. One of a finished run's own doors is answered under those doors, below. */}
         {problem && !over ? <p className={m.noteBad}>{outcomeText(t, problem)}</p> : null}
 
+        {/* Paused by a limit no account had room past, not by a person: whose, and when it goes on by itself
+            (see ScenarioRun.limit). Resume in the header tries now. */}
+        {!over && run.limit ? (
+          <div className={m.limitWait}>
+            <span className={m.limitWaitLabel}>{t.scenarios.run.limitLabel}</span>
+            <span>{limitText(t, run.limit)}</span>
+          </div>
+        ) : null}
+
         {/*
           What is being asked, up here where reading happens rather than in the footer with the answers.
 
@@ -243,6 +253,20 @@ export const ScenarioRun = ({
             if (row.kind === 'note') {
               // The person's own words as well as the main thread's - the same two voices the desk draws.
               const person = row.note.who === 'person'
+              // And the panel's own word: it moved the run to another account, or put it to wait for a limit.
+              const move = row.note.who === 'panel' ? row.note.move : undefined
+              if (move) {
+                return (
+                  <div
+                    key={row.key}
+                    className={`${m.note} ${m.notePanel} ${move.reason === 'limit' ? m.notePanelLimit : ''}`}
+                    data-row={row.key}
+                  >
+                    <span className={m.noteWho}>{t.scenarios.run.panelSaid}</span>
+                    <span className={m.noteText}>{moveText(t, move)}</span>
+                  </div>
+                )
+              }
               return (
                 <div key={row.key} className={`${m.note} ${person ? m.notePerson : ''}`} data-row={row.key}>
                   <span className={m.noteWho}>{person ? t.scenarios.run.youSaid : t.scenarios.run.headSaid}</span>

@@ -2792,6 +2792,62 @@
   color: var(--acc-accent-light);
 }
 
+/*
+ * What the panel itself did to keep the run going (a note with `who: 'panel'`): neither voice of the
+ * conversation, so neither of their colours - a quiet frame, and the limit's own tone when a limit is why.
+ */
+.notePanel {
+  border-left-color: var(--acc-line);
+  background: transparent;
+}
+
+.notePanel .noteWho {
+  color: var(--acc-fg-ghost);
+}
+
+.notePanelLimit {
+  border-left-color: var(--acc-warn-line);
+  background: var(--acc-warn-soft);
+}
+
+.notePanelLimit .noteWho {
+  color: var(--acc-warn-light);
+}
+
+/*
+ * A limit the run is waiting out, over the timeline (see ScenarioRun.limit) - and the same line on the run's
+ * card in the hub. The feed's limit row in the same tone (see .limit in feed.module.css): nothing has broken.
+ */
+.limitWait {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 7px 10px;
+  border: 1px solid var(--acc-warn-line);
+  border-radius: var(--acc-r-md);
+  background: var(--acc-warn-soft);
+}
+
+/* Over the timeline it keeps the distance the blocks there keep (see .after and .outcome); on the card the card's
+   own gap spaces it. */
+.limitWaitTop {
+  margin-bottom: 12px;
+}
+
+.limitWaitLabel {
+  flex: none;
+  font: 600 9px/1 var(--acc-font);
+  letter-spacing: 0.09em;
+  color: var(--acc-warn-light);
+}
+
+.limitWaitText {
+  flex: 1;
+  min-width: 0;
+  font: 11.5px/1.55 var(--acc-font);
+  color: var(--acc-fg-body);
+}
+
 /* Their message as a chat draws a sent one (see SentTokens): words with line breaks kept, attachment chips
    among them, nothing read as markdown. */
 .notePersonText {

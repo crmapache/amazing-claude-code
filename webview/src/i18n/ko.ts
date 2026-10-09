@@ -560,6 +560,22 @@ export const ko: Dict = {
       answering: '메인 스레드가 답장을 쓰는 중…',
       /** Over what the main thread passed on to the card at work. */
       passedOn: '카드에 전달함',
+      panelSaid: '패널',
+      movedByChoice: (to) =>
+        `실행을 ${to} 계정으로 옮겼어요. 선택한 계정이에요.`,
+      limitMoved: (from, window, to) =>
+        `${from}의 ${window ? `${window} 한도` : '사용 한도'}를 다 썼어요. 실행을 ${to} 계정으로 옮겼어요.`,
+      limitWait: (from, window, clock) =>
+        `${from}의 ${window ? `${window} 한도` : '사용 한도'}를 다 썼고, 다른 계정에도 여유가 없어요. ${clock ? `실행은 기다렸다가 ${clock}에 알아서 이어서 해요.` : '실행은 기다려요.'}`,
+      limitLabel: '한도',
+      limitResting: (account, window, clock) =>
+        `${account}의 ${window ? `${window} 한도` : '사용 한도'}를 다 썼어요 - ${clock}에 알아서 이어서 해요`,
+      unfitMoved: (from, to) =>
+        `${from} 계정은 이 실행을 맡지 못했어요. 실행을 ${to} 계정으로 옮겼어요.`,
+      unfitWait: (from, clock) =>
+        `${from} 계정은 이 실행을 맡지 못했고, 다른 계정에도 여유가 없어요. ${clock ? `실행은 기다렸다가 ${clock}에 알아서 이어서 해요.` : '실행은 기다려요.'}`,
+      unfitResting: (account, clock) =>
+        `${account} 계정은 이 실행을 맡지 못했고 다른 계정에도 여유가 없어요 - ${clock}에 알아서 이어서 해요`,
     },
     help: {
       button: '시나리오란',
@@ -1272,7 +1288,7 @@ export const ko: Dict = {
 
   accounts: {
     empty: { title: '업무용과 개인용을 나란히', body: '로그아웃 없이 Claude 계정을 전환하세요. 스킬, 훅, 설정, 기록은 그대로 공유됩니다.' },
-    intro: '모든 것이 여기서 선택한 계정에서 실행됩니다. 열려 있는 대화는 모두 그 계정으로 옮겨지고, 진행 중인 것은 옮기기 위해 중지됩니다.',
+    intro: '모든 것이 여기서 선택한 계정에서 실행됩니다. 열려 있는 대화와 실행 중인 시나리오는 모두 그 계정으로 옮겨지고, 진행 중인 것은 옮기기 위해 중지됩니다.',
     unnamed: '로그인하는 중…',
     defaultName: 'Claude Code 로그인',
     current: '사용 중',

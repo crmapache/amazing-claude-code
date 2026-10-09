@@ -564,6 +564,22 @@ export const pt: Dict = {
       answering: 'O fio principal está escrevendo uma resposta…',
       /** Over what the main thread passed on to the card at work. */
       passedOn: 'Repassado ao cartão',
+      panelSaid: 'PAINEL',
+      movedByChoice: (to) =>
+        `A execução passou para ${to}, a conta que você escolheu.`,
+      limitMoved: (from, window, to) =>
+        `${window ? `O limite ${window}` : 'O limite de uso'} de ${from} acabou. A execução passou para ${to}.`,
+      limitWait: (from, window, clock) =>
+        `${window ? `O limite ${window}` : 'O limite de uso'} de ${from} acabou e nenhuma outra conta tem espaço. A execução espera${clock ? ` e continua sozinha às ${clock}` : ''}.`,
+      limitLabel: 'LIMITE',
+      limitResting: (account, window, clock) =>
+        `${window ? `O limite ${window}` : 'O limite de uso'} de ${account} acabou - a execução continua sozinha às ${clock}`,
+      unfitMoved: (from, to) =>
+        `${from} não conseguiu assumir a execução. A execução passou para ${to}.`,
+      unfitWait: (from, clock) =>
+        `${from} não conseguiu assumir a execução e nenhuma outra conta tem espaço. A execução espera${clock ? ` e continua sozinha às ${clock}` : ''}.`,
+      unfitResting: (account, clock) =>
+        `${account} não conseguiu assumir a execução e nenhuma outra conta tem espaço - a execução continua sozinha às ${clock}`,
     },
     help: {
       button: 'O que são cenários',
@@ -1281,7 +1297,7 @@ export const pt: Dict = {
   accounts: {
     empty: { title: 'O do trabalho e o pessoal, lado a lado', body: 'Troque entre contas do Claude sem sair. Skills, hooks, configurações e histórico continuam compartilhados.' },
     intro:
-      'Tudo funciona na conta escolhida aqui: todas as conversas abertas passam para ela, e a que estiver no meio de um turno é interrompida para poder passar.',
+      'Tudo funciona na conta escolhida aqui: todas as conversas abertas e os cenários em andamento passam para ela, e a que estiver no meio de um turno é interrompida para poder passar.',
     unnamed: 'Fazendo login…',
     defaultName: 'Login do Claude Code',
     current: 'em uso',

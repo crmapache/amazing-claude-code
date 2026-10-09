@@ -88,11 +88,29 @@ internal object AgentStream {
      * Only the conversation's own answer counts: a subagent's carries the call that spawned it, and a
      * fleet's refusal says nothing about the tab's own process.
      */
-    fun isAuthFailure(line: String): Boolean {
+    fun isAuthFailure(line: String): Boolean = isOwnRefusal(line, AUTH_FAILED)
+
+    /**
+     * Whether this line is a turn that died because the subscription's limit refused the request.
+     *
+     * The same placeholder answer as a dead sign-in, under the CLI's word `rate_limit` (recorded off a
+     * live run on 2.1.293: "You've hit your session limit · resets 11:20pm", signed `<synthetic>`). The
+     * window and the reset are not in it - they come in the `rate_limit_event` before it (see
+     * ClaudeRateLimit) - and the word is read rather than the sentence for the reason above: the sentence
+     * changes with the window, the version and the plan.
+     *
+     * What hangs on it: a scenario run that reads this as the card's answer judges a card on "you've hit
+     * your session limit", and its head, refused the same way, answers without an object and the run is
+     * written off as a head that never decided (see ScenarioEngine.ranIntoLimit).
+     */
+    fun isLimitRefusal(line: String): Boolean = isOwnRefusal(line, RATE_LIMITED)
+
+    /** The conversation's own placeholder answer under the CLI's machine word [word] - see [isAuthFailure]. */
+    private fun isOwnRefusal(line: String, word: String): Boolean {
         // The cheap test first, and it settles almost every line: every answer of the agent's is already
         // parsed in full once a line (see [isTurnActivity]), and a second parse of every one of them for
         // a word that turns up on a bad day would be paid for on all the good ones.
-        if (!line.contains(AUTH_FAILED)) return false
+        if (!line.contains(word)) return false
 
         val payload = topLevel(line, "assistant") ?: return false
         // Asked the way the field beside it is asked: `jsonPrimitive` throws on anything that is not
@@ -101,12 +119,15 @@ internal object AgentStream {
         // catch it - a throw here loses the answer out of the feed altogether, not merely the door back
         // to the sign-in. A field of the wrong shape is a field nobody said (the same lesson as
         // HeadAnswer): the refusal stays an ordinary error in the feed, without the buttons.
-        if ((payload["error"] as? JsonPrimitive)?.contentOrNull != AUTH_FAILED) return false
+        if ((payload["error"] as? JsonPrimitive)?.contentOrNull != word) return false
         return (payload["parent_tool_use_id"] as? JsonPrimitive)?.contentOrNull == null
     }
 
     /** The CLI's own word for "the request failed because the sign-in did" - see [isAuthFailure]. */
     private const val AUTH_FAILED = "authentication_failed"
+
+    /** The CLI's own word for "the request failed because the limit refused it" - see [isLimitRefusal]. */
+    private const val RATE_LIMITED = "rate_limit"
 
     /**
      * The conversation's own name, the one the CLI picked for it by the first message - or nothing, if

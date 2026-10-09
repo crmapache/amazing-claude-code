@@ -58,7 +58,7 @@ internal class AccountsWatch {
 
         // The conversations first, the screens after: what matters is that nothing goes on running on the
         // account this machine has left, and a list redrawn a moment before or after that is only a list.
-        if (reloaded.currentChanged) ClaudeSessionHub.everyHub { it.conversations.switchAllTo() }
+        if (reloaded.currentChanged) ClaudeSessionHub.everyHub { it.followChosenAccount() }
 
         // The list as it now stands, and nothing heavier. The local path re-asks the CLI who is signed in
         // and puts a usage question to every account; from here there is nothing to ask - the answer came

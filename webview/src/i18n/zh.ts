@@ -560,6 +560,22 @@ export const zh: Dict = {
       answering: '主线程正在写回复…',
       /** Over what the main thread passed on to the card at work. */
       passedOn: '已转给卡片',
+      panelSaid: '面板',
+      movedByChoice: (to) =>
+        `运行已转到 ${to} - 你选择的账号。`,
+      limitMoved: (from, window, to) =>
+        `${from} 的${window ? `${window}额度` : '订阅额度'}已用尽。运行已转到 ${to}。`,
+      limitWait: (from, window, clock) =>
+        `${from} 的${window ? `${window}额度` : '订阅额度'}已用尽，其他账号也没有余量。运行正在等待${clock ? `，会在 ${clock} 自动继续` : ''}。`,
+      limitLabel: '额度',
+      limitResting: (account, window, clock) =>
+        `${account} 的${window ? `${window}额度` : '订阅额度'}已用尽 - 将在 ${clock} 自动继续`,
+      unfitMoved: (from, to) =>
+        `${from} 无法承接这次运行。运行已转到 ${to}。`,
+      unfitWait: (from, clock) =>
+        `${from} 无法承接这次运行，其他账号也没有余量。运行正在等待${clock ? `，会在 ${clock} 自动继续` : ''}。`,
+      unfitResting: (account, clock) =>
+        `${account} 无法承接这次运行，其他账号也没有余量 - 将在 ${clock} 自动继续`,
     },
     help: {
       button: '什么是场景',
@@ -1272,7 +1288,7 @@ export const zh: Dict = {
 
   accounts: {
     empty: { title: '工作与个人，并行使用', body: '在多个 Claude 账号之间切换，无需退出登录。技能、钩子、设置和历史记录保持共享。' },
-    intro: '一切都在这里选择的账号上运行 - 所有打开的对话都会转到它上面，正在进行一轮的对话会被停止以便转移。',
+    intro: '一切都在这里选择的账号上运行 - 所有打开的对话和正在运行的场景都会转到它上面，正在进行一轮的对话会被停止以便转移。',
     unnamed: '登录中…',
     defaultName: 'Claude Code 登录',
     current: '使用中',
