@@ -25,8 +25,10 @@ import com.intellij.ui.components.JBPanel
 import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
 import io.github.crmapache.amazingclaudecode.AccBundle
+import io.github.crmapache.amazingclaudecode.claude.ClaudeHome
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
+import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionNames
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
 import io.github.crmapache.amazingclaudecode.claude.SettingSources
 import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
@@ -304,7 +306,8 @@ internal class ClaudePanel(
         val host = WebviewHost(
             parentDisposable,
             PanelTheme.current(),
-            onSessionIdCopied = { hub.stats.noteFeature("session_info") },
+            sessionName = ::sessionNameOf,
+            onSessionCopied = { hub.stats.noteFeature("session_info") },
         ) { message -> handleWebviewMessage(message) }
         webview = host
 
@@ -821,13 +824,20 @@ internal class ClaudePanel(
              * exactly how "opening a chat from the history shows an empty feed" arrived as a bug report
              * with nothing to go on.
              */
-            // The conversation on screen, for the right-click menu to offer its id (see PanelContextMenu). The
-            // words come along: the menu is drawn by the browser, and the IDE has no dictionary of the panel's.
+            // The conversation on screen, for the right-click menu to offer its id and name (see PanelContextMenu).
+            // The words come along: the menu is drawn by the browser, and the IDE has no dictionary of the panel's.
             "sessionMenu" -> webview?.sessionMenu = field("conversationId").takeIf { it.isNotEmpty() }?.let {
-                SessionMenu(field("label").ifEmpty { "Copy Session ID" }, it)
+                SessionMenu(
+                    label = field("label").ifEmpty { "Copy Session ID" },
+                    nameLabel = field("nameLabel").ifEmpty { "Copy Session Name" },
+                    conversationId = it,
+                )
             }
 
-            "sessionInfo" -> sendSessionInfo(field("sessionId"))
+            // Off the interface thread: the session name is read off the CLI's disk (see ClaudeSessionNames).
+            "sessionInfo" -> ApplicationManager.getApplication().executeOnPooledThread {
+                sendSessionInfo(field("sessionId"))
+            }
 
             "channelLoss" -> {
                 val reason = field("reason")
@@ -991,15 +1001,21 @@ internal class ClaudePanel(
      * The tab's conversation id, for `/status` (see SessionInfoRow) - the IDE's own note of it, which a reset of
      * the panel's state does not take away.
      */
+    /** The name other sessions send messages to this conversation by, or null while no process runs it. */
+    private fun sessionNameOf(conversationId: String): String? =
+        ClaudeSessionNames.nameOf(ClaudeHome.of(project.basePath).configDirectory, conversationId)
+
     private fun sendSessionInfo(sessionId: String) {
         if (sessionId.isEmpty()) return
 
         val conversationId = hub.conversations.conversationIdOf(sessionId)
+        val sessionName = conversationId?.let { sessionNameOf(it) }
         webview?.send(
             buildJsonObject {
                 put("type", "sessionInfo")
                 put("sessionId", sessionId)
                 if (conversationId != null) put("conversationId", conversationId)
+                if (sessionName != null) put("sessionName", sessionName)
             }.toString(),
         )
     }

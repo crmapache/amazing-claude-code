@@ -594,6 +594,9 @@ export const SessionInfoRow = ({ item }: { item: SessionInfoItem }) => {
       {item.conversationId ? (
         <>
           <SessionInfoField name={words.id} value={item.conversationId} />
+          {item.sessionName ? (
+            <SessionInfoField name={words.name} note={words.nameNote} value={item.sessionName} />
+          ) : null}
           <SessionInfoField
             name={words.terminal}
             note={words.terminalNote}

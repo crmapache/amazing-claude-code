@@ -9,11 +9,11 @@ import org.cef.callback.CefMenuModel.MenuId
 import org.cef.handler.CefContextMenuHandlerAdapter
 
 /**
- * The conversation on screen, as the right-click menu offers it: its id to copy, under the words the panel
- * chose for it in its own language (see the `sessionMenu` message in ClaudePanel). The IDE says nothing in
- * any language of its own here - the label travels with the id.
+ * The conversation on screen, as the right-click menu offers it: its id and its session name to copy, under
+ * the words the panel chose for them in its own language (see the `sessionMenu` message in ClaudePanel). The
+ * IDE says nothing in any language of its own here - the labels travel with the id.
  */
-internal data class SessionMenu(val label: String, val conversationId: String)
+internal data class SessionMenu(val label: String, val nameLabel: String, val conversationId: String)
 
 /**
  * The menu a right click opens over the panel.
@@ -22,8 +22,8 @@ internal data class SessionMenu(val label: String, val conversationId: String)
  * panel is an interface rather than a page, and those are a browser's - Back leads nowhere, Print prints a
  * screen of the chat, the source is a bundle nobody reads. So they are taken out, and what stays is what a
  * right click is for in an interface: the editing entries over the input field and a selection, the spelling
- * suggestions over a misspelled word, and the id of the conversation on screen to copy - for another session
- * to send to, or a terminal to resume (see SessionMenu).
+ * suggestions over a misspelled word, and the conversation on screen to copy: its id for a terminal to
+ * resume, and the name of its session for another session to send a message to (see SessionMenu).
  *
  * What goes is named one by one rather than what stays: an entry the browser adds tomorrow - the spelling,
  * the editing, the IDE's own developer tools in an internal build - stays until somebody decides about it.
@@ -31,9 +31,18 @@ internal data class SessionMenu(val label: String, val conversationId: String)
 internal class PanelContextMenu(
     /** The conversation on screen, or null where there is none (a new tab, the statistics, the scenarios). */
     private val session: () -> SessionMenu?,
-    /** The id went to the clipboard - for the usage counts. */
+    /** The session name of a conversation, or null while no process runs it (see ClaudeSessionNames). */
+    private val sessionName: (conversationId: String) -> String?,
+    /** The id or the name went to the clipboard - for the usage counts. */
     private val onCopied: () -> Unit,
 ) : CefContextMenuHandlerAdapter() {
+
+    /**
+     * The name the open menu offers. Read once, as the menu opens: a click copies what the menu stood for even
+     * if the CLI renamed the session in between.
+     */
+    @Volatile
+    private var offeredName: String? = null
 
     override fun onBeforeContextMenu(browser: CefBrowser?, frame: CefFrame?, params: CefContextMenuParams?, model: CefMenuModel) {
         val entries = (0 until model.count).map { index ->
@@ -41,9 +50,14 @@ internal class PanelContextMenu(
         }
         dropped(entries).sortedDescending().forEach { model.removeAt(it) }
 
+        offeredName = null
         val shown = session() ?: return
         if (model.count > 0) model.addSeparator()
         model.addItem(COPY_SESSION_ID, shown.label)
+
+        // Without a process there is no name to send to, and no entry rather than one that copies nothing.
+        offeredName = sessionName(shown.conversationId) ?: return
+        model.addItem(COPY_SESSION_NAME, shown.nameLabel)
     }
 
     override fun onContextMenuCommand(
@@ -53,10 +67,12 @@ internal class PanelContextMenu(
         commandId: Int,
         eventFlags: Int,
     ): Boolean {
-        if (commandId != COPY_SESSION_ID) return false
-
-        val id = session()?.conversationId ?: return true
-        ApplicationManager.getApplication().invokeLater { WebviewClipboard.write(id, "") }
+        val text = when (commandId) {
+            COPY_SESSION_ID -> session()?.conversationId
+            COPY_SESSION_NAME -> offeredName
+            else -> return false
+        } ?: return true
+        ApplicationManager.getApplication().invokeLater { WebviewClipboard.write(text, "") }
         onCopied()
         return true
     }
@@ -67,6 +83,7 @@ internal class PanelContextMenu(
     companion object {
         /** Ours, from the range the browser leaves to its host. */
         const val COPY_SESSION_ID = MenuId.MENU_ID_USER_FIRST + 1
+        const val COPY_SESSION_NAME = MenuId.MENU_ID_USER_FIRST + 2
 
         /** What a browser offers over a page and an interface has no use for. */
         val BROWSER_ONLY: Set<Int> = setOf(

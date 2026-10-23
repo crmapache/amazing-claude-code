@@ -1838,13 +1838,14 @@ const listenToPanel = () => {
       window.__accReceive?.({ type: 'fastMode', sessionId: message.sessionId, on: message.on })
     }
 
-    // `/status`, answered as the IDE answers it: the conversation's id - made up here, as there is no CLI
-    // behind the harness to have given one.
+    // `/status`, answered as the IDE answers it: the conversation's id and session name - made up here, as
+    // there is no CLI behind the harness to have given them.
     if (message?.type === 'sessionInfo') {
       window.__accReceive?.({
         type: 'sessionInfo',
         sessionId: message.sessionId,
         conversationId: 'b6f4c0de-71a2-4c3e-9d1f-5a7e2c8b9f10',
+        sessionName: 'sandbox-project-4f',
       })
     }
 
