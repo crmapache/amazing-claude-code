@@ -2629,7 +2629,11 @@ export const App = () => {
           case 'sessionInfo':
             dispatchPanel({
               session: message.sessionId,
-              action: { kind: 'sessionInfo', conversationId: message.conversationId },
+              action: {
+                kind: 'sessionInfo',
+                conversationId: message.conversationId,
+                sessionName: message.sessionName,
+              },
             })
             break
 
@@ -3844,15 +3848,21 @@ export const App = () => {
   }, [shareEditor])
 
   /**
-   * The conversation on screen, told to the IDE for the right-click menu to offer its id (see
+   * The conversation on screen, told to the IDE for the right-click menu to offer its id and session name (see
    * PanelContextMenu.kt) - on every change of tab or of its conversation, since the menu is built by the
-   * browser on a thread of its own and cannot wait to ask. With the words for the entry: the browser draws it.
+   * browser on a thread of its own and cannot wait to ask. With the words for the entries: the browser draws them.
    */
   const menuConversation = isPanelTab(active) ? undefined : panel.sessionId
   const copySessionWords = t.feed.session.copyId
+  const copyNameWords = t.feed.session.copyName
   useEffect(() => {
-    send({ type: 'sessionMenu', conversationId: menuConversation ?? null, label: copySessionWords })
-  }, [menuConversation, copySessionWords])
+    send({
+      type: 'sessionMenu',
+      conversationId: menuConversation ?? null,
+      label: copySessionWords,
+      nameLabel: copyNameWords,
+    })
+  }, [menuConversation, copySessionWords, copyNameWords])
 
   /** Whether the text fields check spelling - applied here at once, and every window is told. */
   const setSpellcheck = useCallback((on: boolean) => {

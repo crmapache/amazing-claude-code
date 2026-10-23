@@ -1703,12 +1703,15 @@ export const en = {
       textWithCode: (code: number): string => `Claude Code stopped unexpectedly (exit code ${code}).`,
     },
 
-    /** `/status` (see SessionInfoRow) and the right-click menu's entry, which the browser draws with these words. */
+    /** `/status` (see SessionInfoRow) and the right-click menu's entries, which the browser draws with these words. */
     session: {
       label: 'SESSION',
       id: 'Session ID',
+      name: 'Session name',
+      nameNote: 'Other Claude Code sessions send messages here by this name',
       terminal: 'In a terminal',
       copyId: 'Copy Session ID',
+      copyName: 'Copy Session Name',
       terminalNote: 'Continues this conversation in a terminal opened in the project folder',
       none: 'No ID yet - the conversation gets one with its first message',
     },

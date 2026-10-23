@@ -1290,8 +1290,11 @@ export const zh: Dict = {
     session: {
       label: '会话',
       id: '会话 ID',
+      name: '会话名称',
+      nameNote: '其他 Claude Code 会话用这个名称向这里发送消息',
       terminal: '在终端中',
       copyId: '复制会话 ID',
+      copyName: '复制会话名称',
       terminalNote: '在项目文件夹中打开的终端里继续这个会话',
       none: '还没有 ID，会话在第一条消息时获得',
     },
