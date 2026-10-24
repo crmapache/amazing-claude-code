@@ -1681,8 +1681,11 @@ type ShellMessageBody =
    * whether it is ON the CLI says itself in the stream (`fast_mode_state`, see feed/fastMode.ts).
    */
   | { type: 'fastMode'; sessionId: string; on: boolean }
-  /** The answer to `/status` (see the `sessionInfo` request): the tab's conversation id, absent until its first message. */
-  | { type: 'sessionInfo'; sessionId: string; conversationId?: string }
+  /**
+   * The answer to `/status` (see the `sessionInfo` request): the tab's conversation id, absent until its first message,
+   * and the name other sessions send messages to it by, absent while no process runs the conversation.
+   */
+  | { type: 'sessionInfo'; sessionId: string; conversationId?: string; sessionName?: string }
   /**
    * Which Claude account a conversation runs on - said at its birth, like the effort and the model.
    *
@@ -2750,11 +2753,11 @@ export type WebviewMessage =
    */
   | { type: 'channelLoss'; reason: 'order' | 'parse'; expected: number; got: number }
   /**
-   * The conversation on screen, for the right-click menu the browser draws to offer its id - with the words for
-   * the entry, since the IDE has no dictionary of the panel's (see PanelContextMenu.kt). Null where the tab has
-   * no conversation yet, or is not a conversation's.
+   * The conversation on screen, for the right-click menu the browser draws to offer its id and session name -
+   * with the words for both entries, since the IDE has no dictionary of the panel's (see PanelContextMenu.kt).
+   * Null where the tab has no conversation yet, or is not a conversation's.
    */
-  | { type: 'sessionMenu'; conversationId: string | null; label: string }
+  | { type: 'sessionMenu'; conversationId: string | null; label: string; nameLabel: string }
   /** `/status` - what the IDE knows of this tab's conversation, answered by a `sessionInfo` of its own. */
   | { type: 'sessionInfo'; sessionId: string }
   | { type: 'history' }

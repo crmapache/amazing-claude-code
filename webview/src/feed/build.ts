@@ -583,7 +583,13 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     // into the conversation too, and the id is copied from it while the talk goes on below.
     case 'sessionInfo': {
       const conversationId = action.conversationId ?? state.sessionId
-      return push(state, (id) => ({ id, kind: 'session' as const, ...(conversationId ? { conversationId } : {}) }))
+      const { sessionName } = action
+      return push(state, (id) => ({
+        id,
+        kind: 'session' as const,
+        ...(conversationId ? { conversationId } : {}),
+        ...(sessionName ? { sessionName } : {}),
+      }))
     }
 
     // The whole list rather than a change to it: the IDE holds the queue, either window may have been

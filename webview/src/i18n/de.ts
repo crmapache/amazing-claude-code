@@ -1300,8 +1300,11 @@ export const de: Dict = {
     session: {
       label: 'SITZUNG',
       id: 'Sitzungs-ID',
+      name: 'Sitzungsname',
+      nameNote: 'Unter diesem Namen senden andere Claude-Code-Sitzungen Nachrichten hierher',
       terminal: 'Im Terminal',
       copyId: 'Sitzungs-ID kopieren',
+      copyName: 'Sitzungsnamen kopieren',
       terminalNote: 'Setzt dieses Gespräch in einem Terminal im Projektordner fort',
       none: 'Noch keine ID - das Gespräch bekommt sie mit der ersten Nachricht',
     },

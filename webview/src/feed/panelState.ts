@@ -591,7 +591,7 @@ export type PanelAction =
   /** Whether this conversation asks for fast mode - the shell's word, or a pick of one's own drawn at once. */
   | { kind: 'fastModeApplied'; on: boolean }
   /** `/status` answered: a row with the conversation's id. */
-  | { kind: 'sessionInfo'; conversationId?: string }
+  | { kind: 'sessionInfo'; conversationId?: string; sessionName?: string }
   /** The queue as the IDE now holds it - the whole list, from whichever window last changed it. */
   | { kind: 'queue'; items: QueuedMessage[]; held?: boolean }
   /** A mark from the panel in the feed: that this conversation was branched off another, for instance. */

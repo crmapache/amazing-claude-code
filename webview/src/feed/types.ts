@@ -854,15 +854,17 @@ export interface FastModeItem {
 }
 
 /**
- * `/status`: the conversation's id, and the command that resumes it in a terminal (see SessionInfoRow).
+ * `/status`: the conversation's id, the name other sessions send messages to it by, and the command that
+ * resumes it in a terminal (see SessionInfoRow).
  *
  * The id is the CLI's - the one its transcript is named by and `--resume` takes - and is absent until the
- * first message gives the conversation one.
+ * first message gives the conversation one. The name is absent while no process runs the conversation.
  */
 export interface SessionInfoItem {
   id: string
   kind: 'session'
   conversationId?: string
+  sessionName?: string
 }
 
 /**

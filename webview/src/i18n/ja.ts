@@ -1292,8 +1292,11 @@ export const ja: Dict = {
     session: {
       label: 'セッション',
       id: 'セッション ID',
+      name: 'セッション名',
+      nameNote: '他の Claude Code セッションはこの名前でここにメッセージを送ります',
       terminal: 'ターミナルで',
       copyId: 'セッション ID をコピー',
+      copyName: 'セッション名をコピー',
       terminalNote: 'プロジェクトのフォルダーで開いたターミナルで、この会話を続けます',
       none: 'まだ ID はありません。最初のメッセージで付きます',
     },

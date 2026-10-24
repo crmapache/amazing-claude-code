@@ -1290,8 +1290,11 @@ export const ko: Dict = {
     session: {
       label: '세션',
       id: '세션 ID',
+      name: '세션 이름',
+      nameNote: '다른 Claude Code 세션은 이 이름으로 여기에 메시지를 보냅니다',
       terminal: '터미널에서',
       copyId: '세션 ID 복사',
+      copyName: '세션 이름 복사',
       terminalNote: '프로젝트 폴더에서 연 터미널에서 이 대화를 이어가요',
       none: '아직 ID가 없어요. 첫 메시지와 함께 생겨요',
     },

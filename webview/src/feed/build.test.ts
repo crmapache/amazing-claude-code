@@ -4545,6 +4545,14 @@ describe('the answer to /status', () => {
     expect(rows(state)).toEqual([expect.objectContaining({ kind: 'session', conversationId: 'abc-123' })])
   })
 
+  it('carries the session name the IDE gave, and no name while no process runs the conversation', () => {
+    const named = reducePanel(initialPanelState, { kind: 'sessionInfo', conversationId: 'abc-123', sessionName: 'repo-4f' })
+    expect(rows(named)).toEqual([expect.objectContaining({ conversationId: 'abc-123', sessionName: 'repo-4f' })])
+
+    const asleep = reducePanel(initialPanelState, { kind: 'sessionInfo', conversationId: 'abc-123' })
+    expect(rows(asleep)[0]).not.toHaveProperty('sessionName')
+  })
+
   // An IDE that could not name it (an older one, a tab between processes) leaves the panel's own note of it.
   it('falls back to the conversation the panel knows', () => {
     const known: PanelState = { ...initialPanelState, sessionId: 'known-id' }

@@ -150,8 +150,10 @@ internal class WebviewHost(
     parentDisposable: Disposable,
     /** The theme the page opens in - see [startUrl]. */
     private val startTheme: String,
-    /** The id of the conversation on screen went to the clipboard from the right-click menu (see PanelContextMenu). */
-    private val onSessionIdCopied: () -> Unit = {},
+    /** The session name of a conversation, for the right-click menu (see PanelContextMenu). */
+    private val sessionName: (conversationId: String) -> String? = { null },
+    /** The id or the session name of the conversation on screen went to the clipboard from the right-click menu. */
+    private val onSessionCopied: () -> Unit = {},
     private val onMessage: (String) -> Unit,
 ) : Disposable {
 
@@ -186,9 +188,9 @@ internal class WebviewHost(
     private var lastHealAt = 0L
 
     /**
-     * The conversation on screen, for the right-click menu to offer its id (see PanelContextMenu). Told by the
-     * page whenever the tab or its conversation changes, rather than asked when the menu opens: the menu is
-     * built on the browser's own thread, and an answer from the page could not reach it in time.
+     * The conversation on screen, for the right-click menu to offer its id and name (see PanelContextMenu). Told
+     * by the page whenever the tab or its conversation changes, rather than asked when the menu opens: the menu
+     * is built on the browser's own thread, and an answer from the page could not reach it in time.
      */
     @Volatile
     var sessionMenu: SessionMenu? = null
@@ -253,7 +255,10 @@ internal class WebviewHost(
 
         keepNavigationOutside()
 
-        browser.jbCefClient.addContextMenuHandler(PanelContextMenu({ sessionMenu }, onSessionIdCopied), browser.cefBrowser)
+        browser.jbCefClient.addContextMenuHandler(
+            PanelContextMenu({ sessionMenu }, sessionName, onSessionCopied),
+            browser.cefBrowser,
+        )
 
         thisLogger().info("Webview renders offscreen: ${browser.isOffScreenRendering}")
 

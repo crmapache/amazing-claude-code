@@ -1301,8 +1301,11 @@ export const fr: Dict = {
     session: {
       label: 'SESSION',
       id: 'ID de session',
+      name: 'Nom de session',
+      nameNote: 'Les autres sessions Claude Code envoient des messages ici sous ce nom',
       terminal: 'Dans un terminal',
       copyId: 'Copier l’ID de session',
+      copyName: 'Copier le nom de session',
       terminalNote: 'Reprend cette conversation dans un terminal ouvert dans le dossier du projet',
       none: 'Pas encore d’ID : la conversation en reçoit un avec son premier message',
     },
