@@ -2,7 +2,7 @@ import type { DetailLine, DetailNote, Hunk, ToolChip, ToolItem, ToolMeta } from 
 import s from '../feed.module.css'
 import { Caret } from './Caret'
 import { pastMenu } from '../Menu'
-import { editAnchor, filePathOf } from '../../feed/tools'
+import { editAnchor, filePathOf, hiddenCommandOf } from '../../feed/tools'
 import { useOpenFile, type OpenFileRequest } from '../../hooks/useOpenFile'
 import { useT } from '../../i18n'
 import type { Dict } from '../../i18n/en'
@@ -90,7 +90,13 @@ export const ToolCard = ({ item, open, awaitingPermission, onToggle }: ToolCardP
    * tail of a diff too long to stand open.
    */
   const preview = trimHunks(item.hunks, DIFF_PREVIEW_LINES)
-  const hasBody = item.detail.length > 0 || preview.hidden > 0
+  /**
+   * The head holds one line of a command (see targetFor). When the command has more, the rest is behind the
+   * caret, and the head says how much - otherwise a script reads as its first line, with nothing to hint
+   * that there is more to read.
+   */
+  const command = hiddenCommandOf(item.toolName, item.input)
+  const hasBody = item.detail.length > 0 || preview.hidden > 0 || command !== null
   const hunks = open ? item.hunks : preview.hunks
 
   /**
@@ -156,6 +162,7 @@ export const ToolCard = ({ item, open, awaitingPermission, onToggle }: ToolCardP
         ) : (
           <span className={`${s.toolTarget} ${item.isError ? s.toolError : ''}`}>{item.target}</span>
         )}
+        {command ? <span className={s.toolMeta}>{t.feed.tool.moreLines(command.extraLines)}</span> : null}
         <span
           className={`${s.toolMeta} ${item.pending ? (awaitingPermission ? s.waiting : s.running) : ''}`}
         >
@@ -169,8 +176,9 @@ export const ToolCard = ({ item, open, awaitingPermission, onToggle }: ToolCardP
         <span className={s.toolDur}>{item.duration}</span>
       </div>
 
-      {open && item.detail.length > 0 ? (
+      {open && (command || item.detail.length > 0) ? (
         <div className={s.toolBody}>
+          {command ? <div className={s.toolCommand}>{command.text}</div> : null}
           {item.detail.map((line, index) => (
             <DetailRow key={index} line={line} />
           ))}

@@ -213,6 +213,23 @@ export const targetFor = (name: string, input: unknown, workingDirectory: string
 }
 
 /**
+ * A shell command that runs past the first line - the only one the head shows (see targetFor) - whole, and
+ * how many lines the head leaves out. Nothing for a command of one line: the head already says all of it.
+ *
+ * A command of several lines is a script, a loop or a chain of `&&`, and its first line only tells how it
+ * starts: a `git fetch` on top of a loop of `git push --delete` read as a `git fetch`. The call is
+ * normally allowed without a question (see PermissionPanel, which does print the whole command), so the
+ * card is the one place the full text can be read afterwards.
+ */
+export const hiddenCommandOf = (name: string, input: unknown): { text: string; extraLines: number } | null => {
+  if (name !== 'Bash') return null
+
+  const text = str(asInput(input).command).trim()
+  const extraLines = text.split('\n').length - 1
+  return extraLines > 0 ? { text, extraLines } : null
+}
+
+/**
  * The summary at the end of a tool's line, as a shape rather than as a sentence.
  *
  * The figures are the tool's own; the words around them are chosen when the card is painted (see

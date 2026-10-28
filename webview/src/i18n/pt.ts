@@ -1199,7 +1199,7 @@ export const pt: Dict = {
       matches: (n) => (n > 0 ? `· ${n} ${n === 1 ? 'ocorrência' : 'ocorrências'}` : '· nenhuma ocorrência'),
       output: (empty) => (empty ? '· sem saída' : '· com saída'),
       diff: (added, removed) => `· +${added} −${removed}`,
-      moreLines: (n) => `… mais ${n} linhas`,
+      moreLines: (n) => `… mais ${n} ${n === 1 ? 'linha' : 'linhas'}`,
       fewerLines: '… recolher',
       count: (n) => `${n} ${n === 1 ? 'ferramenta' : 'ferramentas'}`,
       closed: {

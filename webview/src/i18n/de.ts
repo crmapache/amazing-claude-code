@@ -1202,7 +1202,7 @@ export const de: Dict = {
       matches: (n) => (n > 0 ? `· ${n} ${n === 1 ? 'Treffer' : 'Treffer'}` : '· keine Treffer'),
       output: (empty) => (empty ? '· keine Ausgabe' : '· mit Ausgabe'),
       diff: (added, removed) => `· +${added} −${removed}`,
-      moreLines: (n) => `… ${n} weitere Zeilen`,
+      moreLines: (n) => `… ${n} weitere ${n === 1 ? 'Zeile' : 'Zeilen'}`,
       fewerLines: '… einklappen',
       count: (n) => `${n} ${n === 1 ? 'Werkzeug' : 'Werkzeuge'}`,
       closed: {

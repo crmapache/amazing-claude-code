@@ -1199,7 +1199,7 @@ export const es: Dict = {
       matches: (n) => (n > 0 ? `· ${n} ${n === 1 ? 'coincidencia' : 'coincidencias'}` : '· sin coincidencias'),
       output: (empty) => (empty ? '· sin salida' : '· con salida'),
       diff: (added, removed) => `· +${added} −${removed}`,
-      moreLines: (n) => `… ${n} líneas más`,
+      moreLines: (n) => `… ${n} ${n === 1 ? 'línea más' : 'líneas más'}`,
       fewerLines: '… plegar',
       count: (n) => `${n} ${n === 1 ? 'herramienta' : 'herramientas'}`,
       closed: {

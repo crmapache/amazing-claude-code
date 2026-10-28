@@ -1559,7 +1559,7 @@ export const en = {
       output: (empty: boolean): string => (empty ? '· no output' : '· output'),
       /** The minus is a real minus sign, not a hyphen - it is set beside a plus and has to match it. */
       diff: (added: number, removed: number): string => `· +${added} −${removed}`,
-      moreLines: (n: number): string => `… ${n} more lines`,
+      moreLines: (n: number): string => `… ${n} more ${n === 1 ? 'line' : 'lines'}`,
       /** The same row once the whole diff is open: it collapses it back - see ToolCard. */
       fewerLines: '… collapse',
       count: (n: number): string => `${n} ${n === 1 ? 'tool' : 'tools'}`,

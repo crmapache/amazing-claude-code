@@ -5,6 +5,7 @@ import {
   editAnchor,
   filePathOf,
   formatDuration,
+  hiddenCommandOf,
   hunksFor,
   metaFor,
   targetFor,
@@ -110,6 +111,35 @@ describe('a skill call', () => {
 
   it('falls back to the tool name when there is no skill in the call', () => {
     expect(targetFor('Skill', {}, '')).toBe('Skill')
+  })
+})
+
+describe('a shell command of several lines', () => {
+  const script = 'git fetch --prune\nfor b in a b; do\n  git push origin :$b\ndone'
+
+  /** The head holds the first line only: what the card gives back is the rest, and how much of it there is. */
+  it('is given whole, with the number of lines the head leaves out', () => {
+    expect(targetFor('Bash', { command: script }, '')).toBe('git fetch --prune')
+    expect(hiddenCommandOf('Bash', { command: script })).toEqual({ text: script, extraLines: 3 })
+  })
+
+  it('has nothing hidden when it is one line, whatever stands after it', () => {
+    expect(hiddenCommandOf('Bash', { command: 'git status' })).toBeNull()
+    expect(hiddenCommandOf('Bash', { command: 'git status\n' })).toBeNull()
+    expect(hiddenCommandOf('Bash', { command: '' })).toBeNull()
+  })
+
+  it('does not count the blank lines around it', () => {
+    expect(hiddenCommandOf('Bash', { command: '\n\ngit fetch\ngit pull\n\n' })).toEqual({
+      text: 'git fetch\ngit pull',
+      extraLines: 1,
+    })
+  })
+
+  it('is asked of the shell tool alone', () => {
+    expect(hiddenCommandOf('Read', { command: script })).toBeNull()
+    expect(hiddenCommandOf('BashOutput', { command: script })).toBeNull()
+    expect(hiddenCommandOf('Bash', undefined)).toBeNull()
   })
 })
 

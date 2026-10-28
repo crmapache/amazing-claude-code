@@ -1519,6 +1519,23 @@
   color: var(--acc-fg-dim);
 }
 
+/* The whole command of a call whose head shows only its first line (see ToolCard). Brighter than the output
+   under it - the command is what was asked, the output is what came back - and parted from it by a rule,
+   but only when there is output to part it from. */
+.toolCommand {
+  font: var(--acc-fs-mono, 11.5px) var(--acc-mono);
+  line-height: var(--acc-code-leading, 18px);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--acc-fg-soft);
+}
+
+.toolCommand:not(:last-child) {
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--acc-line);
+}
+
 /* The heading over the errand inside an agent's card - the same quiet caption the rest of the panel
    labels a block with, so the two lines below it read as an answer to it. */
 .taskPromptLabel {
