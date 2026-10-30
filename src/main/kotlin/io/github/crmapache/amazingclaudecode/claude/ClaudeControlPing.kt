@@ -35,11 +35,14 @@ import kotlinx.serialization.json.putJsonObject
  * `--safe-mode` switches off exactly those heavy parts (hooks, MCP, skills, project settings) but not
  * the sign-in, the limits or the model catalogue - the answer comes back in a second or two instead of
  * three with an ordinary launch (verified directly). The process is single-use: one control_request,
- * one answer, and down it goes.
+ * one answer, and it is told to go (see [finish]).
  */
 internal object ClaudeControlPing {
 
     private const val TIMEOUT_MS = 15_000L
+
+    /** How long a process told to go gets to leave by itself before it is killed - see [finish]. */
+    private const val GRACE_MS = 5_000L
 
     fun request(
         workingDirectory: String?,
@@ -107,7 +110,7 @@ internal object ClaudeControlPing {
         val executable = ClaudeExecutable.find() ?: return null
         val answer = CompletableFuture<JsonObject?>()
 
-        launch(
+        val process = launch(
             executable.absolutePath,
             workingDirectory,
             subtype,
@@ -118,9 +121,18 @@ internal object ClaudeControlPing {
 
         // A second past the process's own deadline, which always answers - this one only stops a slip
         // inside the process handling from holding the caller for ever.
-        return runCatching { answer.get(TIMEOUT_MS + 1_000L, TimeUnit.MILLISECONDS) }.getOrNull()
+        val answered = runCatching { answer.get(TIMEOUT_MS + 1_000L, TimeUnit.MILLISECONDS) }.getOrNull()
+
+        // The caller's environment is typically a config directory that lives for this one question and
+        // is deleted the moment we return (see ClaudeAccounts.identityOf). A process still on its way out
+        // writes its config there as it goes, recreating the folder after the delete; so the answer is
+        // handed over once the process is gone - half a second as measured, [GRACE_MS] at the very worst.
+        process?.waitFor(GRACE_MS + 1_000L)
+
+        return answered
     }
 
+    /** Start the process and put the question to it; the process, or null when it would not start. */
     private fun launch(
         executable: String,
         workingDirectory: String?,
@@ -128,7 +140,7 @@ internal object ClaudeControlPing {
         environment: Map<String, String>,
         onResult: (JsonObject) -> Unit,
         onError: (String) -> Unit,
-    ) {
+    ): OSProcessHandler? {
         val commandLine = GeneralCommandLine(executable)
             .withParameters(
                 "--print",
@@ -148,14 +160,14 @@ internal object ClaudeControlPing {
                 thisLogger().warn("Failed to start $subtype ping", it)
                 onError(it.message ?: "Failed to start claude.")
             }
-            .getOrNull() ?: return
+            .getOrNull() ?: return null
 
         val done = AtomicBoolean(false)
 
         val timeoutTask = AppExecutorUtil.getAppScheduledExecutorService().schedule(
             {
                 if (done.compareAndSet(false, true)) {
-                    process.destroyProcess()
+                    finish(process)
                     onError("$subtype timed out")
                 }
             },
@@ -174,7 +186,7 @@ internal object ClaudeControlPing {
                 }.getOrNull()
 
                 // A slip inside the handler must not leave the process hanging: it is single-use,
-                // and there is nobody else to take it down - see destroyProcess below.
+                // and there is nobody else to take it down - see finish below.
                 runCatching {
                     when {
                         response == null -> onError("Malformed $subtype response")
@@ -184,7 +196,7 @@ internal object ClaudeControlPing {
                     }
                 }.onFailure { thisLogger().warn("Handler for $subtype ping failed", it) }
 
-                process.destroyProcess()
+                finish(process)
             },
         )
 
@@ -218,8 +230,37 @@ internal object ClaudeControlPing {
         }.onFailure {
             if (done.compareAndSet(false, true)) {
                 timeoutTask.cancel(false)
+                finish(process)
                 onError("Failed to talk to claude: ${it.message}")
             }
         }
+
+        return process
+    }
+
+    /**
+     * Tell the process its one question is over and let it leave by itself; kill it only if it is still
+     * there after [GRACE_MS].
+     *
+     * Closing its input is how a stream-json CLI hears "that was all", and it then leaves the way it
+     * leaves after a whole conversation: measured on 2.1.293, in about half a second (no slower than
+     * killing it), exit code 0, its config written through and its children taken down with it.
+     *
+     * Killing it at once is what this replaced, and it was not the same thing. The platform kills the
+     * whole process tree outright (`OSProcessHandler` destroys recursively, which is `SIGKILL`), so
+     * nothing in it gets to finish or to tidy up: one config write in ten was left as a stray
+     * `.claude.json.tmp.*`, and a marketplace clone the CLI had begun in the background was left as a
+     * half-made `temp_git_*` folder, because git killed outright removes nothing. Once a minute per
+     * account that came to 321 GB on one person's machine (see AccountStore.usageProbeEnvironment for why
+     * there was a clone at all, and ProbeLeftovers for what the sweep takes away).
+     */
+    private fun finish(process: OSProcessHandler) {
+        runCatching { process.processInput.close() }
+
+        AppExecutorUtil.getAppScheduledExecutorService().schedule(
+            { if (!process.isProcessTerminated) process.destroyProcess() },
+            GRACE_MS,
+            TimeUnit.MILLISECONDS,
+        )
     }
 }

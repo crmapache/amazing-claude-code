@@ -29,8 +29,14 @@ class AccountStoreTest {
         return answer.reason
     }
 
-    private fun probe(storeDir: String?, configDir: String): Map<String, String> {
-        val answer = AccountStore.usageProbeEnvironment(base, storeDir, configDir)
+    private val userHome = "/Users/someone"
+
+    private fun probe(
+        storeDir: String?,
+        configDir: String,
+        base: Map<String, String> = this.base,
+    ): Map<String, String> {
+        val answer = AccountStore.usageProbeEnvironment(base, storeDir, configDir, userHome)
         assertTrue(answer is AccountStore.Environment.Ready, "expected a usable environment, got $answer")
         return answer.variables
     }
@@ -71,9 +77,80 @@ class AccountStoreTest {
     // person's repository - exactly as a relative drawer would.
     @Test
     fun `a config directory that is not absolute is refused`() {
-        val answer = AccountStore.usageProbeEnvironment(base, null, "usage")
+        val answer = AccountStore.usageProbeEnvironment(base, null, "usage", userHome)
 
         assertTrue(answer is AccountStore.Environment.Refused, "expected a refusal, got $answer")
+    }
+
+    // --- The person's plugins, lent to a question that has a config directory of its own ---
+
+    /**
+     * A config directory of its own is a machine without plugins to the CLI, which then clones every
+     * marketplace its settings declare - on every question, because the process is gone a second later
+     * with the clone unfinished. One person lost 321 GB to it. The person's own plugins folder, lent as a
+     * seed, is registered as it is and nothing is cloned.
+     */
+    @Test
+    fun `a usage question is lent the person's own plugins`() {
+        val environment = probe(null, "/Users/someone/usage/default")
+
+        assertEquals("/Users/someone/.claude/plugins", environment[AccountStore.PLUGIN_SEED_VARIABLE])
+    }
+
+    // Their CLI is the one their environment names, and the question's own config directory - which
+    // replaces that variable for the process - must not be mistaken for it.
+    @Test
+    fun `the person's moved CLI is the one whose plugins are lent`() {
+        val moved = base + (AccountStore.CONFIG_VARIABLE to "/Volumes/work/claude")
+        val environment = probe("/Users/someone/drawers/s-1", "/Users/someone/usage/a1", moved)
+
+        assertEquals("/Volumes/work/claude/plugins", environment[AccountStore.PLUGIN_SEED_VARIABLE])
+        assertEquals("/Users/someone/usage/a1", environment[AccountStore.CONFIG_VARIABLE])
+    }
+
+    // The first seed to have a marketplace wins, so seeds of their own stay first - the order their own
+    // CLI reads them in.
+    @Test
+    fun `seeds the person set themselves stay first`() {
+        val seeded = base + (AccountStore.PLUGIN_SEED_VARIABLE to "/opt/seed-a:/opt/seed-b")
+
+        assertEquals(
+            "/opt/seed-a:/opt/seed-b:/Users/someone/.claude/plugins",
+            AccountStore.pluginSeed(seeded, userHome, separator = ":"),
+        )
+    }
+
+    // The CLI splits the list by the platform's own separator - a semicolon on Windows, where a colon is
+    // part of every path.
+    @Test
+    fun `seeds are split and joined by the platform's separator`() {
+        val seeded = base + (AccountStore.PLUGIN_SEED_VARIABLE to "/opt/seed-a;/opt/seed-b")
+
+        assertEquals(
+            "/opt/seed-a;/opt/seed-b;/Users/someone/.claude/plugins",
+            AccountStore.pluginSeed(seeded, userHome, separator = ";"),
+        )
+    }
+
+    // A relative CLAUDE_CONFIG_DIR would be resolved against the working directory; guessing at it could
+    // lend a folder inside the person's repository. Their own seeds still travel.
+    @Test
+    fun `a moved CLI that is not absolute lends nothing of its own`() {
+        val relative = mapOf(AccountStore.CONFIG_VARIABLE to "claude-home")
+
+        assertNull(AccountStore.pluginSeed(relative, userHome, separator = ":"))
+        assertEquals(
+            "/opt/seed",
+            AccountStore.pluginSeed(relative + (AccountStore.PLUGIN_SEED_VARIABLE to "/opt/seed"), userHome, ":"),
+        )
+    }
+
+    // A conversation runs in the person's own config directory, where the plugins already are: lending
+    // them there would only make them read-only.
+    @Test
+    fun `an ordinary run is lent nothing`() {
+        assertNull(ready(null)[AccountStore.PLUGIN_SEED_VARIABLE])
+        assertNull(ready("/Users/someone/drawers/s-1")[AccountStore.PLUGIN_SEED_VARIABLE])
     }
 
     // --- A run that needs nobody's sign-in --------------------------------------

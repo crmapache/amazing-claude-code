@@ -138,8 +138,27 @@ internal object AccountStore {
      * inside that directory, where there is none. Empty means the drawer the CLI has always used - which
      * is precisely whose figures this row wants. Wrong, it costs nothing worse than a blank: the process
      * answers "not signed in" and no figure is drawn.
+     *
+     * A config directory of its own is also a machine of its own to the CLI's plugin machinery, and that
+     * cost one person 321 GB (reported 2026-10-30). On every start a non-interactive CLI catches up, in
+     * the background, with the marketplaces its settings declare - an organization's managed settings
+     * among them, which no config directory escapes - and clones whatever it has not got. A directory of
+     * ours has none of them, so every question began a clone, and the process was gone a second later,
+     * right after its answer, with the clone unfinished and nothing recorded: the next question began
+     * again. That machine held 1,029 abandoned clones of about 450 MB each in `usage/default`. So the
+     * person's own plugins come along as a seed ([pluginSeed]), the CLI's own way of saying "these are
+     * already on disk, use them as they are": measured on 2.1.293, a declared marketplace the person has
+     * is registered from their folder with auto-update off, nothing is cloned and nothing is written into
+     * their folder. What the seed cannot cover - a marketplace the person has not got either - is why
+     * ClaudeControlPing lets the process leave by itself and ProbeLeftovers sweeps after it.
      */
-    fun usageProbeEnvironment(base: Map<String, String>, storeDir: String?, configDir: String): Environment {
+    fun usageProbeEnvironment(
+        base: Map<String, String>,
+        storeDir: String?,
+        configDir: String,
+        /** Where `~` is for the CLI - what `~/.claude` resolves against when the person has not moved it. */
+        userHome: String,
+    ): Environment {
         refusalFor(configDir)?.let { return Environment.Refused("probe config directory: $it") }
 
         val resolved = environmentFor(base, storeDir)
@@ -149,11 +168,51 @@ internal object AccountStore {
         variables[CONFIG_VARIABLE] = configDir
         if (storeDir == null) variables[STORE_VARIABLE] = ""
 
+        pluginSeed(base, userHome)?.let { seed ->
+            // The same case-insensitive Windows hazard as in environmentFor: a `Claude_Code_Plugin_Seed_Dir`
+            // left beside ours would race it.
+            if (HostOs.isWindows) variables.keys.removeIf { it.equals(PLUGIN_SEED_VARIABLE, ignoreCase = true) }
+            variables[PLUGIN_SEED_VARIABLE] = seed
+        }
+
         return Environment.Ready(variables)
     }
 
     /** The CLI's own name for "where everything else lives" - see [usageProbeEnvironment]. */
     const val CONFIG_VARIABLE = "CLAUDE_CONFIG_DIR"
+
+    /**
+     * The CLI's own name for "plugins already on disk": folders laid out like its `plugins` folder, whose
+     * marketplaces it registers as they are, read-only and never updated. Documented for container images
+     * that ship with plugins inside. See [usageProbeEnvironment].
+     */
+    const val PLUGIN_SEED_VARIABLE = "CLAUDE_CODE_PLUGIN_SEED_DIR"
+
+    /**
+     * What a process with a config directory of its own is given as [PLUGIN_SEED_VARIABLE]: the plugins
+     * folder of the CLI the person actually runs, after any seeds of their own. Null when there is nothing
+     * to give.
+     *
+     * The person's CLI is the one `CLAUDE_CONFIG_DIR` in THEIR environment names, or `~/.claude`. A path
+     * that is not absolute is not guessed at - the CLI would resolve it against the working directory - and
+     * then only their own seeds travel. Theirs stay first because the first seed to have a marketplace wins,
+     * which is how their own CLI reads the same list.
+     */
+    internal fun pluginSeed(
+        base: Map<String, String>,
+        userHome: String,
+        separator: String = File.pathSeparator,
+    ): String? {
+        val home = valueOf(base, CONFIG_VARIABLE)?.takeIf { it.isNotBlank() } ?: File(userHome, ".claude").path
+        val ownPlugins = File(home).takeIf { it.isAbsolute }?.let { File(it, "plugins").path }
+        val theirSeeds = valueOf(base, PLUGIN_SEED_VARIABLE)?.split(separator)?.filter { it.isNotBlank() }.orEmpty()
+
+        return (theirSeeds + listOfNotNull(ownPlugins)).distinct().takeIf { it.isNotEmpty() }?.joinToString(separator)
+    }
+
+    /** A variable as the CLI would read it: by exact name, and on Windows by any case of it. */
+    private fun valueOf(base: Map<String, String>, name: String): String? =
+        base[name] ?: base.entries.firstOrNull { HostOs.isWindows && it.key.equals(name, ignoreCase = true) }?.value
 
     /**
      * The environment for a one-off run that needs nobody's sign-in: a drawer nobody ever signs into.

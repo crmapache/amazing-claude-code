@@ -3,6 +3,7 @@ package io.github.crmapache.amazingclaudecode.claude.accounts
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.ClaudeAuth
 import io.github.crmapache.amazingclaudecode.claude.ClaudeControlPing
 import io.github.crmapache.amazingclaudecode.claude.ClaudeExecutable
@@ -14,6 +15,7 @@ import io.github.crmapache.amazingclaudecode.claude.ModelNames
 import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * The machine's Claude accounts: which ones there are, which one new conversations start on, and the
@@ -423,7 +425,12 @@ internal class ClaudeAccounts {
             return if (probeConfigDir == null) {
                 AccountStore.environmentFor(base, storeDir = null)
             } else {
-                AccountStore.usageProbeEnvironment(base, storeDir = null, configDir = probeConfigDir)
+                AccountStore.usageProbeEnvironment(
+                    base,
+                    storeDir = null,
+                    configDir = probeConfigDir,
+                    userHome = userHome(),
+                )
             }
         }
 
@@ -445,7 +452,7 @@ internal class ClaudeAccounts {
         return if (probeConfigDir == null) {
             AccountStore.environmentFor(base, storeDir)
         } else {
-            AccountStore.usageProbeEnvironment(base, storeDir, configDir = probeConfigDir)
+            AccountStore.usageProbeEnvironment(base, storeDir, configDir = probeConfigDir, userHome = userHome())
         }
     }
 
@@ -485,6 +492,8 @@ internal class ClaudeAccounts {
     fun usageProbeVariables(accountId: String, workingDirectory: String?): Map<String, String>? {
         val directory = usageProbeDirectory(accountId) ?: return null
 
+        sweepLeftovers()
+
         return when (val resolved = environmentFor(accountId, workingDirectory, probeConfigDir = directory)) {
             is AccountStore.Environment.Ready -> {
                 // Whose credential this is gets asked again once a minute rather than once a day, which is
@@ -499,6 +508,36 @@ internal class ClaudeAccounts {
             is AccountStore.Environment.Refused -> null
         }
     }
+
+    /**
+     * Clear what the questions with a config directory of their own left on disk (see [ProbeLeftovers]),
+     * at most once per [LEFTOVER_SWEEP_EVERY_MS] and never on the asking thread: the first sweep after
+     * an update can have hundreds of gigabytes to remove.
+     *
+     * Hung on the usage question because that is what runs once a minute for as long as the panel is
+     * open, so the first sweep comes within a minute of opening and the next ones follow on their own.
+     */
+    private fun sweepLeftovers() {
+        val now = System.currentTimeMillis()
+        val last = lastLeftoverSweep.get()
+        if (now - last < LEFTOVER_SWEEP_EVERY_MS || !lastLeftoverSweep.compareAndSet(last, now)) return
+
+        AppExecutorUtil.getAppExecutorService().submit {
+            val swept = runCatching { ProbeLeftovers.sweep(usageDirectory(), identityDirectory()) }
+                .onFailure { thisLogger().info("Sweeping the usage questions' leftovers failed", it) }
+                .getOrNull() ?: return@submit
+
+            if (swept.entries > 0) {
+                DiagnosticsLog.note(
+                    DiagnosticsLog.ACCOUNTS,
+                    "swept ${swept.entries} leftovers of the usage and identity questions, " +
+                        "${swept.bytes / MEGABYTE} MB",
+                )
+            }
+        }
+    }
+
+    private val lastLeftoverSweep = AtomicLong(0L)
 
     private fun usageProbeDirectory(accountId: String): String? {
         val directory = usageProbeFolder(accountId) ?: return null
@@ -1041,6 +1080,9 @@ internal class ClaudeAccounts {
     private fun identityDirectory(): File =
         File(File(System.getProperty("user.home"), ".amazing-claude-code"), "identity")
 
+    /** Where `~` is for the CLI this plugin starts - see [AccountStore.pluginSeed]. */
+    private fun userHome(): String = System.getProperty("user.home")
+
     private class Probed(val answer: Capability, val at: Long)
 
     private val probed = ConcurrentHashMap<String, Probed>()
@@ -1070,6 +1112,11 @@ internal class ClaudeAccounts {
 
         /** See [identityOf] for why the handshake rather than the usage question. */
         private const val IDENTITY_QUESTION = "initialize"
+
+        /** See [sweepLeftovers]: as often as a leftover can come of age, and no oftener. */
+        private const val LEFTOVER_SWEEP_EVERY_MS = ProbeLeftovers.MIN_AGE_MS
+
+        private const val MEGABYTE = 1024L * 1024L
 
         private const val ALIAS_LIMIT = 40
         private const val RETRY_MS = 60_000L
