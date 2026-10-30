@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.53] - 2026-10-30
+
+- Fixed: the panel could fill the disk with copies of a plugin marketplace. To read each account's usage limits, the panel starts Claude Code for a second in a folder of its own, about once a minute. Claude Code treated that folder as a new machine and began downloading every marketplace your settings or your organization declare, and the panel stopped it right after the answer, so the download was left half done and started over the next minute. One reported machine had 1,029 such copies, 321 GB, in `~/.amazing-claude-code/usage`. Now these short runs use the plugins you already have instead of downloading them, and they are closed gently so Claude Code tidies up after itself. Copies left by earlier versions are removed in the background within a minute of opening the panel after the update.
+- Fixed: the small READ, BASH and THINK labels in the rows of tool calls sat a pixel or two below the words beside them when the IDE's zoom was not 100%, for example at 90%. It showed most on THINK, whose row lights up under the mouse. The labels now line up with the text at every zoom.
+
 ## [0.13.52] - 2026-10-24
 
 - Fixed: the list of changed files under a turn showed a handful of files while the turn had changed far more. In one reported case the IDE's commit window counted 179 changed and new files and the list showed five, all from one hour-long turn. Claude often edits files with its own scripts and sed through Bash, and subagents' edits reach the panel without their diff, so the list never saw either. Now the IDE takes a snapshot of the project when you send a message and again when the turn ends, and the list shows every file that differs between the two, with its real line counts and a working revert, whatever changed it. Files you saved yourself in the IDE while the turn ran, and files another tab's agent edited, are left out, so Revert all never takes your own work back. The snapshot is kept apart from your repository and never touches its index, stash or history. It works in projects inside a git repository; elsewhere the list is built the way it was.
@@ -1111,7 +1116,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.52...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.53...HEAD
+[0.13.53]: https://github.com/crmapache/amazing-claude-code/compare/0.13.52...0.13.53
 [0.13.52]: https://github.com/crmapache/amazing-claude-code/compare/0.13.51...0.13.52
 [0.13.51]: https://github.com/crmapache/amazing-claude-code/compare/0.13.50...0.13.51
 [0.13.50]: https://github.com/crmapache/amazing-claude-code/compare/0.13.49...0.13.50
