@@ -441,9 +441,16 @@
      named here because two rules live by them: the chip itself, and the invisible strut that holds a
      head's row at one height when there is no chip in that row (see .toolHead::before in
      feed.module.css). A strut measured by anything other than the chip stops holding the one thing it
-     was put there for. */
+     was put there for.
+
+     The leading is the font's own, without a gap of ours: at 9.5px it is the same 13px a fixed number
+     gave, but on a scaled page a fixed one costs a pixel. Chromium floors the half of the leading to a
+     whole pixel, and at a zoom of 0.9 the line comes out shorter than the font by a fraction - the floor
+     turns that into a full pixel taken off the top, the caption rides up inside its fill and the fill
+     hangs a pixel and a half below the words beside it. Measured on a real IDE at 90%; the same at
+     1.38 and 2. With no leading there is nothing to floor. */
   --acc-chip-size: 9.5px;
-  --acc-chip-leading: 13px;
+  --acc-chip-leading: normal;
   --acc-chip-pad: 2px;
 
   /* Code and diff lines are leaded by a fixed number rather than a ratio: the lines have to sit on one
