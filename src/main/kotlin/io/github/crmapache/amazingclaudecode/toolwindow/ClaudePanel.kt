@@ -20,6 +20,7 @@ import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.WindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
+import com.intellij.ui.components.BrowserLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.util.Alarm
@@ -39,6 +40,7 @@ import io.github.crmapache.amazingclaudecode.sound.AlertSounds
 import io.github.crmapache.amazingclaudecode.usage.UsageFeatures
 import io.github.crmapache.amazingclaudecode.usage.UsageReporter
 import io.github.crmapache.amazingclaudecode.voice.VoiceDesk
+import io.github.crmapache.amazingclaudecode.webview.BrowserLoss
 import io.github.crmapache.amazingclaudecode.webview.DraftImages
 import io.github.crmapache.amazingclaudecode.webview.FilePicker
 import io.github.crmapache.amazingclaudecode.webview.IdeTypography
@@ -209,7 +211,7 @@ internal class ClaudePanel(
 
     init {
         component = if (WebviewHost.isSupported()) {
-            buildWebview(parentDisposable)
+            buildWebview()
         } else {
             buildUnsupportedNotice()
         }
@@ -300,11 +302,32 @@ internal class ClaudePanel(
      */
     private var frame: JBPanel<JBPanel<*>>? = null
 
-    private fun buildWebview(parentDisposable: Disposable): JComponent {
+    /** What the browser in the frame lives as long as - see [rebuildWebview]. */
+    private var hostDisposable: Disposable? = null
+
+    private fun buildWebview(): JComponent {
+        val frame = JBPanel<JBPanel<*>>(BorderLayout())
+        this.frame = frame
+
+        // A panel opened after the IDE's browser has stopped (another project, say) builds no browser of
+        // its own: there is no server left to build it in (see BrowserLoss).
+        val face = if (BrowserLoss.happened) buildBrowserStoppedNotice() else newHost()
+        frame.add(face, BorderLayout.CENTER)
+        BrowserLoss.watch(parentDisposable, ::browserStopped)
+
+        return frame
+    }
+
+    /** A browser with everything a browser in this panel carries, under a lifetime of its own. */
+    private fun newHost(): JComponent {
+        val lifetime = Disposer.newDisposable(parentDisposable, "Amazing Claude Code panel browser")
+        hostDisposable = lifetime
+
         val host = WebviewHost(
-            parentDisposable,
+            lifetime,
             PanelTheme.current(),
             onSessionIdCopied = { hub.stats.noteFeature("session_info") },
+            onPageLost = { ApplicationManager.getApplication().invokeLater({ pageLost() }, ModalityState.any()) },
         ) { message -> handleWebviewMessage(message) }
         webview = host
 
@@ -312,20 +335,50 @@ internal class ClaudePanel(
         // it here - see WebviewFileDrop.
         WebviewFileDrop.install(
             component = host.component,
-            parentDisposable = parentDisposable,
+            parentDisposable = lifetime,
             onDragging = ::sendFileDrag,
             onDropped = ::attachDropped,
         )
 
         // The tab keys and Queue: the IDE has the keyboard before the browser does, so they are its
         // actions, held by the browser while the focus is in it (see PanelKeys).
-        PanelKeys.install(host.component, parentDisposable, ::pressPanelKey)
+        PanelKeys.install(host.component, lifetime, ::pressPanelKey)
 
-        val frame = JBPanel<JBPanel<*>>(BorderLayout()).apply { add(host.component, BorderLayout.CENTER) }
-        this.frame = frame
-        watchForSilence(parentDisposable)
+        pageSpoke = false
+        watchForSilence(lifetime)
 
-        return frame
+        return host.component
+    }
+
+    /**
+     * Throw the browser away and build another - what the button under a page that kept crashing does.
+     *
+     * A new browser rather than the old one put back: a browser taken out of the tree comes back as an empty
+     * rectangle (see "ready" in handleWebviewMessage). The new page is handed every conversation when it says
+     * it is ready, the same way a page reloaded from the crash screen is.
+     */
+    private fun rebuildWebview() {
+        if (alive.isDisposed) return
+        if (BrowserLoss.happened) {
+            show(buildBrowserStoppedNotice())
+            return
+        }
+
+        hostDisposable?.let(Disposer::dispose)
+        webview = null
+        show(newHost())
+    }
+
+    /** The IDE's browser as a whole has stopped - see BrowserLoss. The browser in the frame is dead with it. */
+    private fun browserStopped() {
+        if (alive.isDisposed) return
+        show(buildBrowserStoppedNotice())
+    }
+
+    /** The page kept dying and is no longer brought back by itself - see PageCrashes. */
+    private fun pageLost() {
+        if (alive.isDisposed || BrowserLoss.happened) return
+        show(buildPageCrashedNotice())
     }
 
     private fun buildUnsupportedNotice(): JComponent =
@@ -345,24 +398,56 @@ internal class ClaudePanel(
      * This is that word.
      */
     private fun buildStalledNotice(): JComponent =
+        notice(
+            AccBundle["webview.stalled.text"],
+            JButton(AccBundle["webview.stalled.restart"]).apply {
+                addActionListener { ApplicationManager.getApplication().restart() }
+            },
+        )
+
+    /**
+     * What is shown once the IDE's browser has stopped - see BrowserLoss.
+     *
+     * The person is not left guessing at a white rectangle, and the restart they would have arrived at
+     * anyway is one press away. The link is there because the fault is the IDE's: the issue is where a vote
+     * makes it go away for everyone.
+     */
+    private fun buildBrowserStoppedNotice(): JComponent =
+        notice(
+            AccBundle["webview.stopped.text"],
+            JButton(AccBundle["webview.stopped.restart"]).apply {
+                addActionListener { ApplicationManager.getApplication().restart() }
+            },
+            BrowserLink(AccBundle["webview.stopped.issue"], BROWSER_STOPPED_ISSUE),
+        )
+
+    /** What is shown once the page has died too many times in a row to be brought back by itself. */
+    private fun buildPageCrashedNotice(): JComponent =
+        notice(
+            AccBundle["webview.crashed.text"],
+            JButton(AccBundle["webview.crashed.reload"]).apply {
+                addActionListener { rebuildWebview() }
+            },
+        )
+
+    /** Words at the top of the panel, with whatever can be done about them below. */
+    private fun notice(text: String, vararg actions: JComponent): JComponent =
         JBPanel<JBPanel<*>>(BorderLayout()).apply {
             border = JBUI.Borders.empty(16)
 
             val column = JBPanel<JBPanel<*>>(null).apply {
                 layout = BoxLayout(this, BoxLayout.Y_AXIS)
                 add(
-                    JBLabel(AccBundle["webview.stalled.text"]).apply {
+                    JBLabel(text).apply {
                         setAllowAutoWrapping(true)
                         alignmentX = Component.LEFT_ALIGNMENT
                     },
                 )
-                add(Box.createVerticalStrut(JBUI.scale(12)))
-                add(
-                    JButton(AccBundle["webview.stalled.restart"]).apply {
-                        alignmentX = Component.LEFT_ALIGNMENT
-                        addActionListener { ApplicationManager.getApplication().restart() }
-                    },
-                )
+                for (action in actions) {
+                    add(Box.createVerticalStrut(JBUI.scale(12)))
+                    action.alignmentX = Component.LEFT_ALIGNMENT
+                    add(action)
+                }
             }
 
             add(column, BorderLayout.NORTH)
@@ -374,10 +459,11 @@ internal class ClaudePanel(
      * The signal is a word from the page itself rather than the browser's own "loaded": a page served as
      * a 404 loads perfectly well and stays empty, which is precisely the failure being watched for here.
      */
-    private fun watchForSilence(parentDisposable: Disposable) {
-        val alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, parentDisposable)
+    private fun watchForSilence(hostLifetime: Disposable) {
+        val alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, hostLifetime)
         alarm.addRequest({
-            if (pageSpoke) return@addRequest
+            // A browser that stopped has its own words up already, and they are the true ones.
+            if (pageSpoke || BrowserLoss.happened) return@addRequest
 
             thisLogger().warn("The panel's interface never reported ready")
             DiagnosticsLog.note(DiagnosticsLog.PANEL, "interface silent for ${STALL_MS / 1000}s")
@@ -1304,6 +1390,9 @@ internal class ClaudePanel(
          * that nobody sits in front of an empty rectangle deciding the plugin is dead.
          */
         const val STALL_MS = 20_000
+
+        /** Where the IDE's own bug that stops its browser is tracked - see BrowserLoss. */
+        const val BROWSER_STOPPED_ISSUE = "https://youtrack.jetbrains.com/issue/JBR-10027"
 
     }
 }

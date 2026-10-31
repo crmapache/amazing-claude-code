@@ -21,6 +21,12 @@ internal class WebviewLifetime : Disposable.Parent {
         true
     }
 
+    /**
+     * Whether the resources are still there, asked without holding them for the length of a task - for
+     * work that runs long and only has to know whether to start at all (see WebviewHost's message inbox).
+     */
+    val isAlive: Boolean get() = synchronized(lock) { !closed }
+
     override fun beforeTreeDispose() {
         synchronized(lock) { closed = true }
     }
