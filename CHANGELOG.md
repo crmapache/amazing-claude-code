@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.54] - 2026-10-31
+
+- Fixed: now and then the panel went completely white and only a restart of the IDE brought it back. The cause is a bug in the IDE itself (JBR-10027 in the JetBrains tracker): the IDE sometimes shuts its own built-in browser down, and every view it draws goes blank at once, this panel and Markdown previews alike, with nothing written to the IDE's log. The plugin can't bring that browser back, but it now notices when it happens and says so in place of the white panel, with a button to restart the IDE and a link to the bug.
+- Fixed: when the panel's page crashed on its own, for example after running out of memory, it stayed empty until the IDE was restarted. Now the page is loaded again within a second or two with all your tabs and conversations in place. If it keeps crashing, the panel stops after a few tries and offers a button to build it again.
+
 ## [0.13.53] - 2026-10-30
 
 - Fixed: the panel could fill the disk with copies of a plugin marketplace. To read each account's usage limits, the panel starts Claude Code for a second in a folder of its own, about once a minute. Claude Code treated that folder as a new machine and began downloading every marketplace your settings or your organization declare, and the panel stopped it right after the answer, so the download was left half done and started over the next minute. One reported machine had 1,029 such copies, 321 GB, in `~/.amazing-claude-code/usage`. Now these short runs use the plugins you already have instead of downloading them, and they are closed gently so Claude Code tidies up after itself. Copies left by earlier versions are removed in the background within a minute of opening the panel after the update.
@@ -1116,7 +1121,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.53...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.54...HEAD
+[0.13.54]: https://github.com/crmapache/amazing-claude-code/compare/0.13.53...0.13.54
 [0.13.53]: https://github.com/crmapache/amazing-claude-code/compare/0.13.52...0.13.53
 [0.13.52]: https://github.com/crmapache/amazing-claude-code/compare/0.13.51...0.13.52
 [0.13.51]: https://github.com/crmapache/amazing-claude-code/compare/0.13.50...0.13.51
