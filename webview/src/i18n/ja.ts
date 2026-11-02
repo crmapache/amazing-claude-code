@@ -1681,6 +1681,7 @@ export const ja: Dict = {
         waitingQuestion: 'あなた待ち · 質問',
         waitingPlan: 'あなた待ち · 計画',
         working: '作業中',
+        agents: (n) => `サブエージェント ${n} 件が作業中`,
         done: '完了',
       },
       reach: {

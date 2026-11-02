@@ -1664,6 +1664,7 @@ export const ko: Dict = {
         waitingQuestion: '당신을 기다립니다 · 질문',
         waitingPlan: '당신을 기다립니다 · 계획',
         working: '작업 중',
+        agents: (n) => `서브에이전트 ${n}개 작업 중`,
         done: '완료',
       },
       reach: {

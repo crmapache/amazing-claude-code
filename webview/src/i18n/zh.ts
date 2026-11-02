@@ -1671,6 +1671,7 @@ export const zh: Dict = {
         waitingQuestion: '等你处理 · 提问',
         waitingPlan: '等你处理 · 计划',
         working: '进行中',
+        agents: (n) => `${n} 个子智能体进行中`,
         done: '完成',
       },
       reach: {

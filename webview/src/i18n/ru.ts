@@ -1846,6 +1846,7 @@ export const ru: Dict = {
         waitingQuestion: 'ждёт вас · вопрос',
         waitingPlan: 'ждёт вас · план',
         working: 'работает',
+        agents: (n) => (n === 1 ? 'работает субагент' : `работают субагенты: ${n}`),
         done: 'готово',
       },
       reach: {

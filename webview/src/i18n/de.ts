@@ -1677,6 +1677,7 @@ export const de: Dict = {
         waitingQuestion: 'wartet auf dich · Frage',
         waitingPlan: 'wartet auf dich · Plan',
         working: 'arbeitet',
+        agents: (n) => (n === 1 ? 'ein Subagent arbeitet' : `${n} Subagenten arbeiten`),
         done: 'fertig',
       },
       reach: {

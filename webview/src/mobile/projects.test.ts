@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { LinkState } from './link'
-import { buildProjects, CAP_OPEN_BARE, CAP_PARTS, CAP_TELL, chatState, waitingFor, type Inventory } from './projects'
+import { buildProjects, CAP_OPEN_BARE, CAP_PARTS, CAP_TELL, chatState, isWorking, waitingFor, type Inventory } from './projects'
 
 /**
  * The first screen's order.
@@ -13,11 +13,12 @@ import { buildProjects, CAP_OPEN_BARE, CAP_PARTS, CAP_TELL, chatState, waitingFo
  * of a machine with two projects on it.
  */
 
-const session = (id: string, extra: Partial<{ status: string; awaitsYou: boolean }> = {}) => ({
+const session = (id: string, extra: Partial<{ status: string; awaitsYou: boolean; agents: number }> = {}) => ({
   id,
   title: id,
   status: extra.status ?? 'idle',
   awaitsYou: extra.awaitsYou ?? false,
+  ...(extra.agents !== undefined ? { agents: extra.agents } : {}),
   q: 0,
 })
 
@@ -52,6 +53,27 @@ describe('the list of projects on a phone', () => {
     })
 
     expect(project?.sessions.map((one) => one.sessionId)).toEqual(['waiting', 'running', 'idle'])
+  })
+
+  /**
+   * The turn that raised background agents is over and they are not: the work is going on all the same, and
+   * the list used to file such a project and such a row with the quiet ones.
+   */
+  it('counts background agents at work as work, after the turn that raised them', () => {
+    const projects = build({
+      projects: [
+        { key: 'quiet', name: 'quiet', sessions: [session('one')] },
+        {
+          key: 'agents',
+          name: 'agents',
+          sessions: [session('idle'), session('agents', { agents: 2 })],
+        },
+      ],
+    })
+
+    expect(projects.map((project) => project.key)).toEqual(['agents', 'quiet'])
+    expect(projects[0]?.sessions.map((one) => one.sessionId)).toEqual(['agents', 'idle'])
+    expect(projects[0]?.sessions[0]?.agents).toBe(2)
   })
 
   /**
@@ -177,6 +199,8 @@ describe("a conversation's mark", () => {
     depth: 0,
     awaits: '',
     since: 0,
+    agents: 0,
+    workSince: 0,
     seq: 0,
     online: true,
   })
@@ -193,12 +217,27 @@ describe("a conversation's mark", () => {
     expect(chatState(row({ status: 'running', worked: true }))).toBe('running')
   })
 
+  it('shows background agents at work as work in progress, the turn over or not', () => {
+    expect(chatState(row({ agents: 1, worked: true }))).toBe('running')
+    expect(chatState(row({ agents: 1, awaitsYou: true }))).toBe('attention')
+  })
+
   it('shows what waits for a person over anything that is merely running', () => {
     expect(chatState(row({ status: 'running', awaitsYou: true }))).toBe('attention')
   })
 
   it('shows a dead process above all of it', () => {
     expect(chatState(row({ crashed: true, awaitsYou: true, status: 'running', worked: true }))).toBe('crashed')
+  })
+})
+
+describe('whether the work is going on', () => {
+  it('asks the inventory as it arrives as well as the rows built from it', () => {
+    expect(isWorking({ status: 'running' })).toBe(true)
+    expect(isWorking({ status: 'idle', agents: 3 })).toBe(true)
+    expect(isWorking({ status: 'idle', agents: 0 })).toBe(false)
+    // An IDE older than the field says nothing about the agents - the status alone, as before.
+    expect(isWorking({ status: 'idle' })).toBe(false)
   })
 })
 

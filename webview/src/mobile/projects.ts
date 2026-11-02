@@ -20,6 +20,10 @@ export interface SessionEntry {
   awaits: string
   /** When it last changed what it is doing, by the IDE's clock. Zero when the IDE has not said. */
   since: number
+  /** Background agents still at work, the turn that raised them over or not - see Inventory. */
+  agents: number
+  /** When the work now going on began, by the IDE's clock - see Inventory. Zero when none is, or unsaid. */
+  workSince: number
   /** Work in this one has been finished at least once, and its process died under it - see ChatRow. */
   worked: boolean
   crashed: boolean
@@ -111,6 +115,17 @@ export interface Inventory {
       since?: number
       /** A turn in this one has been carried through to its end - see SessionSnapshot.worked. */
       worked?: boolean
+      /**
+       * How many background agents are still at work (see SessionSnapshot.pendingAgents). They outlive the
+       * turn that raised them: its status says idle while the work goes on, so a list going by the status
+       * alone drew the conversation as done for the half hour they ran.
+       */
+      agents?: number
+      /**
+       * When the work now going on began, by the IDE's clock - kept across every turn of it, where `since`
+       * starts over with each one an agent's report raises (see SessionSnapshot.workSince).
+       */
+      workSince?: number
       /** Its process died under it. */
       crashed?: boolean
       /** The conversation behind the tab, when there is one - the identifier the history names it by. */
@@ -152,6 +167,17 @@ export interface Inventory {
 export type ChatState = 'crashed' | 'attention' | 'running' | 'done' | 'idle'
 
 /**
+ * Whether the work asked for in a conversation is still going on: a turn running, or background agents
+ * that have not reported back after the turn that raised them ended - the panel's own rule for its tab's
+ * dot (see stillWorking in App.tsx).
+ *
+ * One function for the row, the order of the list and the ticking of its counters, which all ask the same
+ * question - and for the inventory as it arrives as well as for the rows built out of it.
+ */
+export const isWorking = (session: { status: string; agents?: number }): boolean =>
+  session.status === 'running' || (session.agents ?? 0) > 0
+
+/**
  * Which of the five a conversation is in, in the order that decides between them.
  *
  * A dead process comes first: the turn was cut short against its will, and that is worth knowing before
@@ -165,7 +191,7 @@ export type ChatState = 'crashed' | 'attention' | 'running' | 'done' | 'idle'
 export const chatState = (session: SessionEntry): ChatState => {
   if (session.crashed) return 'crashed'
   if (session.awaitsYou) return 'attention'
-  if (session.status === 'running') return 'running'
+  if (isWorking(session)) return 'running'
   return session.worked ? 'done' : 'idle'
 }
 
@@ -239,6 +265,8 @@ export const buildProjects = (
         // a row that says nothing about how long it has been working is better than one that says zero.
         awaits: session.awaits ?? '',
         since: session.since ?? 0,
+        agents: session.agents ?? 0,
+        workSince: session.workSince ?? 0,
         conversation: session.conversation,
         seq: session.q,
         online,
@@ -261,7 +289,7 @@ export const buildProjects = (
         hiddenCount: all.length - sessions.length,
         sessions: sessions.sort((first, second) => {
           if (first.awaitsYou !== second.awaitsYou) return first.awaitsYou ? -1 : 1
-          if (first.status !== second.status) return first.status === 'running' ? -1 : 1
+          if (isWorking(first) !== isWorking(second)) return isWorking(first) ? -1 : 1
           return 0
         }),
       })
@@ -309,7 +337,7 @@ export const waitingFor = (projects: ProjectEntry[]): SessionEntry[] =>
 const rank = (project: ProjectEntry): number => {
   if (project.closed) return 3
   if (project.sessions.some((session) => session.awaitsYou)) return 0
-  if (project.sessions.some((session) => session.status === 'running')) return 1
+  if (project.sessions.some(isWorking)) return 1
 
   return 2
 }

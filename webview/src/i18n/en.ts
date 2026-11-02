@@ -2179,6 +2179,8 @@ export const en = {
         waitingQuestion: 'waiting on you · question',
         waitingPlan: 'waiting on you · plan',
         working: 'working',
+        /** The conversation's own turn is over and only the background agents it raised are still at it. */
+        agents: (n: number): string => (n === 1 ? 'subagent working' : `${n} subagents working`),
         done: 'done',
       },
       /** Why the list looks the way it does - said about the phone's whole situation. */

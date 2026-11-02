@@ -148,8 +148,14 @@ export const useSelection = (container: RefObject<HTMLElement | null>): [Selecti
   return [selection, clear]
 }
 
-/** The current selection as the menu sees it, or nothing at all when there is nothing to show a menu for. */
-const read = (container: HTMLElement | null, pointer: { x: number; y: number }): Selection | null => {
+/**
+ * What is selected inside [container], if it is something a quote or a fork can be made of: the words of an
+ * answer, more than a stray tap's worth. With the range it covers and the feed row it is in.
+ *
+ * The rule apart from the menu's placing, because the phone asks it too - and has no menu to place there,
+ * only a button for the selection it reads this way (see mobile/useTouchSelection).
+ */
+export const selectedIn = (container: HTMLElement | null): { text: string; range: Range; itemId?: string } | null => {
   const active = window.getSelection()
 
   if (!container || !active || active.isCollapsed || active.rangeCount === 0) return null
@@ -166,14 +172,29 @@ const read = (container: HTMLElement | null, pointer: { x: number; y: number }):
 
   if (!anchor?.closest(`[${SELECTABLE_ATTR}]`)) return null
 
-  const lines = edgeLines(Array.from(range.getClientRects()))
+  const itemId = anchor.closest('[data-acc-id]')?.getAttribute('data-acc-id') ?? undefined
+
+  return { text, range, ...(itemId ? { itemId } : {}) }
+}
+
+/** The current selection as the menu sees it, or nothing at all when there is nothing to show a menu for. */
+const read = (container: HTMLElement | null, pointer: { x: number; y: number }): Selection | null => {
+  const selected = selectedIn(container)
+  if (!container || !selected) return null
+
+  const lines = edgeLines(Array.from(selected.range.getClientRects()))
   if (!lines) return null
 
   const bounds = container.getBoundingClientRect()
   // Scrolled clean out of the feed's visible part: there is no longer any text to hang the menu on.
   if (lines.tail.bottom < bounds.top || lines.head.top > bounds.bottom) return null
 
-  const itemId = anchor.closest('[data-acc-id]')?.getAttribute('data-acc-id') ?? undefined
-
-  return { text, head: lines.head, tail: lines.tail, pointer, bounds, ...(itemId ? { itemId } : {}) }
+  return {
+    text: selected.text,
+    head: lines.head,
+    tail: lines.tail,
+    pointer,
+    bounds,
+    ...(selected.itemId ? { itemId: selected.itemId } : {}),
+  }
 }

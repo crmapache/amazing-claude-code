@@ -944,11 +944,18 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             notificationListener?.invoke(sessionId, reason, targetOf(trimmed))
         }
 
-        // A phone's list is drawn from these two fields, and it is not on the receiving end of this
-        // message: it watches one conversation and hears nothing about the others. Without this the
-        // list only caught up when the phone next asked - up to half a minute later, which on a screen
-        // someone is holding reads as a card that simply refuses to say it is working.
-        if (before.status != after.status || before.awaitsYou != after.awaitsYou) inventoryChanged()
+        // A phone's list is drawn from these fields, and it is not on the receiving end of this message: it
+        // watches one conversation and hears nothing about the others. Without this the list only caught up
+        // when the phone next asked - up to half a minute later, which on a screen someone is holding reads
+        // as a card that simply refuses to say it is working. The agents count too: the work goes on after
+        // the turn that raised them, and the row says how many are left (see RemoteAgent.inventoryBody).
+        if (
+            before.status != after.status ||
+            before.awaitsYou != after.awaitsYou ||
+            before.pendingAgents.size != after.pendingAgents.size
+        ) {
+            inventoryChanged()
+        }
     }
 
     /**

@@ -80,7 +80,8 @@ paths:
 - `ImagePreview` рядом с `Tooltips`, `case 'imagePreview'`, `SaidImagesContext` вокруг `Feed`, `openPicture` и `OpenPictureContext`, `sessionId` у `Queue` - image-preview
 - `missingFiles`, `case 'fileMissing'`, очистка в `openFile` - open-in-editor
 - `sideThreads`, `askAside`, `forgetSide`, `case 'sideAnswer'`/`'sideProgress'`, Esc над карточкой вопроса сбоку, `SideQuestionCard` в `dockCards` - btw
-- только в `mobile/App.tsx`: `PhoneRewind`, `refills`, `RewindSheet` - rewind; `forkFrom`/`forkWhole` (`kind: 'branch'`, `before`) - fork-tabs;
+- только в `mobile/App.tsx`: `onQuote` у `Thread` (цитата выделением) и `isWorking` в `counting` - remote-access;
+  `PhoneRewind`, `refills`, `RewindSheet` - rewind; `forkFrom`/`forkWhole` (`kind: 'branch'`, `before`) - fork-tabs;
   `openMachineScreen`, `openRepository`, `Door`/`from`, `edit.home`/`edit.origin` -
   remote-access и scenarios; `vividOf` - calm-colors; `case 'effort'` в `mobile/feed.ts` - models
 

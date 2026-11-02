@@ -1887,6 +1887,7 @@ export const uk: Dict = {
         waitingQuestion: 'чекає на вас · питання',
         waitingPlan: 'чекає на вас · план',
         working: 'працює',
+        agents: (n) => (n === 1 ? 'працює субагент' : `працюють субагенти: ${n}`),
         done: 'готово',
       },
       reach: {
