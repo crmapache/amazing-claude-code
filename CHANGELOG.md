@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.55] - 2026-11-01
+
+- Fixed: a quote taken from Claude's answer went to the end of your message instead of where the cursor was, most noticeably in a message of several lines. Marking words in the conversation takes the cursor out of the input field, and the quote was simply added at the end. Now the field remembers where the cursor stood, and quotes, references from the editor and files picked in the dialog land right there. The keyboard handed back to the field after renaming a tab also returns to that spot rather than to the end.
+- Fixed: an attachment put in the middle of a line brought a second space next to the one already there, one put at the start of a line stuck to the last word of the line above, and one at the end of a line had the next letter you typed glued to it. Now there is exactly one space on each side.
+- Fixed: quotes in the input field are numbered in the order they stand. A quote put in front of another one read "ref2 ... ref1", and after removing the first of two quotes the next one got the same number as the quote left in place.
+
 ## [0.13.54] - 2026-10-31
 
 - Fixed: now and then the panel went completely white and only a restart of the IDE brought it back. The cause is a bug in the IDE itself (JBR-10027 in the JetBrains tracker): the IDE sometimes shuts its own built-in browser down, and every view it draws goes blank at once, this panel and Markdown previews alike, with nothing written to the IDE's log. The plugin can't bring that browser back, but it now notices when it happens and says so in place of the white panel, with a button to restart the IDE and a link to the bug.
@@ -1121,7 +1127,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.54...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.55...HEAD
+[0.13.55]: https://github.com/crmapache/amazing-claude-code/compare/0.13.54...0.13.55
 [0.13.54]: https://github.com/crmapache/amazing-claude-code/compare/0.13.53...0.13.54
 [0.13.53]: https://github.com/crmapache/amazing-claude-code/compare/0.13.52...0.13.53
 [0.13.52]: https://github.com/crmapache/amazing-claude-code/compare/0.13.51...0.13.52
