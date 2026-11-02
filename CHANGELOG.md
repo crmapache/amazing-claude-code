@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.56] - 2026-11-01
+
+- Added: quote a piece of Claude's answer from the phone. Select the words in the answer and a Quote button appears over the conversation; it puts them above the message field, the way the desk quotes a selection. Before, the phone could only quote a whole message from its three dots. The button stands at the bottom of the conversation and moves to the top when the words you selected are down there, so it never covers them or the selection handle.
+- Fixed: on the phone a conversation showed as done the moment Claude's own turn ended, while the background agents it had started were still working, sometimes for half an hour. The desk's tab already showed it as working. Now the phone does too, in the list, the tab strip and the tabs sheet, and the line under the conversation says how many subagents are still at it. The time beside it counts from the start of the work rather than starting over every time an agent reports back.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.55] - 2026-11-01
 
 - Fixed: a quote taken from Claude's answer went to the end of your message instead of where the cursor was, most noticeably in a message of several lines. Marking words in the conversation takes the cursor out of the input field, and the quote was simply added at the end. Now the field remembers where the cursor stood, and quotes, references from the editor and files picked in the dialog land right there. The keyboard handed back to the field after renaming a tab also returns to that spot rather than to the end.
@@ -1127,7 +1133,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.55...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.56...HEAD
+[0.13.56]: https://github.com/crmapache/amazing-claude-code/compare/0.13.55...0.13.56
 [0.13.55]: https://github.com/crmapache/amazing-claude-code/compare/0.13.54...0.13.55
 [0.13.54]: https://github.com/crmapache/amazing-claude-code/compare/0.13.53...0.13.54
 [0.13.53]: https://github.com/crmapache/amazing-claude-code/compare/0.13.52...0.13.53
