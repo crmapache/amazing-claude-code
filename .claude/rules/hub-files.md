@@ -41,6 +41,7 @@ paths:
 - `reuseMessage`, `intoField` - message-reuse
 - `queueEdits`, `takeBackQueued`, `case 'queuedTaken'`, `before` в `intoTheQueue` - queue-edit
 - `pickTab`, `focusToken` (фокус в `startSession`, `resume`, `closeSession`) - composer-field
+- `onQuote` у `SelectionMenu` и `addToDraft` (вставка снаружи встаёт в каретку) - composer-field
 - `spellcheck`, `setSpellcheck`, `case 'spellcheck'`, атрибут на корне документа - composer-field
 - `shareEditor`, `editorContext`, `editorOnce`, `editorShown`, `openEditorMenu`, `pickEditor`, `withEditor` в `submit`, `case 'editorContext'` - editor-context
 - `menuConversation` (сообщение `sessionMenu` для меню правой кнопки), `status` в `runLocal`, `case 'sessionInfo'` - session-info

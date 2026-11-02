@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { blockText, caretScrollShift, isTypingField, spaceGoesWithChip } from './composerDom'
+import { blockText, caretScrollShift, isTypingField, needsTrailingSpace, placeAmong, spaceGoesWithChip } from './composerDom'
 
 /**
  * How far the input field scrolls to keep the line being typed in sight - see scrollCaretIntoView.
@@ -105,5 +105,71 @@ describe('the space after a removed chip', () => {
   it('stays between two words the chip stood between with nothing else', () => {
     // "see[chip] and" without the chip is "see and", not "seeand".
     expect(spaceGoesWithChip('e', 'a')).toBe(false)
+  })
+})
+
+/**
+ * Whether a chip just put in needs a space after it - see needsTrailingSpace. The caret stands past the chip,
+ * and the next letter typed goes in right there.
+ */
+describe('the space after a chip put in', () => {
+  it('is added before a word, at the end of the field, and before a line break', () => {
+    expect(needsTrailingSpace('a')).toBe(true)
+    expect(needsTrailingSpace('')).toBe(true)
+    // The end of a line: without it the next letter is glued to the chip.
+    expect(needsTrailingSpace('\n')).toBe(true)
+  })
+
+  it('is not added before a space already standing there', () => {
+    expect(needsTrailingSpace(' ')).toBe(false)
+    expect(needsTrailingSpace('\u00a0')).toBe(false)
+    expect(needsTrailingSpace('\t')).toBe(false)
+  })
+})
+
+/**
+ * Where a remembered caret goes back to - see placeAmong. A quote marked in the feed lands on this place, and
+ * a place that falls one node off puts it a word or a line away from where the person was writing.
+ */
+describe('the place the caret is put back on', () => {
+  /** "first line", a line break, a chip, "second line" - the way the field holds a draft with a quote in it. */
+  const field = [
+    { places: 10, text: true },
+    { places: 1, text: true },
+    { places: 1, text: false },
+    { places: 11, text: true },
+  ]
+
+  it('is inside the text it was counted in', () => {
+    expect(placeAmong(field, 0)).toEqual({ index: 0, offset: 0 })
+    expect(placeAmong(field, 5)).toEqual({ index: 0, offset: 5 })
+    expect(placeAmong(field, 16)).toEqual({ index: 3, offset: 4 })
+  })
+
+  it('stays at the end of a text rather than going before what follows it', () => {
+    // The end of the first line, not the start of the break after it.
+    expect(placeAmong(field, 10)).toEqual({ index: 0, offset: 10 })
+    // Before the chip, in the text that leads up to it.
+    expect(placeAmong(field, 11)).toEqual({ index: 1, offset: 1 })
+  })
+
+  it('is past a chip as the start of what follows it', () => {
+    expect(placeAmong(field, 12)).toEqual({ index: 3, offset: 0 })
+  })
+
+  it('is right before a chip that stands first', () => {
+    expect(placeAmong([{ places: 1, text: false }, { places: 3, text: true }], 0)).toEqual({ index: 0, offset: 0 })
+  })
+
+  it('is the end of the field for a chip that stands last, and for a draft that has grown shorter', () => {
+    expect(placeAmong([{ places: 3, text: true }, { places: 1, text: false }], 4)).toBeNull()
+    expect(placeAmong(field, 40)).toBeNull()
+    expect(placeAmong([], 0)).toBeNull()
+  })
+
+  it('is pressed past something that is not text but holds some', () => {
+    // A block the browser made of a line: a place inside it is put after it.
+    expect(placeAmong([{ places: 4, text: false }, { places: 2, text: true }], 2)).toEqual({ index: 1, offset: 0 })
+    expect(placeAmong([{ places: 2, text: true }, { places: 4, text: false }], 4)).toBeNull()
   })
 })

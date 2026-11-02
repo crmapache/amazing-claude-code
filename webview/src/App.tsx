@@ -6955,17 +6955,15 @@ export const App = () => {
               }}
               onQuote={() => {
                 // As a chip right in the input field, like a file or an image, rather than as a separate
-                // block above it: a quote from the agent's output is no worse than an attachment.
+                // block above it: a quote from the agent's output is no worse than an attachment. Through
+                // the field, as a reference from the editor goes: there it lands where the caret stood
+                // before the words were marked in the feed (see noteCaret), and it is a hand on the field,
+                // which also closes the chain of a rewrite - a way back still on offer would take the
+                // quote away with it. The field renumbers quotes by their place (see relabelChips); the
+                // number here is right for the one road that does not pass the field, the end of the draft.
                 const ordinal = draft.tokens.filter((token) => token.kind === 'chip' && token.chip.kind === 'quote').length + 1
-                editDraft(active, {
-                  tokens: appendChip(draft.tokens, { kind: 'quote', value: `ref${ordinal}`, text: selection.text }),
-                })
-                // It goes into the draft without passing through the field, so the chain has to be closed
-                // here by hand: a rewrite with a quote added under it is a draft of one's own again, and a
-                // way back still on offer would take the quote away with it.
-                forgetImproveSource(active)
+                addToDraft({ kind: 'chip', chip: { kind: 'quote', value: `ref${ordinal}`, text: selection.text } })
                 clearSelection()
-                setFocusToken((current) => current + 1)
               }}
             />
           ) : null}

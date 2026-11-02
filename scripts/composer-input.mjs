@@ -173,6 +173,63 @@ await page.evaluate(() => {
 await sleep(300)
 check('a paste lands where the caret stood', await text(), 'hello PASTED world')
 
+/** The field with every chip as [chip]: where an attachment stands rather than what its caption says. */
+const shape = () =>
+  page.$eval(FIELD, (node) =>
+    Array.from(node.childNodes)
+      .map((child) => (child.nodeType === Node.TEXT_NODE ? child.textContent : '[chip]'))
+      .join(''),
+  )
+
+/** The quotes' numbers in the order they stand in the field. */
+const quoteNumbers = () =>
+  page.$$eval(`${FIELD} [contenteditable="false"]`, (nodes) =>
+    nodes.map((node) => node.textContent.split(':')[0]).filter((label) => label.startsWith('ref')),
+  )
+
+/**
+ * A quote is taken by marking words in an answer, and that takes the page's one selection away from the
+ * field: the quote has to land where the caret stood before that, not at the end of the draft (see
+ * noteCaret). The menu acts on mousedown, which keeps the words marked (see SelectionMenu).
+ */
+const quoteFromFeed = async () => {
+  const box = await (await page.$('[data-copyable]')).boundingBox()
+  await page.mouse.move(box.x + 10, box.y + 50)
+  await page.mouse.down()
+  await page.mouse.move(box.x + 120, box.y + 50, { steps: 8 })
+  await page.mouse.up()
+  await sleep(300)
+  await page.getByRole('button', { name: /quote/i }).first().dispatchEvent('mousedown')
+  await sleep(400)
+}
+
+await clear()
+await page.click(FIELD)
+await page.keyboard.type('one', { delay: 5 })
+await page.keyboard.press('Shift+Enter')
+await page.keyboard.type('two', { delay: 5 })
+await page.keyboard.press('Shift+Enter')
+await page.keyboard.type('three', { delay: 5 })
+// The end of the first line: back over "three", a break, "two" and a break.
+await caretAt(10)
+await sleep(200)
+await quoteFromFeed()
+check('a quote lands where the caret stood in a draft of several lines', await shape(), 'one [chip] \ntwo\nthree')
+await page.keyboard.type('X', { delay: 5 })
+check('and the typing goes on right past it', await shape(), 'one [chip] X\ntwo\nthree')
+// The very start of the field, in front of the quote just taken.
+await page.evaluate(() => {
+  const root = document.querySelector('[contenteditable="true"]')
+  const range = document.createRange()
+  range.setStart(root.firstChild, 0)
+  range.collapse(true)
+  window.getSelection().removeAllRanges()
+  window.getSelection().addRange(range)
+})
+await sleep(200)
+await quoteFromFeed()
+check('a quote put in front of another one is numbered first', await quoteNumbers(), ['ref1', 'ref2'])
+
 await clear()
 await page.click(FIELD)
 await page.keyboard.type('one', { delay: 5 })

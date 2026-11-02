@@ -67,13 +67,14 @@ import {
   insertAtRange,
   needsLeadingSpace,
   needsTrailingSpace,
+  noteCaret,
   notePastedPath,
   padTrailingBreak,
   placeCaretAtEnd,
   placeCaretBefore,
   placeCaretBeside,
   rebuildDom,
-  relabelImages,
+  relabelChips,
   removeChip,
   scrollCaretIntoView,
   splitTokens,
@@ -664,7 +665,7 @@ export const Composer = ({
     rebuildDom(root, tokens)
     // A draft may have been set aside with captions that have gone stale since - we show the numbers as
     // they are, and the state catches up with the first edit.
-    relabelImages(root, imageBaseCount)
+    relabelChips(root, imageBaseCount)
     lastReported.current = tokens
     filledLayout.current = layout
   }
@@ -772,6 +773,19 @@ export const Composer = ({
     document.addEventListener('selectionchange', syncHead)
     return () => document.removeEventListener('selectionchange', syncHead)
   }, [tokens])
+
+  /**
+   * Where the caret stood, kept for the moment the selection goes elsewhere on the page - a quote marked in
+   * the feed lands there rather than at the end of the draft (see noteCaret). The field is read at the
+   * moment of the move: a change of layout hands over a new one.
+   */
+  useEffect(() => {
+    const note = () => {
+      if (input.current) noteCaret(input.current)
+    }
+    document.addEventListener('selectionchange', note)
+    return () => document.removeEventListener('selectionchange', note)
+  }, [])
 
   const query = head === null ? null : slashQueryFromText(head)
 
@@ -943,11 +957,11 @@ export const Composer = ({
   }
 
   /**
-   * Reads the field and along the way brings the images' captions into line with their order: the number
-   * in a chip has to match the [Image #N] the agent will see.
+   * Reads the field and along the way brings the captions of images and quotes into line with their order:
+   * the number in a chip has to match the [Image #N] the agent will see (see relabelChips).
    */
   const readTokens = (root: HTMLElement): UserToken[] => {
-    relabelImages(root, imageBaseCount)
+    relabelChips(root, imageBaseCount)
     return extractTokens(root)
   }
 
@@ -958,7 +972,7 @@ export const Composer = ({
    */
   useEffect(() => {
     const root = input.current
-    if (!root || !relabelImages(root, imageBaseCount)) return
+    if (!root || !relabelChips(root, imageBaseCount)) return
 
     const next = extractTokens(root)
     lastReported.current = next
