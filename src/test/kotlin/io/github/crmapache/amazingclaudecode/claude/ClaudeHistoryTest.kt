@@ -355,6 +355,17 @@ class ClaudeHistoryTest {
         assertEquals("C--Users-Ivan-dev-proj", ClaudeHistory.slugFor("C:\\Users\\Ivan\\dev\\proj"))
     }
 
+    // Only ASCII letters and digits survive, as in the CLI's own `[^a-zA-Z0-9]`: a folder named in Chinese,
+    // Russian or with an accent turns into hyphens, one per UTF-16 unit, or the panel looks into a folder
+    // the CLI never made and cannot find a single conversation of the project.
+    @Test
+    fun `letters outside ASCII become hyphens as the CLI makes them`() {
+        assertEquals("-srv----", ClaudeHistory.slugFor("/srv/\u9879\u76ee\u4e8c"))
+        assertEquals("-srv-------", ClaudeHistory.slugFor("/srv/\u043f\u0440\u043e\u0435\u043a\u0442"))
+        assertEquals("-srv-caf-", ClaudeHistory.slugFor("/srv/caf\u00e9"))
+        assertEquals("-srv---x", ClaudeHistory.slugFor("/srv/\ud83d\ude80x"))
+    }
+
     // Only what the feed can draw: the transcript also holds summaries, service records and the file
     // snapshots the CLI keeps beside them, and none of those are a message.
     @Test
