@@ -268,6 +268,9 @@ export const de: Dict = {
     reopen: (key) => (key ? `An alter Stelle wieder öffnen · ${key}` : 'An alter Stelle wieder öffnen'),
     fork: 'Fork',
     messages: (n) => (n === 1 ? `${n} Nachricht` : `${n} Nachrichten`),
+    delete: 'Löschen',
+    deleteTitle: 'Diese Unterhaltung löschen?',
+    deleteNote: 'Sie landet im Papierkorb und lässt sich von dort zurückholen.',
   },
 
   search: {

@@ -1086,4 +1086,44 @@ class ClaudeHistoryTest {
         assertTrue(ClaudeHistory.scan(lines.asSequence()).rewound)
         assertTrue(!ClaudeHistory.tailOf(lines.take(4).asSequence(), before = null, pageSize = 60).rewound)
     }
+
+    // Deleting from the history moves the transcript and the folder the CLI keeps beside it - subagents,
+    // tool output - and nothing else of the project's.
+    @Test
+    fun `deleting a conversation trashes its transcript and the folder beside it`() {
+        val dir = createTempDirectory("acc-trash").toFile()
+        val transcript = File(dir, "abc-123.jsonl").apply { writeText("{}\n") }
+        val beside = File(dir, "abc-123").apply { mkdirs() }
+        val other = File(dir, "other.jsonl").apply { writeText("{}\n") }
+        val trashed = mutableListOf<File>()
+
+        assertTrue(ClaudeHistory.trashIn(listOf(dir), "abc-123") { trashed += it; true })
+
+        assertEquals(listOf(transcript, beside), trashed)
+        assertTrue(other.isFile)
+    }
+
+    // The identifier is the panel's and is part of a path: one that could step out of the folder is refused
+    // before anything is looked up, and so is one with no transcript to its name.
+    @Test
+    fun `an identifier that is not a plain name, or names nothing, deletes nothing`() {
+        val dir = createTempDirectory("acc-trash").toFile()
+        File(dir, "real.jsonl").writeText("{}\n")
+        val trashed = mutableListOf<File>()
+        val trash = { file: File -> trashed += file; true }
+
+        assertFalse(ClaudeHistory.trashIn(listOf(dir), "../real", trash))
+        assertFalse(ClaudeHistory.trashIn(listOf(dir), "", trash))
+        assertFalse(ClaudeHistory.trashIn(listOf(dir), "missing", trash))
+        assertEquals(emptyList(), trashed)
+    }
+
+    // A trash that refuses leaves the conversation where it was, and says so.
+    @Test
+    fun `a refused trash reports the conversation as not deleted`() {
+        val dir = createTempDirectory("acc-trash").toFile()
+        File(dir, "real.jsonl").writeText("{}\n")
+
+        assertFalse(ClaudeHistory.trashIn(listOf(dir), "real") { false })
+    }
 }

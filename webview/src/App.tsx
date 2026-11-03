@@ -928,6 +928,8 @@ export const App = () => {
   const [calls, setCalls] = useState<Record<string, TabCall>>({})
   /** The project's past conversations: null means the list has not arrived yet (see the startup requests). */
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
+  /** Whether the IDE can delete a past conversation - only into a trash (see ClaudeHistory.canTrash). */
+  const [historyCanDelete, setHistoryCanDelete] = useState(false)
   /**
    * The statistics tab's figures: null until the IDE answers the first request. Asked for at startup
    * (the menu's row shows the achievements' count without the tab being opened), again whenever the tab
@@ -2952,6 +2954,7 @@ export const App = () => {
 
           case 'history':
             setHistory(message.conversations)
+            setHistoryCanDelete(message.canDelete === true)
             break
 
           case 'searchResults': {
@@ -7106,6 +7109,17 @@ export const App = () => {
               reopenTab(key)
             }}
             reopenKey={keyText(panelKeys.reopenTab)}
+            onDelete={
+              historyCanDelete
+                ? (entry) => {
+                    // Off the list at once; the IDE's answer is the list again, with the row gone for good
+                    // or back when the trash refused it.
+                    setHistory((current) => current?.filter((item) => item.id !== entry.id) ?? current)
+                    send({ type: 'deleteConversation', id: entry.id })
+                  }
+                : undefined
+            }
+            isOpen={(id) => tabHolding(id, sessions, (tab) => panelsRef.current[tab]?.sessionId) !== undefined}
           />
         ) : null}
 

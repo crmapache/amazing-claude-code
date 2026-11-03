@@ -342,6 +342,12 @@ internal object RemoteCommands {
          */
         "agentTranscript",
         "bash",
+        /**
+         * Deleting a past conversation from the history (see ProjectCatalog.deleteConversation). It goes to
+         * the trash of the machine the IDE stands on, where nobody holding the phone can take it back out -
+         * so it is a press for the desk only, like closing a tab.
+         */
+        "deleteConversation",
         "closeSession",
         "reorderGroups",
         // The same list, one step finer: the order the tabs at the desk are drawn in, which a phone has

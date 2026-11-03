@@ -713,6 +713,8 @@ internal class ProjectCatalog(
                 clientId,
                 buildJsonObject {
                     put("type", "history")
+                    // Whether the rows may offer deleting - see ClaudeHistory.canTrash.
+                    put("canDelete", ClaudeHistory.canTrash())
                     putJsonArray("conversations") {
                         for (entry in entries) {
                             addJsonObject {
@@ -730,6 +732,27 @@ internal class ProjectCatalog(
                     }
                 }.toString(),
             )
+        }
+    }
+
+    /**
+     * Deleting a past conversation from the history: into the system's trash (see ClaudeHistory.moveToTrash),
+     * then the list again to whoever asked, so the row goes - or, when the trash refused, stays.
+     *
+     * A conversation a tab holds is not touched: its process writes into that very file, and the tab would
+     * carry on into a transcript nobody can find. The panel offers no button on such a row; this is the
+     * same rule for a message that arrives anyway, from an older client or a race with a tab being opened.
+     */
+    fun deleteConversation(clientId: String, id: String) {
+        if (id.isEmpty() || hub.holdsConversation(id)) {
+            sendHistory(clientId)
+            return
+        }
+        ApplicationManager.getApplication().executeOnPooledThread {
+            if (!ClaudeHistory.moveToTrash(project.basePath, id)) {
+                thisLogger().warn("Could not move conversation $id to the trash")
+            }
+            sendHistory(clientId)
         }
     }
 

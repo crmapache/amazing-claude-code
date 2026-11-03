@@ -16,6 +16,7 @@ paths:
   - "webview/src/hooks/useEarlierPages.ts"
   - "webview/src/hooks/useEarlierPages.test.ts"
   - "webview/src/components/History.tsx"
+  - "src/main/kotlin/io/github/crmapache/amazingclaudecode/claude/ProjectCatalog.kt"
   - "src/main/kotlin/io/github/crmapache/amazingclaudecode/claude/JournalTrim.kt"
   - "src/test/kotlin/io/github/crmapache/amazingclaudecode/claude/JournalTrimTest.kt"
 ---
@@ -288,3 +289,16 @@ CLI не стирает откатанные ходы из файла, а пом
 (`ClaudeHistory.page`) и строка списка (`entryFor`, счёт сообщений) читаются второй раз без отрезанного, если
 первый проход встретил метку; файл без метки читается как раньше. Как именно режется отрезок и почему не по
 цепочке `parentUuid` - в `rewind.md` (`TranscriptRewinds`).
+
+## Удаление разговора из истории - только в корзину
+
+Строка «Сегодня»/«Раньше» при наведении показывает крестик; после вопроса (`Confirm`) IDE переносит транскрипт
+и папку рядом с ним (субагенты, вывод инструментов) в системную корзину (`ClaudeHistory.moveToTrash`,
+`ProjectCatalog.deleteConversation`) и отвечает списком заново.
+
+- **Без корзины кнопки нет.** `canDelete` в сообщении `history` - это `Desktop.Action.MOVE_TO_TRASH`; там, где его
+  нет, удаление было бы безвозвратным, и строка его просто не предлагает.
+- **Открытый во вкладке разговор не удаляется** - ни кнопкой (`isOpen` через `tabHolding`), ни сообщением
+  (`ClaudeSessionHub.holdsConversation`): процесс вкладки пишет ровно в этот файл.
+- **Идентификатор приходит от панели и становится путём** - поэтому берётся только простое имя (`SAFE_ID`).
+- **С телефона запрещено** (`RemoteCommands.DENIED`): корзина стоит у стола, с дивана из неё не достать.

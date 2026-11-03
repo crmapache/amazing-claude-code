@@ -265,6 +265,9 @@ export const zh: Dict = {
     reopen: (key) => (key ? `在原位置重新打开 · ${key}` : '在原位置重新打开'),
     fork: '分叉',
     messages: (n) => `${n} 条消息`,
+    delete: '删除',
+    deleteTitle: '删除这个对话？',
+    deleteNote: '会移到废纸篓，可以从那里恢复。',
   },
 
   search: {

@@ -1575,7 +1575,12 @@ type ShellMessageBody =
    */
   | { type: 'project'; gitBranch?: string; pullRequest?: string; pullRequestUrl?: string }
   /** This project's past conversations: Claude Code keeps them itself. */
-  | { type: 'history'; conversations: HistoryEntry[] }
+  | {
+      type: 'history'
+      conversations: HistoryEntry[]
+      /** Whether a row may be deleted - only where the machine has a trash (see ClaudeHistory.canTrash). */
+      canDelete?: boolean
+    }
   /**
    * A page of one conversation's messages, older than what the client already has - read off the
    * transcript on disk rather than the journal's own catch-up, which forgets its own beginning long
@@ -2758,6 +2763,8 @@ export type WebviewMessage =
   /** `/status` - what the IDE knows of this tab's conversation, answered by a `sessionInfo` of its own. */
   | { type: 'sessionInfo'; sessionId: string }
   | { type: 'history' }
+  /** A past conversation into the system's trash; the IDE answers with the list again (see deleteConversation). */
+  | { type: 'deleteConversation'; id: string }
   /** A page further back than the journal's own catch-up reaches - see ShellMessageBody's historyPage. */
   | { type: 'historyPage'; sessionId: string; before?: string }
   /**

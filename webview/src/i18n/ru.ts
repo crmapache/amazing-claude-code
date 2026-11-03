@@ -278,6 +278,9 @@ export const ru: Dict = {
       if (last >= 2 && last <= 4) return `${n} сообщения`
       return `${n} сообщений`
     },
+    delete: 'Удалить',
+    deleteTitle: 'Удалить этот разговор?',
+    deleteNote: 'Он уйдёт в корзину, и оттуда его можно вернуть.',
   },
 
   search: {

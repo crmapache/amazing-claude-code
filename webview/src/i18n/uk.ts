@@ -278,6 +278,9 @@ export const uk: Dict = {
       if (last >= 2 && last <= 4) return `${n} повідомлення`
       return `${n} повідомлень`
     },
+    delete: 'Видалити',
+    deleteTitle: 'Видалити цю розмову?',
+    deleteNote: 'Вона піде в кошик, і звідти її можна повернути.',
   },
 
   search: {

@@ -265,6 +265,9 @@ export const ko: Dict = {
     reopen: (key) => (key ? `원래 자리에 다시 열기 · ${key}` : '원래 자리에 다시 열기'),
     fork: '포크',
     messages: (n) => `메시지 ${n}개`,
+    delete: '삭제',
+    deleteTitle: '이 대화를 삭제할까요?',
+    deleteNote: '휴지통으로 이동하며, 거기서 되돌릴 수 있습니다.',
   },
 
   search: {

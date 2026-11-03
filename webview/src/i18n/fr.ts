@@ -269,6 +269,9 @@ export const fr: Dict = {
     reopen: (key) => (key ? `Rouvrir à sa place · ${key}` : 'Rouvrir à sa place'),
     fork: 'bifurcation',
     messages: (n) => (n === 1 ? `${n} message` : `${n} messages`),
+    delete: 'Supprimer',
+    deleteTitle: 'Supprimer cette conversation ?',
+    deleteNote: 'Elle part à la corbeille et peut en être restaurée.',
   },
 
   search: {

@@ -2,6 +2,7 @@ package io.github.crmapache.amazingclaudecode.claude
 
 import com.intellij.openapi.diagnostic.thisLogger
 import io.github.crmapache.amazingclaudecode.scenario.ScenarioConversations
+import java.awt.Desktop
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.file.Files
@@ -83,6 +84,40 @@ internal object ClaudeHistory {
         directoriesFor(workingDirectory)
             .map { it.resolve("$id.jsonl") }
             .firstOrNull { it.isFile }
+
+    /**
+     * Whether a conversation can be deleted from the history at all: only into the system's trash, where a
+     * press made by mistake can be taken back. Where the desktop has no trash (a bare Linux session, a
+     * headless IDE) the history offers no deleting rather than a deleting that cannot be undone.
+     */
+    fun canTrash(): Boolean =
+        runCatching { Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.MOVE_TO_TRASH) }
+            .getOrDefault(false)
+
+    /**
+     * Moves a past conversation into the system's trash: its transcript, and the folder beside it the CLI
+     * keeps the conversation's subagents and tool output in, so that nothing of it is left to be found by
+     * the search. True when the transcript went; false when there was none, or the trash refused it.
+     *
+     * The identifier comes from the panel and is part of a path, so only a plain name is taken - anything
+     * with a separator or a dot in it could reach outside the project's folder.
+     */
+    fun moveToTrash(workingDirectory: String?, id: String): Boolean =
+        trashIn(directoriesFor(workingDirectory), id, ::systemTrash)
+
+    /** [moveToTrash] over the folders given and with the trash given - apart so a test needs neither. */
+    internal fun trashIn(directories: List<File>, id: String, trash: (File) -> Boolean): Boolean {
+        if (!SAFE_ID.matches(id)) return false
+        val transcript = directories.map { it.resolve("$id.jsonl") }.firstOrNull { it.isFile } ?: return false
+        if (!runCatching { trash(transcript) }.getOrDefault(false)) return false
+        val beside = File(transcript.parentFile, id)
+        if (beside.isDirectory) runCatching { trash(beside) }
+        return true
+    }
+
+    private fun systemTrash(file: File): Boolean = Desktop.getDesktop().moveToTrash(file)
+
+    private val SAFE_ID = Regex("[A-Za-z0-9_-]+")
 
     /**
      * The name a person gave the conversation, as its file says last - null when none stands. Read after

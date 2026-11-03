@@ -1641,12 +1641,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     /** Whether what this entry would bring back is on the strip already - see [reopenTab]. */
     private fun stillOpen(entry: ClosedTabs.Entry, openPanels: Set<String>): Boolean = when (entry) {
         is ClosedTabs.Panel -> entry.id in openPanels
-        is ClosedTabs.Chat -> {
-            val conversation = entry.kept.tab.conversationId
-            conversation != null && tabs.tabs().any { tab ->
-                (conversations.conversationIdOf(tab.id) ?: remembered[tab.id]?.conversationId) == conversation
-            }
-        }
+        is ClosedTabs.Chat -> entry.kept.tab.conversationId?.let(::holdsConversation) == true
+    }
+
+    /** Whether a tab on the strip holds this conversation - asleep or awake. */
+    internal fun holdsConversation(conversation: String): Boolean = tabs.tabs().any { tab ->
+        (conversations.conversationIdOf(tab.id) ?: remembered[tab.id]?.conversationId) == conversation
     }
 
     /**

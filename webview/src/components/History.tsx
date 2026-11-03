@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import { describeWhen } from '../feed/when'
 import { useT } from '../i18n'
 import type { ClosedTab, HistoryEntry } from '../protocol'
+import { Confirm } from './Confirm'
+import { CrossIcon } from './scenarios/icons'
 import s from './sideMenu.module.css'
 
 interface HistoryProps {
@@ -15,6 +18,16 @@ interface HistoryProps {
   onReopen?: (key: string) => void
   /** The panel's key for the latest of them, as a hover hint names it - empty when there is none. */
   reopenKey?: string
+  /**
+   * Deleting a past conversation - absent where it cannot be done (no trash on this machine, an IDE built
+   * before it), and then the rows have no button.
+   */
+  onDelete?: (entry: HistoryEntry) => void
+  /**
+   * Whether a conversation is open in a tab: such a row offers no deleting, because the tab's process is
+   * writing into the very file and would carry on into a transcript nobody can find.
+   */
+  isOpen?: (id: string) => boolean
 }
 
 /**
@@ -25,8 +38,12 @@ interface HistoryProps {
  * in an hour ago" is a different question from "the one from that week", and a single flat list makes
  * the first question as much work as the second.
  */
-export const History = ({ conversations, onOpen, closed = [], onReopen, reopenKey = '' }: HistoryProps) => {
+export const History = ({ conversations, onOpen, closed = [], onReopen, reopenKey = '', onDelete, isOpen }: HistoryProps) => {
   const t = useT()
+  // Asked first: the press takes a whole conversation off the list, and the trash is the only way back.
+  const [removing, setRemoving] = useState<HistoryEntry | null>(null)
+  const deleteOf = (entry: HistoryEntry) =>
+    onDelete && !isOpen?.(entry.id) ? () => setRemoving(entry) : undefined
   const startOfToday = new Date().setHours(0, 0, 0, 0)
   const today = conversations?.filter((entry) => entry.updatedAt >= startOfToday) ?? []
   const earlier = conversations?.filter((entry) => entry.updatedAt < startOfToday) ?? []
@@ -69,7 +86,7 @@ export const History = ({ conversations, onOpen, closed = [], onReopen, reopenKe
             <span className={s.screenLabel}>{t.history.today}</span>
           </div>
           {today.map((entry) => (
-            <Entry key={entry.id} entry={entry} onOpen={onOpen} />
+            <Entry key={entry.id} entry={entry} onOpen={onOpen} onDelete={deleteOf(entry)} />
           ))}
         </>
       ) : null}
@@ -80,23 +97,64 @@ export const History = ({ conversations, onOpen, closed = [], onReopen, reopenKe
             <span className={s.screenLabel}>{t.history.earlier}</span>
           </div>
           {earlier.map((entry) => (
-            <Entry key={entry.id} entry={entry} onOpen={onOpen} />
+            <Entry key={entry.id} entry={entry} onOpen={onOpen} onDelete={deleteOf(entry)} />
           ))}
         </>
+      ) : null}
+
+      {removing && onDelete ? (
+        <Confirm
+          title={t.history.deleteTitle}
+          subject={removing.title}
+          note={t.history.deleteNote}
+          confirmLabel={t.history.delete}
+          onConfirm={() => {
+            onDelete(removing)
+            setRemoving(null)
+          }}
+          onCancel={() => setRemoving(null)}
+        />
       ) : null}
     </div>
   )
 }
 
-const Entry = ({ entry, onOpen }: { entry: HistoryEntry; onOpen: (entry: HistoryEntry) => void }) => {
+const Entry = ({
+  entry,
+  onOpen,
+  onDelete,
+}: {
+  entry: HistoryEntry
+  onOpen: (entry: HistoryEntry) => void
+  onDelete?: () => void
+}) => {
   const t = useT()
 
-  return (
+  const row = (
     <button type="button" className={s.historyRow} onClick={() => onOpen(entry)} data-tooltip={entry.id}>
       <span className={s.historyTitle}>{entry.title}</span>
       <span className={s.historyMeta}>
         {describeWhen(entry.updatedAt)} · {t.history.messages(entry.messages)}
       </span>
     </button>
+  )
+
+  if (!onDelete) return row
+
+  // The button stands beside the row rather than inside it: a button within a button is not valid markup,
+  // and a press on it must not also open the conversation it is about to delete.
+  return (
+    <div className={s.historyItem}>
+      {row}
+      <button
+        type="button"
+        className={s.historyDelete}
+        data-tooltip={t.history.delete}
+        aria-label={t.history.delete}
+        onClick={onDelete}
+      >
+        <CrossIcon />
+      </button>
+    </div>
   )
 }

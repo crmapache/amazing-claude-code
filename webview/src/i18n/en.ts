@@ -340,6 +340,10 @@ export const en = {
     /** Beside the time on a closed fork's row. */
     fork: 'fork',
     messages: (n: number): string => (n === 1 ? `${n} message` : `${n} messages`),
+    /** On a past conversation's row, beside the hover; only where the machine has a trash to put it in. */
+    delete: 'Delete',
+    deleteTitle: 'Delete this conversation?',
+    deleteNote: 'It goes to the trash, and can be put back from there.',
   },
 
   search: {
