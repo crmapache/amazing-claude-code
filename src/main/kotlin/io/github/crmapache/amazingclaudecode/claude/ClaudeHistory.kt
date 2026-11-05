@@ -866,8 +866,16 @@ internal object ClaudeHistory {
      * Windows always did, because the colon after the drive letter stayed where it was. The panel
      * looked into a folder that did not exist and showed an empty list, while the conversations lay
      * right beside it.
+     *
+     * "A letter or a digit" is the CLI's ASCII class `[a-zA-Z0-9]`, not Kotlin's [Char.isLetterOrDigit]:
+     * the latter also keeps Chinese, Cyrillic, accented and every other non-Latin letter, so a project in
+     * a folder named in such a language got a name the CLI never makes. The list showed nothing, and a
+     * closed tab could not be reopened - it was taken for a conversation gone from disk and dropped. The
+     * string is walked by UTF-16 unit, as the CLI's regular expression does, so a character outside the
+     * basic plane becomes two hyphens there and here alike.
      */
-    internal fun slugFor(path: String): String = path.map { if (it.isLetterOrDigit()) it else '-' }.joinToString("")
+    internal fun slugFor(path: String): String =
+        path.map { if (it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9') it else '-' }.joinToString("")
 
     /**
      * Where to look for this project's conversations - inside the CLI's own directory, under the name the
