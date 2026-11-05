@@ -1,8 +1,8 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.util.io.TrashBin
 import io.github.crmapache.amazingclaudecode.scenario.ScenarioConversations
-import java.awt.Desktop
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.file.Files
@@ -88,36 +88,65 @@ internal object ClaudeHistory {
             .firstOrNull { it.isFile }
 
     /**
-     * Whether a conversation can be deleted from the history at all: only into the system's trash, where a
-     * press made by mistake can be taken back. Where the desktop has no trash (a bare Linux session, a
-     * headless IDE) the history offers no deleting rather than a deleting that cannot be undone.
+     * Whether this project's past conversations can be deleted from the history at all: only into a trash,
+     * where a press made by mistake can be taken back - and only into one that really takes them.
+     *
+     * Asked of the IDE's own trash for the folder the CLI keeps this project's conversations in, not of the
+     * machine. Java's move to the trash, on Windows, deletes for good and without a word whatever the recycle
+     * bin will not take (it tells Windows not to ask, see awt_Desktop.cpp): a network path, and that is exactly
+     * where a WSL project's conversations are read from. The IDE's trash agrees only to a path on the volume
+     * of the home folder - the one its own "delete to trash" in the project tree trusts - and on Linux it
+     * knows the desktop's trash, which Java's does not. No trash for that folder, no button on the rows.
      */
-    fun canTrash(): Boolean =
-        runCatching { Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.MOVE_TO_TRASH) }
-            .getOrDefault(false)
+    fun canTrash(workingDirectory: String?): Boolean =
+        SystemTrash.accepts(ClaudeHome.of(workingDirectory).projectsDirectory)
 
     /**
-     * Moves a past conversation into the system's trash: its transcript, and the folder beside it the CLI
-     * keeps the conversation's subagents and tool output in, so that nothing of it is left to be found by
-     * the search. True when the transcript went; false when there was none, or the trash refused it.
+     * Moves a past conversation into the trash: its transcript, and the folder beside it the CLI keeps the
+     * conversation's subagents and tool output in, so that nothing of it is left to be found by the search.
+     * False when the trash would not take the transcript or failed to; true when it went, or was not there to
+     * begin with - gone either way, which is all the history asks.
      *
      * The identifier comes from the panel and is part of a path, so only a plain name is taken - anything
      * with a separator or a dot in it could reach outside the project's folder.
      */
     fun moveToTrash(workingDirectory: String?, id: String): Boolean =
-        trashIn(directoriesFor(workingDirectory), id, ::systemTrash)
+        trashIn(directoriesFor(workingDirectory), id, SystemTrash)
 
     /** [moveToTrash] over the folders given and with the trash given - apart so a test needs neither. */
-    internal fun trashIn(directories: List<File>, id: String, trash: (File) -> Boolean): Boolean {
+    internal fun trashIn(directories: List<File>, id: String, trash: Trash): Boolean {
         if (!SAFE_ID.matches(id)) return false
-        val transcript = directories.map { it.resolve("$id.jsonl") }.firstOrNull { it.isFile } ?: return false
-        if (!runCatching { trash(transcript) }.getOrDefault(false)) return false
+        val transcript = directories.map { it.resolve("$id.jsonl") }.firstOrNull { it.isFile } ?: return true
+
+        // Asked of each path rather than once: a folder of the CLI's may be a link to another volume.
+        if (!trash.accepts(transcript)) return false
+        runCatching { trash.take(transcript) }.onFailure {
+            thisLogger().warn("The trash did not take a conversation", it)
+            return false
+        }
+
         val beside = File(transcript.parentFile, id)
-        if (beside.isDirectory) runCatching { trash(beside) }
+        if (beside.isDirectory && trash.accepts(beside)) {
+            runCatching { trash.take(beside) }.onFailure { thisLogger().warn("The trash did not take a conversation's folder", it) }
+        }
         return true
     }
 
-    private fun systemTrash(file: File): Boolean = Desktop.getDesktop().moveToTrash(file)
+    /** Where a deleted conversation goes - the IDE's trash, or a test's stand-in. */
+    internal interface Trash {
+        /** Whether this file can go to the trash and be taken back from it - never a deletion for good. */
+        fun accepts(file: File): Boolean
+
+        /** Into the trash; throws when it did not go. */
+        fun take(file: File)
+    }
+
+    private object SystemTrash : Trash {
+        override fun accepts(file: File): Boolean =
+            runCatching { TrashBin.isSupported() && TrashBin.canMoveToTrash(file.toPath()) }.getOrDefault(false)
+
+        override fun take(file: File) = TrashBin.moveToTrash(file.toPath())
+    }
 
     private val SAFE_ID = Regex("[A-Za-z0-9_-]+")
 

@@ -1169,6 +1169,19 @@ class ClaudeHistoryTest {
         assertTrue(!ClaudeHistory.tailOf(lines.take(4).asSequence(), before = null, pageSize = 60).rewound)
     }
 
+    /** A trash for the tests: takes what it [accepts] and lists it, or throws as a real one does on failure. */
+    private class TestTrash(private val accepts: (File) -> Boolean = { true }, private val fails: Boolean = false) :
+        ClaudeHistory.Trash {
+        val taken = mutableListOf<File>()
+
+        override fun accepts(file: File): Boolean = accepts.invoke(file)
+
+        override fun take(file: File) {
+            if (fails) throw java.io.IOException("the trash said no")
+            taken += file
+        }
+    }
+
     // Deleting from the history moves the transcript and the folder the CLI keeps beside it - subagents,
     // tool output - and nothing else of the project's.
     @Test
@@ -1177,35 +1190,41 @@ class ClaudeHistoryTest {
         val transcript = File(dir, "abc-123.jsonl").apply { writeText("{}\n") }
         val beside = File(dir, "abc-123").apply { mkdirs() }
         val other = File(dir, "other.jsonl").apply { writeText("{}\n") }
-        val trashed = mutableListOf<File>()
+        val trash = TestTrash()
 
-        assertTrue(ClaudeHistory.trashIn(listOf(dir), "abc-123") { trashed += it; true })
+        assertTrue(ClaudeHistory.trashIn(listOf(dir), "abc-123", trash))
 
-        assertEquals(listOf(transcript, beside), trashed)
+        assertEquals(listOf(transcript, beside), trash.taken)
         assertTrue(other.isFile)
     }
 
     // The identifier is the panel's and is part of a path: one that could step out of the folder is refused
-    // before anything is looked up, and so is one with no transcript to its name.
+    // before anything is looked up. One with no transcript to its name touches nothing and counts as gone -
+    // it is not on the disk, which is all the history asks.
     @Test
-    fun `an identifier that is not a plain name, or names nothing, deletes nothing`() {
+    fun `an identifier that is not a plain name deletes nothing, and one that names nothing is gone already`() {
         val dir = createTempDirectory("acc-trash").toFile()
         File(dir, "real.jsonl").writeText("{}\n")
-        val trashed = mutableListOf<File>()
-        val trash = { file: File -> trashed += file; true }
+        val trash = TestTrash()
 
         assertFalse(ClaudeHistory.trashIn(listOf(dir), "../real", trash))
         assertFalse(ClaudeHistory.trashIn(listOf(dir), "", trash))
-        assertFalse(ClaudeHistory.trashIn(listOf(dir), "missing", trash))
-        assertEquals(emptyList(), trashed)
+        assertTrue(ClaudeHistory.trashIn(listOf(dir), "missing", trash))
+        assertEquals(emptyList(), trash.taken)
     }
 
-    // A trash that refuses leaves the conversation where it was, and says so.
+    // A trash that would not take the file is never asked to: on Windows that is a deletion for good without a
+    // word (a WSL project's conversations, read over a network path). One that fails leaves it where it was.
     @Test
-    fun `a refused trash reports the conversation as not deleted`() {
+    fun `a trash that would not take a conversation, or failed to, leaves it where it was`() {
         val dir = createTempDirectory("acc-trash").toFile()
-        File(dir, "real.jsonl").writeText("{}\n")
+        val transcript = File(dir, "real.jsonl").apply { writeText("{}\n") }
 
-        assertFalse(ClaudeHistory.trashIn(listOf(dir), "real") { false })
+        val unwilling = TestTrash(accepts = { false })
+        assertFalse(ClaudeHistory.trashIn(listOf(dir), "real", unwilling))
+        assertEquals(emptyList(), unwilling.taken)
+
+        assertFalse(ClaudeHistory.trashIn(listOf(dir), "real", TestTrash(fails = true)))
+        assertTrue(transcript.isFile)
     }
 }

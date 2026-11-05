@@ -1733,12 +1733,29 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     }
 
     /** The tabs that can be opened again, to the windows at this desk - see [closedTabsMessage]. */
-    private fun sendClosedTabs() {
-        val message = closedTabsMessage()
+    private fun sendClosedTabs() = emitToDesk(closedTabsMessage())
+
+    /**
+     * A conversation deleted from the history (see ProjectCatalog.deleteConversation) goes from "Recently
+     * closed" too, held words and all: the row would only fail to bring it back, and the person has just said
+     * they want it gone.
+     */
+    fun forgetClosedConversation(conversation: String) {
+        if (!closedTabs.forget(conversation)) return
+
+        rememberTabs()
+        sendClosedTabs()
+    }
+
+    /**
+     * A message for every window at this desk and for no phone: the list of closed tabs, the history after a
+     * conversation was deleted from it. Not kept for whoever comes later - each window asks on its own start.
+     */
+    fun emitToDesk(json: String) {
         for (client in clients.values) {
             if (!client.isLocal) continue
-            runCatching { client.deliver(listOf(message)) }
-                .onFailure { thisLogger().warn("A client could not take the closed tabs", it) }
+            runCatching { client.deliver(listOf(json)) }
+                .onFailure { thisLogger().warn("A client at the desk could not take a message", it) }
         }
     }
 

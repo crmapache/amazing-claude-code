@@ -340,10 +340,13 @@ export const en = {
     /** Beside the time on a closed fork's row. */
     fork: 'fork',
     messages: (n: number): string => (n === 1 ? `${n} message` : `${n} messages`),
-    /** On a past conversation's row, beside the hover; only where the machine has a trash to put it in. */
+    /** On a past conversation's row, under the hover; only where the IDE's trash takes this project's conversations. */
     delete: 'Delete',
     deleteTitle: 'Delete this conversation?',
     deleteNote: 'It goes to the trash, and can be put back from there.',
+    /** Above the list when a delete did not happen: the conversation is open in a tab, or the trash would not take it. */
+    deleteOpen: (title: string): string => `“${title}” is open in a tab. Close the tab to delete it.`,
+    deleteRefused: (title: string): string => `“${title}” could not be moved to the trash, so it was not deleted.`,
   },
 
   search: {

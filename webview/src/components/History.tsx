@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { describeWhen } from '../feed/when'
 import { useT } from '../i18n'
-import type { ClosedTab, HistoryEntry } from '../protocol'
+import type { ClosedTab, HistoryDeleteOutcome, HistoryEntry } from '../protocol'
 import { Confirm } from './Confirm'
 import { CrossIcon } from './scenarios/icons'
 import s from './sideMenu.module.css'
@@ -19,8 +19,8 @@ interface HistoryProps {
   /** The panel's key for the latest of them, as a hover hint names it - empty when there is none. */
   reopenKey?: string
   /**
-   * Deleting a past conversation - absent where it cannot be done (no trash on this machine, an IDE built
-   * before it), and then the rows have no button.
+   * Deleting a past conversation - absent where it cannot be done (no trash that takes this project's
+   * conversations, an IDE built before it), and then the rows have no button.
    */
   onDelete?: (entry: HistoryEntry) => void
   /**
@@ -28,6 +28,8 @@ interface HistoryProps {
    * writing into the very file and would carry on into a transcript nobody can find.
    */
   isOpen?: (id: string) => boolean
+  /** Why the last delete did not happen, said above the list - null when it did, or nothing was deleted. */
+  refusal?: { title: string; outcome: HistoryDeleteOutcome } | null
 }
 
 /**
@@ -38,7 +40,16 @@ interface HistoryProps {
  * in an hour ago" is a different question from "the one from that week", and a single flat list makes
  * the first question as much work as the second.
  */
-export const History = ({ conversations, onOpen, closed = [], onReopen, reopenKey = '', onDelete, isOpen }: HistoryProps) => {
+export const History = ({
+  conversations,
+  onOpen,
+  closed = [],
+  onReopen,
+  reopenKey = '',
+  onDelete,
+  isOpen,
+  refusal = null,
+}: HistoryProps) => {
   const t = useT()
   // Asked first: the press takes a whole conversation off the list, and the trash is the only way back.
   const [removing, setRemoving] = useState<HistoryEntry | null>(null)
@@ -50,6 +61,13 @@ export const History = ({ conversations, onOpen, closed = [], onReopen, reopenKe
 
   return (
     <div className={`${s.screen} ${s.screenList}`}>
+      {/* At the top, where the eye is after the press: the row it is about came back somewhere in the list. */}
+      {refusal && refusal.outcome !== 'trashed' ? (
+        <div className={`${s.cardError} ${s.choiceNote}`} role="status">
+          {refusal.outcome === 'open' ? t.history.deleteOpen(refusal.title) : t.history.deleteRefused(refusal.title)}
+        </div>
+      ) : null}
+
       {/* Above the past conversations rather than among them: these are tabs - with what was in their field,
           their model and their place on the strip - and opening one puts it back as it was, which a
           conversation picked below does not. A conversation may stand in both lists for that reason. */}

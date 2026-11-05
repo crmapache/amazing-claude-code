@@ -268,6 +268,8 @@ export const ko: Dict = {
     delete: '삭제',
     deleteTitle: '이 대화를 삭제할까요?',
     deleteNote: '휴지통으로 이동하며, 거기서 되돌릴 수 있습니다.',
+    deleteOpen: (title) => `“${title}” 대화가 탭에서 열려 있습니다. 삭제하려면 탭을 닫으세요.`,
+    deleteRefused: (title) => `“${title}” 대화를 휴지통으로 옮기지 못해 삭제되지 않았습니다.`,
   },
 
   search: {

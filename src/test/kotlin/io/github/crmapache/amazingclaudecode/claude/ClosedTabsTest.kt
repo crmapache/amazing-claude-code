@@ -2,7 +2,9 @@ package io.github.crmapache.amazingclaudecode.claude
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * The tabs a person closed, to be opened again - the order the key walks them in, and what it skips. Wrong here
@@ -102,6 +104,20 @@ class ClosedTabsTest {
         // Open again by another road since the row was drawn: nothing comes back, and the row goes.
         assertNull(closed.take("chat:c-b") { true })
         assertEquals(emptyList(), closed.list())
+    }
+
+    // A conversation deleted from the history goes from here too, and nothing else does - a tab with no
+    // conversation of its own and the panel's tabs stay where they were.
+    @Test
+    fun `a deleted conversation's closed tab goes, and only that`() {
+        val closed = ClosedTabs()
+        closed.push(chat("a"))
+        closed.push(chat("b", conversation = null))
+        closed.push(panel("__statistics__"))
+
+        assertTrue(closed.forget("c-a"))
+        assertEquals(listOf("panel:__statistics__", "chat:b"), closed.list().map { it.key })
+        assertFalse(closed.forget("c-a"))
     }
 
     @Test

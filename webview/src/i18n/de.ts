@@ -271,6 +271,8 @@ export const de: Dict = {
     delete: 'Löschen',
     deleteTitle: 'Diese Unterhaltung löschen?',
     deleteNote: 'Sie landet im Papierkorb und lässt sich von dort zurückholen.',
+    deleteOpen: (title) => `„${title}“ ist in einem Tab geöffnet. Schließen Sie den Tab, um die Unterhaltung zu löschen.`,
+    deleteRefused: (title) => `„${title}“ ließ sich nicht in den Papierkorb verschieben und wurde nicht gelöscht.`,
   },
 
   search: {

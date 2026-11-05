@@ -175,6 +175,7 @@ import { emptyUsageBook, mergeUsageBook, usageOf, type UsageBook } from './feed/
 import type {
   AvailablePluginInfo,
   ClosedTab,
+  HistoryDeleteOutcome,
   HistoryEntry,
   InstalledPluginInfo,
   PaintedTerm,
@@ -930,6 +931,14 @@ export const App = () => {
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
   /** Whether the IDE can delete a past conversation - only into a trash (see ClaudeHistory.canTrash). */
   const [historyCanDelete, setHistoryCanDelete] = useState(false)
+  /**
+   * Why the last delete from the history did not happen - said above the list until the screen is opened again
+   * or another row is deleted. The title is the row's as it was pressed: the list that follows names it again
+   * only when it is back.
+   */
+  const [historyRefusal, setHistoryRefusal] = useState<{ title: string; outcome: HistoryDeleteOutcome } | null>(null)
+  /** The rows on their way to the trash, by id, with the title a refusal would say. */
+  const deletingHistory = useRef<Record<string, string>>({})
   /**
    * The statistics tab's figures: null until the IDE answers the first request. Asked for at startup
    * (the menu's row shows the achievements' count without the tab being opened), again whenever the tab
@@ -1749,6 +1758,7 @@ export const App = () => {
     }
 
     setSideMenu({ open: true, screen: 'history' })
+    setHistoryRefusal(null)
     send({ type: 'history' })
   }, [])
 
@@ -2956,6 +2966,13 @@ export const App = () => {
             setHistory(message.conversations)
             setHistoryCanDelete(message.canDelete === true)
             break
+
+          case 'historyDeleted': {
+            const title = deletingHistory.current[message.id] ?? ''
+            delete deletingHistory.current[message.id]
+            setHistoryRefusal(message.outcome === 'trashed' ? null : { title, outcome: message.outcome })
+            break
+          }
 
           case 'searchResults': {
             if (message.id === searchAsked.current) {
@@ -5921,7 +5938,10 @@ export const App = () => {
       send({ type: 'usageStatsPreview' })
     }
 
-    if (screen === 'history') send({ type: 'history' })
+    if (screen === 'history') {
+      setHistoryRefusal(null)
+      send({ type: 'history' })
+    }
 
     // Asked afresh every time it is opened: the health of each account and its remaining share both cost
     // a process, so they are not kept warm - and both are exactly what somebody opens this screen to read.
@@ -7113,13 +7133,16 @@ export const App = () => {
               historyCanDelete
                 ? (entry) => {
                     // Off the list at once; the IDE's answer is the list again, with the row gone for good
-                    // or back when the trash refused it.
+                    // or back when it was refused - and then a word above the list on why (historyDeleted).
+                    deletingHistory.current[entry.id] = entry.title
+                    setHistoryRefusal(null)
                     setHistory((current) => current?.filter((item) => item.id !== entry.id) ?? current)
                     send({ type: 'deleteConversation', id: entry.id })
                   }
                 : undefined
             }
             isOpen={(id) => tabHolding(id, sessions, (tab) => panelsRef.current[tab]?.sessionId) !== undefined}
+            refusal={historyRefusal}
           />
         ) : null}
 

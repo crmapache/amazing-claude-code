@@ -88,6 +88,10 @@ internal class ClosedTabs(private val limit: Int = LIMIT) {
         return null
     }
 
+    /** A conversation deleted from the history: its closed tabs go too. Whether any stood here. */
+    @Synchronized
+    fun forget(conversation: String): Boolean = entries.removeAll { it is Chat && it.kept.tab.conversationId == conversation }
+
     @Synchronized
     fun list(): List<Entry> = entries.toList()
 

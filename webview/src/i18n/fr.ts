@@ -272,6 +272,8 @@ export const fr: Dict = {
     delete: 'Supprimer',
     deleteTitle: 'Supprimer cette conversation ?',
     deleteNote: 'Elle part à la corbeille et peut en être restaurée.',
+    deleteOpen: (title) => `« ${title} » est ouverte dans un onglet. Fermez l’onglet pour la supprimer.`,
+    deleteRefused: (title) => `« ${title} » n’a pas pu être placée dans la corbeille, elle n’a donc pas été supprimée.`,
   },
 
   search: {
