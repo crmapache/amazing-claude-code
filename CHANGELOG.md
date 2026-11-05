@@ -9,6 +9,12 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.57] - 2026-11-04
+
+- Added: delete a past conversation from the history. Hover a row under Today or Earlier and a Delete button appears; after you confirm, the conversation goes to the trash of your system, where you can put it back from. A conversation open in a tab can't be deleted until you close the tab, and the list says so above the rows. Where the IDE has no trash for the folder Claude Code keeps conversations in, for example a project inside WSL, the button is not shown at all, so nothing is ever deleted for good.
+- Fixed: the history was empty for a project whose folder had Chinese, Cyrillic or accented letters in its path, and a recently closed tab from such a project could not be reopened. The plugin named the folder where Claude Code keeps the project's conversations by its own rule, keeping every letter, while Claude Code turns everything but plain Latin letters and digits into hyphens. Now the plugin follows the same rule.
+- Fixed: the history was also empty for a project buried very deep, with a path over 200 characters, and for a path whose accented letters macOS keeps as a letter plus a separate accent mark. Claude Code shortens such long names and adds a hash of the whole path, and treats both forms of an accented letter as one. The history now does the same, and finds the conversations even where different versions of Claude Code wrote the hash differently.
+
 ## [0.13.56] - 2026-11-01
 
 - Added: quote a piece of Claude's answer from the phone. Select the words in the answer and a Quote button appears over the conversation; it puts them above the message field, the way the desk quotes a selection. Before, the phone could only quote a whole message from its three dots. The button stands at the bottom of the conversation and moves to the top when the words you selected are down there, so it never covers them or the selection handle.
@@ -1133,7 +1139,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.56...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.57...HEAD
+[0.13.57]: https://github.com/crmapache/amazing-claude-code/compare/0.13.56...0.13.57
 [0.13.56]: https://github.com/crmapache/amazing-claude-code/compare/0.13.55...0.13.56
 [0.13.55]: https://github.com/crmapache/amazing-claude-code/compare/0.13.54...0.13.55
 [0.13.54]: https://github.com/crmapache/amazing-claude-code/compare/0.13.53...0.13.54
