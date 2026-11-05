@@ -265,6 +265,11 @@ export const pt: Dict = {
     reopen: (key) => (key ? `Reabrir no mesmo lugar · ${key}` : 'Reabrir no mesmo lugar'),
     fork: 'bifurcação',
     messages: (n) => (n === 1 ? `${n} mensagem` : `${n} mensagens`),
+    delete: 'Excluir',
+    deleteTitle: 'Excluir esta conversa?',
+    deleteNote: 'Ela vai para a lixeira e pode ser recuperada de lá.',
+    deleteOpen: (title) => `“${title}” está aberta em uma aba. Feche a aba para excluí-la.`,
+    deleteRefused: (title) => `Não foi possível mover “${title}” para a lixeira, então ela não foi excluída.`,
   },
 
   search: {

@@ -267,6 +267,11 @@ export const ja: Dict = {
     reopen: (key) => (key ? `元の位置で開き直す · ${key}` : '元の位置で開き直す'),
     fork: 'フォーク',
     messages: (n) => `${n} 件のメッセージ`,
+    delete: '削除',
+    deleteTitle: 'この会話を削除しますか？',
+    deleteNote: 'ゴミ箱に移動され、そこから元に戻せます。',
+    deleteOpen: (title) => `「${title}」はタブで開いています。削除するにはタブを閉じてください。`,
+    deleteRefused: (title) => `「${title}」をゴミ箱に移動できなかったため、削除されていません。`,
   },
 
   search: {

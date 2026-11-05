@@ -738,6 +738,41 @@
   color: var(--acc-fg-ghost);
 }
 
+/* A row that can be deleted: the button sits over its right edge and shows on hover or focus only. */
+.historyItem {
+  position: relative;
+}
+
+.historyItem .historyRow {
+  padding-right: 32px;
+}
+
+.historyDelete {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--acc-r-lg);
+  color: var(--acc-fg-ghost);
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 80ms linear;
+}
+
+.historyItem:hover .historyDelete,
+.historyDelete:focus-visible {
+  opacity: 1;
+}
+
+.historyDelete:hover {
+  background: var(--acc-bad-12);
+  color: var(--acc-bad-text);
+}
+
 /* --- A card with a name, a state and buttons: MCP servers, plugins, devices -- */
 
 .card {

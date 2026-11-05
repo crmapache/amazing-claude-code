@@ -265,6 +265,11 @@ export const es: Dict = {
     reopen: (key) => (key ? `Volver a abrir en su sitio · ${key}` : 'Volver a abrir en su sitio'),
     fork: 'bifurcación',
     messages: (n) => (n === 1 ? `${n} mensaje` : `${n} mensajes`),
+    delete: 'Eliminar',
+    deleteTitle: '¿Eliminar esta conversación?',
+    deleteNote: 'Va a la papelera y se puede recuperar desde allí.',
+    deleteOpen: (title) => `«${title}» está abierta en una pestaña. Cierra la pestaña para eliminarla.`,
+    deleteRefused: (title) => `«${title}» no se pudo mover a la papelera, así que no se eliminó.`,
   },
 
   search: {

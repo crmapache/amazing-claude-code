@@ -705,31 +705,67 @@ internal class ProjectCatalog(
     /** Reading the history folder touches the disk, so it happens in the background. */
     fun sendHistory(clientId: String) {
         ApplicationManager.getApplication().executeOnPooledThread {
-            val entries = ClaudeHistory.list(project.basePath)
-
             // Addressed at whoever asked rather than broadcast: this is a dialog someone opened, and it
             // is of no interest to anyone else watching the same project.
+            hub.emitTo(clientId, historyMessage())
+        }
+    }
+
+    private fun historyMessage(): String {
+        val entries = ClaudeHistory.list(project.basePath)
+
+        return buildJsonObject {
+            put("type", "history")
+            // Whether the rows may offer deleting - see ClaudeHistory.canTrash.
+            put("canDelete", ClaudeHistory.canTrash(project.basePath))
+            putJsonArray("conversations") {
+                for (entry in entries) {
+                    addJsonObject {
+                        put("id", entry.id)
+                        put("title", entry.title)
+                        put("updatedAt", entry.updatedAt)
+                        put("messages", entry.messages)
+                        // Where the name came from: a conversation opened in a tab keeps it at
+                        // that rank - a guess is worth replacing with the model's own name once
+                        // the conversation carries on (see ClaudeSession.requestTitle), and the
+                        // person's own is replaced by nobody but them.
+                        put("titleSource", entry.titleSource)
+                    }
+                }
+            }
+        }.toString()
+    }
+
+    /**
+     * Deleting a past conversation from the history: into the trash (see ClaudeHistory.moveToTrash). Whoever
+     * pressed is told how it went, and the list goes again to every window at this desk - each of them asked
+     * for it at its start and would go on offering a conversation that is no longer there. The phone asks
+     * afresh every time it opens its list, and cannot delete.
+     *
+     * A conversation a tab holds is not touched: its process writes into that very file, and the tab would
+     * carry on into a transcript nobody can find. The panel offers no button on such a row; this is the
+     * same rule for a message that arrives anyway - asked here, right before the trash, so that a tab opened
+     * on it a moment ago counts too. A deleted conversation also goes from "Recently closed": the row would
+     * only fail to bring it back.
+     */
+    fun deleteConversation(clientId: String, id: String) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val outcome = when {
+                hub.holdsConversation(id) -> "open"
+                ClaudeHistory.moveToTrash(project.basePath, id) -> "trashed"
+                else -> "refused"
+            }
+            if (outcome == "trashed") hub.forgetClosedConversation(id)
+
             hub.emitTo(
                 clientId,
                 buildJsonObject {
-                    put("type", "history")
-                    putJsonArray("conversations") {
-                        for (entry in entries) {
-                            addJsonObject {
-                                put("id", entry.id)
-                                put("title", entry.title)
-                                put("updatedAt", entry.updatedAt)
-                                put("messages", entry.messages)
-                                // Where the name came from: a conversation opened in a tab keeps it at
-                                // that rank - a guess is worth replacing with the model's own name once
-                                // the conversation carries on (see ClaudeSession.requestTitle), and the
-                                // person's own is replaced by nobody but them.
-                                put("titleSource", entry.titleSource)
-                            }
-                        }
-                    }
+                    put("type", "historyDeleted")
+                    put("id", id)
+                    put("outcome", outcome)
                 }.toString(),
             )
+            hub.emitToDesk(historyMessage())
         }
     }
 

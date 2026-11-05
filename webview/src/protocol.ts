@@ -189,6 +189,12 @@ export interface HistoryEntry {
   titleSource?: TitleSource
 }
 
+/**
+ * How deleting a past conversation went: into the trash (or it was not on disk any more), refused because a tab
+ * holds it, or refused by the trash.
+ */
+export type HistoryDeleteOutcome = 'trashed' | 'open' | 'refused'
+
 /** Where a typed search looks: the conversation in the tab, or every conversation of the project. */
 export type SearchScope = 'chat' | 'project'
 
@@ -1575,7 +1581,20 @@ type ShellMessageBody =
    */
   | { type: 'project'; gitBranch?: string; pullRequest?: string; pullRequestUrl?: string }
   /** This project's past conversations: Claude Code keeps them itself. */
-  | { type: 'history'; conversations: HistoryEntry[] }
+  | {
+      type: 'history'
+      conversations: HistoryEntry[]
+      /**
+       * Whether a row may be deleted - only where the IDE's trash takes this project's conversations (see
+       * ClaudeHistory.canTrash).
+       */
+      canDelete?: boolean
+    }
+  /**
+   * How deleting a past conversation went, to whoever pressed (see ProjectCatalog.deleteConversation). The
+   * list itself follows as a `history` of its own, to every window at the desk.
+   */
+  | { type: 'historyDeleted'; id: string; outcome: HistoryDeleteOutcome }
   /**
    * A page of one conversation's messages, older than what the client already has - read off the
    * transcript on disk rather than the journal's own catch-up, which forgets its own beginning long
@@ -2758,6 +2777,11 @@ export type WebviewMessage =
   /** `/status` - what the IDE knows of this tab's conversation, answered by a `sessionInfo` of its own. */
   | { type: 'sessionInfo'; sessionId: string }
   | { type: 'history' }
+  /**
+   * A past conversation into the trash. The IDE answers `historyDeleted` to the asker and the list again to every
+   * window at the desk (see ProjectCatalog.deleteConversation).
+   */
+  | { type: 'deleteConversation'; id: string }
   /** A page further back than the journal's own catch-up reaches - see ShellMessageBody's historyPage. */
   | { type: 'historyPage'; sessionId: string; before?: string }
   /**
