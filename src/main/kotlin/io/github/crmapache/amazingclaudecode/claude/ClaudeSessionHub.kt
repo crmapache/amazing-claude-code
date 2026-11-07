@@ -944,11 +944,18 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             notificationListener?.invoke(sessionId, reason, targetOf(trimmed))
         }
 
-        // A phone's list is drawn from these two fields, and it is not on the receiving end of this
-        // message: it watches one conversation and hears nothing about the others. Without this the
-        // list only caught up when the phone next asked - up to half a minute later, which on a screen
-        // someone is holding reads as a card that simply refuses to say it is working.
-        if (before.status != after.status || before.awaitsYou != after.awaitsYou) inventoryChanged()
+        // A phone's list is drawn from these fields, and it is not on the receiving end of this message: it
+        // watches one conversation and hears nothing about the others. Without this the list only caught up
+        // when the phone next asked - up to half a minute later, which on a screen someone is holding reads
+        // as a card that simply refuses to say it is working. The agents count too: the work goes on after
+        // the turn that raised them, and the row says how many are left (see RemoteAgent.inventoryBody).
+        if (
+            before.status != after.status ||
+            before.awaitsYou != after.awaitsYou ||
+            before.pendingAgents.size != after.pendingAgents.size
+        ) {
+            inventoryChanged()
+        }
     }
 
     /**
@@ -1634,12 +1641,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     /** Whether what this entry would bring back is on the strip already - see [reopenTab]. */
     private fun stillOpen(entry: ClosedTabs.Entry, openPanels: Set<String>): Boolean = when (entry) {
         is ClosedTabs.Panel -> entry.id in openPanels
-        is ClosedTabs.Chat -> {
-            val conversation = entry.kept.tab.conversationId
-            conversation != null && tabs.tabs().any { tab ->
-                (conversations.conversationIdOf(tab.id) ?: remembered[tab.id]?.conversationId) == conversation
-            }
-        }
+        is ClosedTabs.Chat -> entry.kept.tab.conversationId?.let(::holdsConversation) == true
+    }
+
+    /** Whether a tab on the strip holds this conversation - asleep or awake. */
+    internal fun holdsConversation(conversation: String): Boolean = tabs.tabs().any { tab ->
+        (conversations.conversationIdOf(tab.id) ?: remembered[tab.id]?.conversationId) == conversation
     }
 
     /**
@@ -1726,12 +1733,29 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     }
 
     /** The tabs that can be opened again, to the windows at this desk - see [closedTabsMessage]. */
-    private fun sendClosedTabs() {
-        val message = closedTabsMessage()
+    private fun sendClosedTabs() = emitToDesk(closedTabsMessage())
+
+    /**
+     * A conversation deleted from the history (see ProjectCatalog.deleteConversation) goes from "Recently
+     * closed" too, held words and all: the row would only fail to bring it back, and the person has just said
+     * they want it gone.
+     */
+    fun forgetClosedConversation(conversation: String) {
+        if (!closedTabs.forget(conversation)) return
+
+        rememberTabs()
+        sendClosedTabs()
+    }
+
+    /**
+     * A message for every window at this desk and for no phone: the list of closed tabs, the history after a
+     * conversation was deleted from it. Not kept for whoever comes later - each window asks on its own start.
+     */
+    fun emitToDesk(json: String) {
         for (client in clients.values) {
             if (!client.isLocal) continue
-            runCatching { client.deliver(listOf(message)) }
-                .onFailure { thisLogger().warn("A client could not take the closed tabs", it) }
+            runCatching { client.deliver(listOf(json)) }
+                .onFailure { thisLogger().warn("A client at the desk could not take a message", it) }
         }
     }
 

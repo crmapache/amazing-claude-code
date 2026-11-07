@@ -265,6 +265,11 @@ export const ko: Dict = {
     reopen: (key) => (key ? `원래 자리에 다시 열기 · ${key}` : '원래 자리에 다시 열기'),
     fork: '포크',
     messages: (n) => `메시지 ${n}개`,
+    delete: '삭제',
+    deleteTitle: '이 대화를 삭제할까요?',
+    deleteNote: '휴지통으로 이동하며, 거기서 되돌릴 수 있습니다.',
+    deleteOpen: (title) => `“${title}” 대화가 탭에서 열려 있습니다. 삭제하려면 탭을 닫으세요.`,
+    deleteRefused: (title) => `“${title}” 대화를 휴지통으로 옮기지 못해 삭제되지 않았습니다.`,
   },
 
   search: {
@@ -1664,6 +1669,7 @@ export const ko: Dict = {
         waitingQuestion: '당신을 기다립니다 · 질문',
         waitingPlan: '당신을 기다립니다 · 계획',
         working: '작업 중',
+        agents: (n) => `서브에이전트 ${n}개 작업 중`,
         done: '완료',
       },
       reach: {

@@ -32,6 +32,9 @@ const CHIP_STYLE: Record<ChipKind, { background: string; borderColor: string; co
 /** Whose node this is: to get an image's bytes back we do not parse the DOM into a string. */
 const chipByNode = new WeakMap<HTMLElement, Chip>()
 
+/** Where the caret last stood in each field, as a place (see noteCaret). */
+const caretByField = new WeakMap<HTMLElement, number>()
+
 // --- Dragging files ---------------------------------------------------------
 
 /**
@@ -295,8 +298,105 @@ export const placeCaretAtEnd = (root: HTMLElement | null) => {
  */
 export const takeKeyboard = (root: HTMLElement) => {
   const caret = window.getSelection()?.anchorNode
-  if (!caret || !root.contains(caret)) placeCaretAtEnd(root)
+  if (!caret || !root.contains(caret)) {
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(rangeAtPlace(root, caretByField.get(root) ?? null))
+  }
   root.focus()
+}
+
+/**
+ * Remembers where the caret stands in the field, while the selection is in it - called on every move of the
+ * page's selection.
+ *
+ * The selection is one for the whole page. Taking a quote means marking words in the feed first, and by
+ * the time the quote arrives the field has no caret at all: the quote used to land at the end of the draft,
+ * which in a message written as a few paragraphs is exactly where the person was not. The same with a
+ * reference from the editor after a look at the feed, and with the keyboard handed back after a tab's name.
+ * So the caret is remembered while it is there, and whatever comes from outside lands on that place (see
+ * currentRange and takeKeyboard).
+ *
+ * A place rather than the Range itself: a range lives on nodes, and nodes are what the field loses first.
+ * Forgotten when the field is rebuilt (see rebuildDom) - the place then counted another draft's characters.
+ */
+export const noteCaret = (root: HTMLElement): void => {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return
+
+  const range = selection.getRangeAt(0)
+  // A selection merely running through the field is not a caret in it.
+  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return
+
+  // Its end: a selection the person no longer sees marked is not to be typed over by what arrives.
+  const { index, offset } = pointIn(root, range.endContainer, range.endOffset, 'end')
+  const before = Array.from(root.childNodes).slice(0, index)
+  caretByField.set(root, before.reduce((place, node) => place + placesOf(node), offset))
+}
+
+/**
+ * How many places a child of the field takes: a character of text one each, a chip one as a whole. Anything
+ * else the browser has put in (the <br> of an emptied line) counts as the text it reads as, and as at least
+ * a line break.
+ */
+const placesOf = (node: ChildNode): number => {
+  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? '').length
+  if (chipNodeOf(node)) return 1
+  return (node.textContent ?? '').length || 1
+}
+
+/** A child of the field as placeAmong sees it. */
+export interface PlaceHolder {
+  /** How many places it takes - see placesOf. */
+  places: number
+  /** Whether a place can stand inside it: only text can hold the caret within itself. */
+  text: boolean
+}
+
+/**
+ * Where a place counted from the field's start falls among its children: inside a text at an offset, or right
+ * before an element (offset 0). Null for the field's very end, and for a place past it - the draft grew
+ * shorter since.
+ *
+ * A place at the end of a text stays in that text rather than going before the chip that follows it: the
+ * two are one spot on the screen, and the text is where the person typed.
+ */
+export const placeAmong = (children: PlaceHolder[], place: number): { index: number; offset: number } | null => {
+  let left = place
+
+  for (const [index, child] of children.entries()) {
+    if (child.text) {
+      if (left <= child.places) return { index, offset: left }
+    } else {
+      if (left === 0) return { index, offset: 0 }
+      // Inside something that is not text: pressed to the edge past it, as the end of a selection is (see
+      // pointIn).
+      if (left < child.places) return index + 1 < children.length ? { index: index + 1, offset: 0 } : null
+    }
+    left -= child.places
+  }
+
+  return null
+}
+
+/** The caret put back on a place - or at the end of what was typed, when there is none (see currentRange). */
+const rangeAtPlace = (root: HTMLElement, place: number | null): Range => {
+  const children = Array.from(root.childNodes)
+  const at =
+    place === null
+      ? null
+      : placeAmong(
+          children.map((node) => ({ places: placesOf(node), text: node.nodeType === Node.TEXT_NODE })),
+          place,
+        )
+  if (!at) return padTrailingBreak(root) ?? endRange(root)
+
+  const node = children[at.index]
+  const range = document.createRange()
+  if (node.nodeType === Node.TEXT_NODE) range.setStart(node, at.offset)
+  else range.setStartBefore(node)
+  range.collapse(true)
+  return range
 }
 
 /** The caret right beside a chip - on the side the arrow was travelling towards. */
@@ -312,8 +412,8 @@ export const placeCaretBeside = (node: HTMLElement, side: 'before' | 'after') =>
 }
 
 /**
- * The caret in the field - or the end of what has been typed, when the focus is lost and there honestly
- * is no caret.
+ * The caret in the field - or, when the selection has gone elsewhere on the page, the place the caret
+ * stood last (see noteCaret), and the end of what has been typed when it never stood anywhere.
  *
  * The end of what was typed rather than of the contents: the last thing in the field may be a newline the
  * person was about to write past. endRange would put an attachment BEHIND it, adding an empty line that
@@ -324,7 +424,7 @@ export const currentRange = (root: HTMLElement): Range => {
   const selection = window.getSelection()
   return selection && selection.rangeCount > 0 && root.contains(selection.getRangeAt(0).startContainer)
     ? selection.getRangeAt(0)
-    : (padTrailingBreak(root) ?? endRange(root))
+    : rangeAtPlace(root, caretByField.get(root) ?? null)
 }
 
 /** Whether this is a chip or an ordinary node: our own are recognised by the same table the field is read with. */
@@ -452,25 +552,51 @@ export const headText = (root: HTMLElement): string | null => {
   return head
 }
 
-/** The character right before a collapsed range - empty when this is not a text node. */
+/** A child's text, for looking at what stands beside a range - none for a chip, which is not text. */
+const textOf = (node: Node | null | undefined): string =>
+  node?.nodeType === Node.TEXT_NODE ? (node.textContent ?? '') : ''
+
+/**
+ * The character right before a collapsed range - empty when an attachment or the field's start stands there.
+ *
+ * Looked for across the edge of a node: the field's text lies in several of them (a typed line break is a
+ * node of its own), and a range standing between children rather than inside a text is exactly what an
+ * insertion leaves behind it. Read inside its own node only, a chip put in at the start of a line went in
+ * glued to the word above it.
+ */
 export const charBefore = (range: Range): string => {
   const { startContainer, startOffset } = range
-  if (startContainer.nodeType !== Node.TEXT_NODE || startOffset === 0) return ''
-  return (startContainer.textContent ?? '').charAt(startOffset - 1)
+  if (startContainer.nodeType === Node.TEXT_NODE) {
+    if (startOffset > 0) return (startContainer.textContent ?? '').charAt(startOffset - 1)
+    return textOf(startContainer.previousSibling).slice(-1)
+  }
+  return textOf(startContainer.childNodes[startOffset - 1]).slice(-1)
 }
 
-/** The character right after - the same logic, for checking what stands on the other side of an attachment. */
+/**
+ * The character right after - the same logic, for checking what stands on the other side of an attachment.
+ * Read inside its own node only, the place right past a chip that had just gone in always looked empty, and
+ * a chip put in the middle of a sentence brought a second space along to the one already standing there.
+ */
 export const charAfter = (range: Range): string => {
   const { startContainer, startOffset } = range
-  if (startContainer.nodeType !== Node.TEXT_NODE) return ''
-  return (startContainer.textContent ?? '').charAt(startOffset)
+  if (startContainer.nodeType === Node.TEXT_NODE) {
+    const text = startContainer.textContent ?? ''
+    if (startOffset < text.length) return text.charAt(startOffset)
+    return textOf(startContainer.nextSibling).charAt(0)
+  }
+  return textOf(startContainer.childNodes[startOffset]).charAt(0)
 }
 
 /** Before an attachment a space is needed only when a non-space character already stands there - an empty start of the field needs none. */
 export const needsLeadingSpace = (char: string): boolean => char.length > 0 && !/\s/.test(char)
 
-/** After an attachment a space is always needed - the caret always needs somewhere to stand; it is not added twice. */
-export const needsTrailingSpace = (char: string): boolean => char.length === 0 || !/\s/.test(char)
+/**
+ * After an attachment a space is always needed - the caret always needs somewhere to stand; it is not added
+ * twice. A line break is not somewhere to stand: a chip put at the end of a line, before the next one, had
+ * the next letter typed glued to it.
+ */
+export const needsTrailingSpace = (char: string): boolean => !/[^\S\r\n]/.test(char)
 
 // --- Chips ------------------------------------------------------------------
 
@@ -578,6 +704,9 @@ export const chipNodeIn = (root: HTMLElement, chip: Chip): HTMLElement => {
 /** Rebuilds the DOM from tokens, from scratch - for programmatic edits only, not for typing. */
 export const rebuildDom = (root: HTMLElement, tokens: UserToken[]) => {
   root.innerHTML = ''
+  // A place counted in the old draft means nothing in the new one. The caret put at the end below is noted
+  // afresh - unless another field keeps the keyboard, and then the end is where things land anyway.
+  caretByField.delete(root)
 
   for (const token of tokens) {
     if (token.kind === 'text') {
@@ -901,26 +1030,35 @@ export const splitTokens = (
 }
 
 /**
- * Brings the images' captions into line with their place in the field.
+ * Brings the captions of images and quotes into line with their place in the field.
  *
  * The number in a chip used to be remembered at the moment of insertion and then lied: delete the first
  * of two images and the second stayed "#2", although it will travel to the agent first. We count the
  * number from the facts, as the message's text does, so that what is seen and what is sent agree. The
  * chip is rebuilt as a new object rather than edited in place: that same object lies in the panel's
  * state, and changing it behind its back is not an option.
+ *
+ * Quotes are numbered within the message, from one: the agent never sees their number (it gets the text),
+ * but the person does, and a quote now lands where the caret stood - in front of an earlier one too. Counted
+ * at insertion, that read "ref2 … ref1", and a quote taken after the first of two was removed got the number
+ * of the one still standing. A message opened from history numbers them by place as well (replayedMessage).
  */
-export const relabelImages = (root: HTMLElement, base: number): boolean => {
-  let ordinal = base
+export const relabelChips = (root: HTMLElement, base: number): boolean => {
+  let image = base
+  let quote = 0
   let changed = false
 
   for (const node of Array.from(root.childNodes)) {
     if (!(node instanceof HTMLElement)) continue
 
     const chip = chipByNode.get(node)
-    if (!chip || chip.kind !== 'img' || !chip.data) continue
+    if (!chip) continue
 
-    ordinal += 1
-    const value = `Image #${ordinal}`
+    let value: string
+    if (chip.kind === 'img' && chip.data) value = `Image #${++image}`
+    else if (chip.kind === 'quote') value = `ref${++quote}`
+    else continue
+
     if (chip.value === value) continue
 
     const next: Chip = { ...chip, value }

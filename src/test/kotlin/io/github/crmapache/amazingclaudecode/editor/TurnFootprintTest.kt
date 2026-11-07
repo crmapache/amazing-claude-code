@@ -118,7 +118,10 @@ class TurnFootprintTest {
     fun `the person's repository is only read`() {
         committed("a.ts" to "a\n")
         write("b.ts", "untracked\n")
-        val status = git("status", "--porcelain")
+        // Without --no-optional-locks a status writes the index itself whenever it finds an entry whose
+        // time equals the index's own ("racy git") - this test's own question would then fail it, about
+        // one run in three, on a file whose time the test has just reset.
+        val status = git("--no-optional-locks", "status", "--porcelain")
         val index = File(repo, ".git/index").readBytes()
         val objects = File(repo, ".git/objects").walkTopDown().count()
 
@@ -130,7 +133,7 @@ class TurnFootprintTest {
         write("a.ts", "a\n")
         File(repo, "c.ts").delete()
 
-        assertEquals(status, git("status", "--porcelain"))
+        assertEquals(status, git("--no-optional-locks", "status", "--porcelain"))
         assertTrue(index.contentEquals(File(repo, ".git/index").readBytes()), "the index is the person's")
         assertEquals(objects, File(repo, ".git/objects").walkTopDown().count(), "no object of ours in their store")
     }

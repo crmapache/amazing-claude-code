@@ -98,7 +98,29 @@ internal data class SessionSnapshot(
      * one is the whole point.
      */
     val pendingCommands: Set<String> = emptySet(),
+    /**
+     * When the work now going on began, by this machine's clock - zero while none is (see [working]).
+     *
+     * Not [changedAt], which moves with the turn: one request that raised background agents is a dozen
+     * turns, each started by the CLI itself when an agent reports back (see [pendingAgents]). A row on a
+     * phone counting "working · 12s" from the latest of them on the thirtieth minute of the work is the
+     * complaint the panel's own counter was rebuilt over (see stintStartedAt in feed/build.ts).
+     *
+     * One gap is left, and it is a short one: the last agent's report ends the work for an instant, and the
+     * turn the CLI starts to read it begins a count of its own.
+     */
+    val workSince: Long = 0,
 ) {
+
+    /**
+     * Whether the work asked for is still going on: a turn running, or background agents not yet heard
+     * back from after the turn that raised them has ended.
+     *
+     * The panel's own rule for a tab's dot (see stillWorking in App.tsx). Without the agents a phone drew a
+     * conversation as done the moment the main turn ended, with its agents working on for half an hour.
+     */
+    val working: Boolean
+        get() = status == STATUS_RUNNING || pendingAgents.isNotEmpty()
 
     /**
      * Whether the conversation is stopped waiting for a person.
@@ -184,7 +206,7 @@ internal object SessionSnapshots {
         val payload = runCatching { Json.parseToJsonElement(json).jsonObject }.getOrNull() ?: return snapshot
         val text = { name: String -> payload[name]?.jsonPrimitive?.contentOrNull.orEmpty() }
 
-        return when (text("type")) {
+        val next = when (text("type")) {
             "status" -> {
                 val state = text("state").ifEmpty { snapshot.status }
                 snapshot.copy(
@@ -255,6 +277,22 @@ internal object SessionSnapshots {
 
             else -> snapshot
         }
+
+        return withWork(next, at)
+    }
+
+    /**
+     * The moment the work began, kept across every turn of it and dropped when nothing is left of it (see
+     * [SessionSnapshot.workSince]). Worked out once here, after any message, rather than in each branch that
+     * can start or end it: a status, an agent's launch or report, a dead or replaced process.
+     *
+     * An unknown moment stays unknown - a row with no time beside "working" is better than one counting from
+     * the epoch.
+     */
+    private fun withWork(snapshot: SessionSnapshot, at: Long): SessionSnapshot = when {
+        !snapshot.working -> if (snapshot.workSince == 0L) snapshot else snapshot.copy(workSince = 0)
+        snapshot.workSince == 0L && at > 0 -> snapshot.copy(workSince = at)
+        else -> snapshot
     }
 
     /**

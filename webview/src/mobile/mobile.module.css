@@ -2167,6 +2167,61 @@
   cursor: pointer;
 }
 
+/* --- Quoting the words selected in an answer ------------------------------- */
+
+/*
+ * Over the bottom of the feed, centred, on the line of the jump-down button at its right edge (see
+ * .jumpToBottom: the same bottom and, under a thumb, the same height) - see SelectionQuote for why not
+ * beside the selection. The layer is the jump button's as well: over the pinned strip and the feed, under
+ * the search capsule.
+ */
+.selectionQuote {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  z-index: 20;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--acc-sp-2);
+  min-height: var(--acc-hit);
+  padding: 0 var(--acc-sp-5) 0 var(--acc-sp-4);
+  border: 1px solid var(--acc-line-strong);
+  border-radius: var(--acc-r-pill);
+  background: var(--acc-bg-control);
+  box-shadow: var(--acc-shadow-menu);
+  color: var(--acc-fg);
+  font: 600 14px/1 var(--acc-font);
+  white-space: nowrap;
+  /* A label, not text: a long press on it would otherwise start a selection of its own. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* The words are in the last lines on screen, where the button would stand on them (see placeOf). Over the
+   pinned strip if there is one, for as long as the selection lasts; the search capsule in the corner stays
+   above it. */
+.selectionQuoteTop {
+  top: 16px;
+  bottom: auto;
+}
+
+.selectionQuoteGlyph {
+  display: block;
+  flex: none;
+  color: var(--acc-c-orchid);
+  font-size: 18px;
+  line-height: 1;
+  /* A quotation mark is drawn at the top of its line, like a capital's shoulders: centred by its box, its
+     ink stood 3.7px above the middle of the lowercase beside it (measured in the font). */
+  transform: translateY(3px);
+}
+
+.selectionQuoteText {
+  display: block;
+  line-height: 1;
+}
+
 /* --- Quotes waiting above the field ---------------------------------------- */
 
 .quoteList {

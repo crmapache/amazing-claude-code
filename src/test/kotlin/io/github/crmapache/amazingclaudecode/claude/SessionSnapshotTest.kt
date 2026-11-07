@@ -244,6 +244,74 @@ class SessionSnapshotTest {
         assertTrue(swapped.pendingAgents.isEmpty())
     }
 
+    // --- The work, over the turns it is made of ---------------------------------
+    //
+    // What a phone's list draws a conversation by: a turn that raised background agents ends with the work
+    // only beginning, and the row went green while they worked on (see SessionSnapshot.working).
+
+    private fun at(vararg steps: Pair<Long, String>): SessionSnapshot =
+        steps.fold(SessionSnapshot()) { snapshot, (moment, message) -> SessionSnapshots.apply(snapshot, message, moment) }
+
+    private fun status(state: String): String = """{"type":"status","sessionId":"main","state":"$state"}"""
+
+    @Test
+    fun `a turn on its own is work from its start to its end`() {
+        val running = at(100L to status("running"))
+        assertTrue(running.working)
+        assertEquals(100L, running.workSince)
+
+        val ended = at(100L to status("running"), 200L to status("idle"))
+        assertFalse(ended.working)
+        assertEquals(0L, ended.workSince)
+    }
+
+    // Recorded live: one message, then a turn of the CLI's own for every agent that reports back. The work
+    // keeps the moment the person's message started it, through all of them.
+    @Test
+    fun `the work outlives the turn that raised background agents, and keeps its start`() {
+        val raised = arrayOf(
+            100L to status("running"),
+            110L to taskStarted("a1"),
+            120L to taskStarted("a2"),
+            200L to status("idle"),
+        )
+        assertTrue(at(*raised).working)
+        assertEquals(100L, at(*raised).workSince)
+
+        val oneReported = arrayOf(*raised, 300L to taskDone("a1"), 310L to status("running"), 400L to status("idle"))
+        assertTrue(at(*oneReported).working)
+        assertEquals(100L, at(*oneReported).workSince)
+
+        // The last report ends the work, and the turn the CLI starts to read it is a count of its own - the
+        // short gap SessionSnapshot.workSince owns up to.
+        val allReported = arrayOf(*oneReported, 500L to taskDone("a2"))
+        assertFalse(at(*allReported).working)
+        assertEquals(0L, at(*allReported).workSince)
+        assertEquals(510L, at(*allReported, 510L to status("running")).workSince)
+    }
+
+    @Test
+    fun `a process dying under its agents ends the work`() {
+        val died = at(
+            100L to status("running"),
+            110L to taskStarted("a1"),
+            200L to status("idle"),
+            300L to """{"type":"processExited","sessionId":"main","exitCode":1}""",
+        )
+
+        assertFalse(died.working)
+        assertEquals(0L, died.workSince)
+    }
+
+    // A dev server never reports back - counted as work, it would hold the row at "working" all day.
+    @Test
+    fun `a background command is not work going on`() {
+        val left = at(100L to status("running"), 110L to taskStarted("b1", type = "local_bash"), 200L to status("idle"))
+
+        assertFalse(left.working)
+        assertEquals(0L, left.workSince)
+    }
+
     @Test
     fun `a malformed message changes nothing`() {
         val snapshot = SessionSnapshot(status = SessionSnapshot.STATUS_RUNNING)

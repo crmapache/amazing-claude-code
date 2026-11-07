@@ -437,6 +437,8 @@ internal class SessionCommands(private val hub: ClaudeSessionHub) {
 
             "history" -> hub.catalog.sendHistory(clientId)
 
+            "deleteConversation" -> hub.catalog.deleteConversation(clientId, field("id"))
+
             /**
              * The search over this project's conversations (see SearchDesk). Answered to whoever asked,
              * like the history: what somebody is looking for is theirs alone. The tab's identifier names

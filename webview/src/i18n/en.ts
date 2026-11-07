@@ -340,6 +340,13 @@ export const en = {
     /** Beside the time on a closed fork's row. */
     fork: 'fork',
     messages: (n: number): string => (n === 1 ? `${n} message` : `${n} messages`),
+    /** On a past conversation's row, under the hover; only where the IDE's trash takes this project's conversations. */
+    delete: 'Delete',
+    deleteTitle: 'Delete this conversation?',
+    deleteNote: 'It goes to the trash, and can be put back from there.',
+    /** Above the list when a delete did not happen: the conversation is open in a tab, or the trash would not take it. */
+    deleteOpen: (title: string): string => `“${title}” is open in a tab. Close the tab to delete it.`,
+    deleteRefused: (title: string): string => `“${title}” could not be moved to the trash, so it was not deleted.`,
   },
 
   search: {
@@ -2179,6 +2186,8 @@ export const en = {
         waitingQuestion: 'waiting on you · question',
         waitingPlan: 'waiting on you · plan',
         working: 'working',
+        /** The conversation's own turn is over and only the background agents it raised are still at it. */
+        agents: (n: number): string => (n === 1 ? 'subagent working' : `${n} subagents working`),
         done: 'done',
       },
       /** Why the list looks the way it does - said about the phone's whole situation. */

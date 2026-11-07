@@ -12,7 +12,9 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
 import com.intellij.util.Alarm
+import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.net.ProxySettings
+import io.github.crmapache.amazingclaudecode.feedback.DiagnosticsLog
 import java.awt.Cursor
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -24,6 +26,7 @@ import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.handler.CefLifeSpanHandlerAdapter
 import org.cef.handler.CefLoadHandlerAdapter
+import org.cef.handler.CefRequestHandler
 import org.cef.handler.CefRequestHandlerAdapter
 import org.cef.network.CefRequest
 
@@ -140,6 +143,13 @@ private const val HEAL_SETTLE_MS = 250
 private const val HOVER_SETTLE_MS = 80
 
 /**
+ * How long after the page's process died it is loaded again - see [WebviewHost.pageDied]. Not from inside
+ * the browser's own report of the death: reloading right there is how Electron crashed on the same event,
+ * and a moment lets the dead process be cleared away first.
+ */
+private const val RELOAD_DELAY_MS = 500
+
+/**
  * The embedded browser plus the message channel between the interface and the shell.
  *
  * Outwards it offers two things: a component for the panel, and the pair "send into the interface" /
@@ -152,6 +162,11 @@ internal class WebviewHost(
     private val startTheme: String,
     /** The id of the conversation on screen went to the clipboard from the right-click menu (see PanelContextMenu). */
     private val onSessionIdCopied: () -> Unit = {},
+    /**
+     * The page's process keeps dying and is no longer brought back by itself (see [PageCrashes]). Called off
+     * the IDE's thread; the panel decides what to show instead.
+     */
+    private val onPageLost: () -> Unit = {},
     private val onMessage: (String) -> Unit,
 ) : Disposable {
 
@@ -159,6 +174,21 @@ internal class WebviewHost(
     private val browser = createBrowser()
 
     private val fromWebview = JBCefJSQuery.create(browser as JBCefBrowserBase)
+
+    /**
+     * Where the page's messages are handled: one at a time and in the order they came, but not on the thread
+     * they came on.
+     *
+     * That thread belongs to the browser. The browser hands a message over by calling into the IDE and
+     * waiting for the call to return, and not every handler is quick: a prompt to a sleeping tab starts the
+     * agent's process right there - seen in the IDE's log, the process created inside the browser's callback
+     * (2026-10-30, while the "white panel" was being looked into). All that time the thread the browser
+     * called from did nothing else.
+     */
+    private val inbox = AppExecutorUtil.createBoundedApplicationPoolExecutor("Amazing Claude Code panel messages", 1)
+
+    /** How many times in a row the page's process has died - see [pageDied]. */
+    private val crashes = PageCrashes()
 
     /**
      * Messages that have not yet travelled into the page: both those accumulated before it was ready
@@ -181,6 +211,7 @@ internal class WebviewHost(
     private val flushAlarm: Alarm
     private val healAlarm: Alarm
     private val hoverAlarm: Alarm
+    private val reloadAlarm: Alarm
 
     /** When a whole frame was last asked to be redrawn - see [heal]. */
     private var lastHealAt = 0L
@@ -206,6 +237,7 @@ internal class WebviewHost(
         // An alarm of its own rather than healAlarm's: they cancel each other's requests, and a mouse
         // moving over a panel that is streaming events would keep pushing the settled frame away.
         hoverAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, lifetime)
+        reloadAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, lifetime)
 
         // Both listeners are the same object: moving over the panel lights something up, leaving it puts
         // that something out, and each of those is a frame that has to reach the IDE (see
@@ -224,7 +256,9 @@ internal class WebviewHost(
         }
 
         fromWebview.addHandler { payload: String ->
-            onMessage(payload)
+            // Into the inbox, and the browser's thread is let go at once (see inbox). A message still in
+            // the inbox when the panel closes is dropped, as one still in flight always was.
+            inbox.execute { if (lifetime.isAlive) onMessage(payload) }
             null
         }
 
@@ -252,11 +286,13 @@ internal class WebviewHost(
         )
 
         keepNavigationOutside()
+        watchPageProcess()
 
         browser.jbCefClient.addContextMenuHandler(PanelContextMenu({ sessionMenu }, onSessionIdCopied), browser.cefBrowser)
 
         thisLogger().info("Webview renders offscreen: ${browser.isOffScreenRendering}")
 
+        BrowserLoss.install()
         WebviewResources.register()
         lifetime.ifAlive { browser.loadURL(startUrl()) }
     }
@@ -312,6 +348,44 @@ internal class WebviewHost(
     }
 
     /**
+     * The page's process died while the browser around it lives on - see [PageCrashes] for why it is loaded
+     * again and when it is not.
+     */
+    private fun watchPageProcess() {
+        browser.jbCefClient.addRequestHandler(
+            object : CefRequestHandlerAdapter() {
+                override fun onRenderProcessTerminated(
+                    browser: CefBrowser?,
+                    status: CefRequestHandler.TerminationStatus?,
+                    errorCode: Int,
+                    errorString: String?,
+                ) = pageDied(status, errorCode)
+            },
+            browser.cefBrowser,
+        )
+    }
+
+    private fun pageDied(status: CefRequestHandler.TerminationStatus?, errorCode: Int) {
+        // The whole browser went with it: there is nothing left to load the page into (see BrowserLoss).
+        if (BrowserLoss.happened) return
+
+        lifetime.ifAlive {
+            // The receiver died with the page: until the new one is in place, everything waits in the queue.
+            synchronized(outbox) { pageReady = false }
+
+            val again = crashes.reloadAfterCrash()
+            thisLogger().warn("The panel's page process ended ($status, code $errorCode); ${if (again) "loading it again" else "giving up"}")
+            DiagnosticsLog.note(DiagnosticsLog.PANEL, "page process ended: $status, code $errorCode, ${if (again) "reloading" else "gave up"}")
+
+            if (again) reloadAlarm.addRequest(::reloadPage, RELOAD_DELAY_MS) else onPageLost()
+        }
+    }
+
+    private fun reloadPage() {
+        lifetime.ifAlive { browser.cefBrowser.reload() }
+    }
+
+    /**
      * Our own page is the one we loaded ourselves: the plugin's resources or Vite's dev server. Internal
      * addresses (`about:blank`, the developer tools) are ours too: handing them to the system browser is
      * meaningless.
@@ -347,6 +421,9 @@ internal class WebviewHost(
      * many full interface repaints. As a batch they turn into one.
      */
     fun send(json: String) {
+        // A browser that has stopped takes nothing: every call into it would be a call into a closed socket.
+        if (BrowserLoss.happened) return
+
         lifetime.ifAlive {
             synchronized(outbox) {
                 outbox.addLast(json)
@@ -601,6 +678,8 @@ internal class WebviewHost(
      * may have been left torn since last time.
      */
     fun repaintWhole() {
+        if (BrowserLoss.happened) return
+
         lifetime.ifAlive {
             lastHealAt = System.currentTimeMillis()
             if (browser.isOffScreenRendering) browser.cefBrowser.invalidate()

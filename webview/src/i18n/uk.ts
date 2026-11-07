@@ -278,6 +278,11 @@ export const uk: Dict = {
       if (last >= 2 && last <= 4) return `${n} повідомлення`
       return `${n} повідомлень`
     },
+    delete: 'Видалити',
+    deleteTitle: 'Видалити цю розмову?',
+    deleteNote: 'Вона піде в кошик, і звідти її можна повернути.',
+    deleteOpen: (title) => `Розмову «${title}» відкрито у вкладці. Закрийте вкладку, щоб її видалити.`,
+    deleteRefused: (title) => `Розмову «${title}» не вдалося перемістити в кошик, тож її не видалено.`,
   },
 
   search: {
@@ -1887,6 +1892,7 @@ export const uk: Dict = {
         waitingQuestion: 'чекає на вас · питання',
         waitingPlan: 'чекає на вас · план',
         working: 'працює',
+        agents: (n) => (n === 1 ? 'працює субагент' : `працюють субагенти: ${n}`),
         done: 'готово',
       },
       reach: {

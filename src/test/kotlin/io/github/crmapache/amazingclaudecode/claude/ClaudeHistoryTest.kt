@@ -355,6 +355,88 @@ class ClaudeHistoryTest {
         assertEquals("C--Users-Ivan-dev-proj", ClaudeHistory.slugFor("C:\\Users\\Ivan\\dev\\proj"))
     }
 
+    // Only ASCII letters and digits survive, as in the CLI's own `[^a-zA-Z0-9]`: a folder named in Chinese,
+    // Russian or with an accent turns into hyphens, one per UTF-16 unit, or the panel looks into a folder
+    // the CLI never made and cannot find a single conversation of the project.
+    @Test
+    fun `letters outside ASCII become hyphens as the CLI makes them`() {
+        assertEquals("-srv----", ClaudeHistory.slugFor("/srv/\u9879\u76ee\u4e8c"))
+        assertEquals("-srv-------", ClaudeHistory.slugFor("/srv/\u043f\u0440\u043e\u0435\u043a\u0442"))
+        assertEquals("-srv-caf-", ClaudeHistory.slugFor("/srv/caf\u00e9"))
+        assertEquals("-srv---x", ClaudeHistory.slugFor("/srv/\ud83d\ude80x"))
+    }
+
+    // The CLI brings its working directory to the composed form before naming anything: an accent kept on
+    // disk apart from its letter is still one character to it, and one hyphen.
+    @Test
+    fun `a decomposed letter is one hyphen, as the CLI composes the path first`() {
+        assertEquals("-srv-caf-", ClaudeHistory.slugFor("/srv/cafe\u0301"))
+    }
+
+    // A folder's name has a length limit, and the CLI keeps under it: past two hundred characters the name is
+    // cut and a hash of the whole path follows. The hashes are the CLI's own, worked out by its code on the
+    // same paths. The second path hashes to the lowest Int, whose absolute value Kotlin keeps negative and
+    // JavaScript does not - a folder name with a minus the CLI never makes.
+    @Test
+    fun `a long path is cut at two hundred characters and followed by the CLI's hash`() {
+        val cli = Regex("[^a-zA-Z0-9]")
+        val deep = "/home/ivan/" + "very-long-folder-name/".repeat(10)
+
+        val long = deep + "repo"
+        assertEquals(long.replace(cli, "-").take(200) + "-i0mn98", ClaudeHistory.slugFor(long))
+
+        val lowest = deep + "repo-anxizmjh"
+        assertEquals(Int.MIN_VALUE, lowest.hashCode())
+        assertEquals(lowest.replace(cli, "-").take(200) + "-zik0zk", ClaudeHistory.slugFor(lowest))
+
+        val edge = "/" + "a".repeat(199)
+        assertEquals("-" + "a".repeat(199), ClaudeHistory.slugFor(edge))
+        assertEquals("-" + "a".repeat(199) + "-b6ymvl", ClaudeHistory.slugFor(edge + "a"))
+    }
+
+    // An older CLI build hashed a long path differently, and its resume list still looks into those folders -
+    // but only into the ones whose transcripts were written in this very directory: projects deep in one tree
+    // share the cut name, and only the hash told them apart.
+    @Test
+    fun `a long path's folders under another hash count when their transcripts were written there`() {
+        val config = createTempDirectory("long-path").toFile()
+        val deep = "/home/ivan/" + "very-long-folder-name/".repeat(10)
+        val path = deep + "repo"
+        val home = ClaudeHome(
+            configDirectory = config,
+            managedSettingsDirectory = File(config, "etc"),
+            projectPaths = listOf(path),
+            remote = false,
+            toHost = { it },
+        )
+        val cut = ClaudeHistory.slugFor(path).take(200)
+
+        fun folder(name: String, cwd: String): File = File(config, "projects/$name").also {
+            it.mkdirs()
+            File(it, "a.jsonl").writeText("""{"type":"user","cwd":"$cwd","message":{"role":"user","content":"hi"}}""" + "\n")
+        }
+
+        val today = folder(ClaudeHistory.slugFor(path), path)
+        val older = folder("$cut-1a2b3c", path)
+        folder("$cut-4d5e6f", deep + "other")
+
+        assertEquals(setOf(today, older), ClaudeHistory.directoriesFor(home).toSet())
+    }
+
+    // A conversation moved to another directory says so at its end, and that is where it belongs now.
+    @Test
+    fun `a moved conversation's working directory is where it was moved`() {
+        val file = File(createTempDirectory("relocated").toFile(), "a.jsonl")
+        file.writeText(
+            """{"type":"user","cwd":"/old","message":{"role":"user","content":"hi"}}""" + "\n" +
+                """{"type":"relocated","relocatedCwd":"/new"}""" + "\n",
+        )
+
+        assertEquals("/new", ClaudeHistory.workingDirectoryOf(file))
+        file.writeText("""{"type":"user","cwd":"/old","message":{"role":"user","content":"hi"}}""" + "\n")
+        assertEquals("/old", ClaudeHistory.workingDirectoryOf(file))
+    }
+
     // Only what the feed can draw: the transcript also holds summaries, service records and the file
     // snapshots the CLI keeps beside them, and none of those are a message.
     @Test
@@ -1085,5 +1167,64 @@ class ClaudeHistoryTest {
         assertEquals(2, ClaudeHistory.scan(TranscriptRewinds.alive(lines.asSequence(), TranscriptRewinds.cutLines(lines.asSequence()))).messages)
         assertTrue(ClaudeHistory.scan(lines.asSequence()).rewound)
         assertTrue(!ClaudeHistory.tailOf(lines.take(4).asSequence(), before = null, pageSize = 60).rewound)
+    }
+
+    /** A trash for the tests: takes what it [accepts] and lists it, or throws as a real one does on failure. */
+    private class TestTrash(private val accepts: (File) -> Boolean = { true }, private val fails: Boolean = false) :
+        ClaudeHistory.Trash {
+        val taken = mutableListOf<File>()
+
+        override fun accepts(file: File): Boolean = accepts.invoke(file)
+
+        override fun take(file: File) {
+            if (fails) throw java.io.IOException("the trash said no")
+            taken += file
+        }
+    }
+
+    // Deleting from the history moves the transcript and the folder the CLI keeps beside it - subagents,
+    // tool output - and nothing else of the project's.
+    @Test
+    fun `deleting a conversation trashes its transcript and the folder beside it`() {
+        val dir = createTempDirectory("acc-trash").toFile()
+        val transcript = File(dir, "abc-123.jsonl").apply { writeText("{}\n") }
+        val beside = File(dir, "abc-123").apply { mkdirs() }
+        val other = File(dir, "other.jsonl").apply { writeText("{}\n") }
+        val trash = TestTrash()
+
+        assertTrue(ClaudeHistory.trashIn(listOf(dir), "abc-123", trash))
+
+        assertEquals(listOf(transcript, beside), trash.taken)
+        assertTrue(other.isFile)
+    }
+
+    // The identifier is the panel's and is part of a path: one that could step out of the folder is refused
+    // before anything is looked up. One with no transcript to its name touches nothing and counts as gone -
+    // it is not on the disk, which is all the history asks.
+    @Test
+    fun `an identifier that is not a plain name deletes nothing, and one that names nothing is gone already`() {
+        val dir = createTempDirectory("acc-trash").toFile()
+        File(dir, "real.jsonl").writeText("{}\n")
+        val trash = TestTrash()
+
+        assertFalse(ClaudeHistory.trashIn(listOf(dir), "../real", trash))
+        assertFalse(ClaudeHistory.trashIn(listOf(dir), "", trash))
+        assertTrue(ClaudeHistory.trashIn(listOf(dir), "missing", trash))
+        assertEquals(emptyList(), trash.taken)
+    }
+
+    // A trash that would not take the file is never asked to: on Windows that is a deletion for good without a
+    // word (a WSL project's conversations, read over a network path). One that fails leaves it where it was.
+    @Test
+    fun `a trash that would not take a conversation, or failed to, leaves it where it was`() {
+        val dir = createTempDirectory("acc-trash").toFile()
+        val transcript = File(dir, "real.jsonl").apply { writeText("{}\n") }
+
+        val unwilling = TestTrash(accepts = { false })
+        assertFalse(ClaudeHistory.trashIn(listOf(dir), "real", unwilling))
+        assertEquals(emptyList(), unwilling.taken)
+
+        assertFalse(ClaudeHistory.trashIn(listOf(dir), "real", TestTrash(fails = true)))
+        assertTrue(transcript.isFile)
     }
 }

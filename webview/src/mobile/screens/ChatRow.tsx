@@ -212,7 +212,13 @@ const stateLine = (t: Dict, session: SessionEntry, state: ChatState, now: number
   }
 
   if (state === 'running') {
-    return session.since > 0 ? `${words.working} · ${formatDuration(Math.max(0, now - session.since))}` : words.working
+    // The conversation's own turn, or only the background agents it raised, which outlive that turn: "done"
+    // over the second was what this row used to say. Counted from the start of the work rather than of the
+    // latest turn - every report from an agent raises one (see SessionSnapshot.workSince); an IDE that does
+    // not say it gets the turn's moment, as before.
+    const what = session.status === 'running' ? words.working : words.agents(session.agents)
+    const since = session.workSince || session.since
+    return since > 0 ? `${what} · ${formatDuration(Math.max(0, now - since))}` : what
   }
 
   if (state === 'done') return session.since > 0 ? `${words.done} · ${clock(session.since)}` : words.done

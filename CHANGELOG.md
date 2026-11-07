@@ -9,6 +9,34 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.57] - 2026-11-04
+
+- Added: delete a past conversation from the history. Hover a row under Today or Earlier and a Delete button appears; after you confirm, the conversation goes to the trash of your system, where you can put it back from. A conversation open in a tab can't be deleted until you close the tab, and the list says so above the rows. Where the IDE has no trash for the folder Claude Code keeps conversations in, for example a project inside WSL, the button is not shown at all, so nothing is ever deleted for good.
+- Fixed: the history was empty for a project whose folder had Chinese, Cyrillic or accented letters in its path, and a recently closed tab from such a project could not be reopened. The plugin named the folder where Claude Code keeps the project's conversations by its own rule, keeping every letter, while Claude Code turns everything but plain Latin letters and digits into hyphens. Now the plugin follows the same rule.
+- Fixed: the history was also empty for a project buried very deep, with a path over 200 characters, and for a path whose accented letters macOS keeps as a letter plus a separate accent mark. Claude Code shortens such long names and adds a hash of the whole path, and treats both forms of an accented letter as one. The history now does the same, and finds the conversations even where different versions of Claude Code wrote the hash differently.
+
+## [0.13.56] - 2026-11-01
+
+- Added: quote a piece of Claude's answer from the phone. Select the words in the answer and a Quote button appears over the conversation; it puts them above the message field, the way the desk quotes a selection. Before, the phone could only quote a whole message from its three dots. The button stands at the bottom of the conversation and moves to the top when the words you selected are down there, so it never covers them or the selection handle.
+- Fixed: on the phone a conversation showed as done the moment Claude's own turn ended, while the background agents it had started were still working, sometimes for half an hour. The desk's tab already showed it as working. Now the phone does too, in the list, the tab strip and the tabs sheet, and the line under the conversation says how many subagents are still at it. The time beside it counts from the start of the work rather than starting over every time an agent reports back.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
+## [0.13.55] - 2026-11-01
+
+- Fixed: a quote taken from Claude's answer went to the end of your message instead of where the cursor was, most noticeably in a message of several lines. Marking words in the conversation takes the cursor out of the input field, and the quote was simply added at the end. Now the field remembers where the cursor stood, and quotes, references from the editor and files picked in the dialog land right there. The keyboard handed back to the field after renaming a tab also returns to that spot rather than to the end.
+- Fixed: an attachment put in the middle of a line brought a second space next to the one already there, one put at the start of a line stuck to the last word of the line above, and one at the end of a line had the next letter you typed glued to it. Now there is exactly one space on each side.
+- Fixed: quotes in the input field are numbered in the order they stand. A quote put in front of another one read "ref2 ... ref1", and after removing the first of two quotes the next one got the same number as the quote left in place.
+
+## [0.13.54] - 2026-10-31
+
+- Fixed: now and then the panel went completely white and only a restart of the IDE brought it back. The cause is a bug in the IDE itself (JBR-10027 in the JetBrains tracker): the IDE sometimes shuts its own built-in browser down, and every view it draws goes blank at once, this panel and Markdown previews alike, with nothing written to the IDE's log. The plugin can't bring that browser back, but it now notices when it happens and says so in place of the white panel, with a button to restart the IDE and a link to the bug.
+- Fixed: when the panel's page crashed on its own, for example after running out of memory, it stayed empty until the IDE was restarted. Now the page is loaded again within a second or two with all your tabs and conversations in place. If it keeps crashing, the panel stops after a few tries and offers a button to build it again.
+
+## [0.13.53] - 2026-10-30
+
+- Fixed: the panel could fill the disk with copies of a plugin marketplace. To read each account's usage limits, the panel starts Claude Code for a second in a folder of its own, about once a minute. Claude Code treated that folder as a new machine and began downloading every marketplace your settings or your organization declare, and the panel stopped it right after the answer, so the download was left half done and started over the next minute. One reported machine had 1,029 such copies, 321 GB, in `~/.amazing-claude-code/usage`. Now these short runs use the plugins you already have instead of downloading them, and they are closed gently so Claude Code tidies up after itself. Copies left by earlier versions are removed in the background within a minute of opening the panel after the update.
+- Fixed: the small READ, BASH and THINK labels in the rows of tool calls sat a pixel or two below the words beside them when the IDE's zoom was not 100%, for example at 90%. It showed most on THINK, whose row lights up under the mouse. The labels now line up with the text at every zoom.
+
 ## [0.13.52] - 2026-10-24
 
 - Fixed: the list of changed files under a turn showed a handful of files while the turn had changed far more. In one reported case the IDE's commit window counted 179 changed and new files and the list showed five, all from one hour-long turn. Claude often edits files with its own scripts and sed through Bash, and subagents' edits reach the panel without their diff, so the list never saw either. Now the IDE takes a snapshot of the project when you send a message and again when the turn ends, and the list shows every file that differs between the two, with its real line counts and a working revert, whatever changed it. Files you saved yourself in the IDE while the turn ran, and files another tab's agent edited, are left out, so Revert all never takes your own work back. The snapshot is kept apart from your repository and never touches its index, stash or history. It works in projects inside a git repository; elsewhere the list is built the way it was.
@@ -1111,7 +1139,12 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.52...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.57...HEAD
+[0.13.57]: https://github.com/crmapache/amazing-claude-code/compare/0.13.56...0.13.57
+[0.13.56]: https://github.com/crmapache/amazing-claude-code/compare/0.13.55...0.13.56
+[0.13.55]: https://github.com/crmapache/amazing-claude-code/compare/0.13.54...0.13.55
+[0.13.54]: https://github.com/crmapache/amazing-claude-code/compare/0.13.53...0.13.54
+[0.13.53]: https://github.com/crmapache/amazing-claude-code/compare/0.13.52...0.13.53
 [0.13.52]: https://github.com/crmapache/amazing-claude-code/compare/0.13.51...0.13.52
 [0.13.51]: https://github.com/crmapache/amazing-claude-code/compare/0.13.50...0.13.51
 [0.13.50]: https://github.com/crmapache/amazing-claude-code/compare/0.13.49...0.13.50

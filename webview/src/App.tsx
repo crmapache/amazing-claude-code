@@ -175,6 +175,7 @@ import { emptyUsageBook, mergeUsageBook, usageOf, type UsageBook } from './feed/
 import type {
   AvailablePluginInfo,
   ClosedTab,
+  HistoryDeleteOutcome,
   HistoryEntry,
   InstalledPluginInfo,
   PaintedTerm,
@@ -928,6 +929,16 @@ export const App = () => {
   const [calls, setCalls] = useState<Record<string, TabCall>>({})
   /** The project's past conversations: null means the list has not arrived yet (see the startup requests). */
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
+  /** Whether the IDE can delete a past conversation - only into a trash (see ClaudeHistory.canTrash). */
+  const [historyCanDelete, setHistoryCanDelete] = useState(false)
+  /**
+   * Why the last delete from the history did not happen - said above the list until the screen is opened again
+   * or another row is deleted. The title is the row's as it was pressed: the list that follows names it again
+   * only when it is back.
+   */
+  const [historyRefusal, setHistoryRefusal] = useState<{ title: string; outcome: HistoryDeleteOutcome } | null>(null)
+  /** The rows on their way to the trash, by id, with the title a refusal would say. */
+  const deletingHistory = useRef<Record<string, string>>({})
   /**
    * The statistics tab's figures: null until the IDE answers the first request. Asked for at startup
    * (the menu's row shows the achievements' count without the tab being opened), again whenever the tab
@@ -1747,6 +1758,7 @@ export const App = () => {
     }
 
     setSideMenu({ open: true, screen: 'history' })
+    setHistoryRefusal(null)
     send({ type: 'history' })
   }, [])
 
@@ -2952,7 +2964,15 @@ export const App = () => {
 
           case 'history':
             setHistory(message.conversations)
+            setHistoryCanDelete(message.canDelete === true)
             break
+
+          case 'historyDeleted': {
+            const title = deletingHistory.current[message.id] ?? ''
+            delete deletingHistory.current[message.id]
+            setHistoryRefusal(message.outcome === 'trashed' ? null : { title, outcome: message.outcome })
+            break
+          }
 
           case 'searchResults': {
             if (message.id === searchAsked.current) {
@@ -5918,7 +5938,10 @@ export const App = () => {
       send({ type: 'usageStatsPreview' })
     }
 
-    if (screen === 'history') send({ type: 'history' })
+    if (screen === 'history') {
+      setHistoryRefusal(null)
+      send({ type: 'history' })
+    }
 
     // Asked afresh every time it is opened: the health of each account and its remaining share both cost
     // a process, so they are not kept warm - and both are exactly what somebody opens this screen to read.
@@ -6955,17 +6978,15 @@ export const App = () => {
               }}
               onQuote={() => {
                 // As a chip right in the input field, like a file or an image, rather than as a separate
-                // block above it: a quote from the agent's output is no worse than an attachment.
+                // block above it: a quote from the agent's output is no worse than an attachment. Through
+                // the field, as a reference from the editor goes: there it lands where the caret stood
+                // before the words were marked in the feed (see noteCaret), and it is a hand on the field,
+                // which also closes the chain of a rewrite - a way back still on offer would take the
+                // quote away with it. The field renumbers quotes by their place (see relabelChips); the
+                // number here is right for the one road that does not pass the field, the end of the draft.
                 const ordinal = draft.tokens.filter((token) => token.kind === 'chip' && token.chip.kind === 'quote').length + 1
-                editDraft(active, {
-                  tokens: appendChip(draft.tokens, { kind: 'quote', value: `ref${ordinal}`, text: selection.text }),
-                })
-                // It goes into the draft without passing through the field, so the chain has to be closed
-                // here by hand: a rewrite with a quote added under it is a draft of one's own again, and a
-                // way back still on offer would take the quote away with it.
-                forgetImproveSource(active)
+                addToDraft({ kind: 'chip', chip: { kind: 'quote', value: `ref${ordinal}`, text: selection.text } })
                 clearSelection()
-                setFocusToken((current) => current + 1)
               }}
             />
           ) : null}
@@ -7108,6 +7129,20 @@ export const App = () => {
               reopenTab(key)
             }}
             reopenKey={keyText(panelKeys.reopenTab)}
+            onDelete={
+              historyCanDelete
+                ? (entry) => {
+                    // Off the list at once; the IDE's answer is the list again, with the row gone for good
+                    // or back when it was refused - and then a word above the list on why (historyDeleted).
+                    deletingHistory.current[entry.id] = entry.title
+                    setHistoryRefusal(null)
+                    setHistory((current) => current?.filter((item) => item.id !== entry.id) ?? current)
+                    send({ type: 'deleteConversation', id: entry.id })
+                  }
+                : undefined
+            }
+            isOpen={(id) => tabHolding(id, sessions, (tab) => panelsRef.current[tab]?.sessionId) !== undefined}
+            refusal={historyRefusal}
           />
         ) : null}
 

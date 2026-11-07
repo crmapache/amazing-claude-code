@@ -265,6 +265,11 @@ export const zh: Dict = {
     reopen: (key) => (key ? `在原位置重新打开 · ${key}` : '在原位置重新打开'),
     fork: '分叉',
     messages: (n) => `${n} 条消息`,
+    delete: '删除',
+    deleteTitle: '删除这个对话？',
+    deleteNote: '会移到废纸篓，可以从那里恢复。',
+    deleteOpen: (title) => `“${title}”正在标签页中打开。请先关闭该标签页再删除。`,
+    deleteRefused: (title) => `无法将“${title}”移到废纸篓，因此没有删除。`,
   },
 
   search: {
@@ -1671,6 +1676,7 @@ export const zh: Dict = {
         waitingQuestion: '等你处理 · 提问',
         waitingPlan: '等你处理 · 计划',
         working: '进行中',
+        agents: (n) => `${n} 个子智能体进行中`,
         done: '完成',
       },
       reach: {

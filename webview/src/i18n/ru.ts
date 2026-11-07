@@ -278,6 +278,11 @@ export const ru: Dict = {
       if (last >= 2 && last <= 4) return `${n} сообщения`
       return `${n} сообщений`
     },
+    delete: 'Удалить',
+    deleteTitle: 'Удалить этот разговор?',
+    deleteNote: 'Он уйдёт в корзину, и оттуда его можно вернуть.',
+    deleteOpen: (title) => `Разговор «${title}» открыт во вкладке. Закройте вкладку, чтобы удалить его.`,
+    deleteRefused: (title) => `Разговор «${title}» не удалось переместить в корзину, поэтому он не удалён.`,
   },
 
   search: {
@@ -1846,6 +1851,7 @@ export const ru: Dict = {
         waitingQuestion: 'ждёт вас · вопрос',
         waitingPlan: 'ждёт вас · план',
         working: 'работает',
+        agents: (n) => (n === 1 ? 'работает субагент' : `работают субагенты: ${n}`),
         done: 'готово',
       },
       reach: {

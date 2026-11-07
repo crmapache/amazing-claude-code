@@ -41,6 +41,7 @@ paths:
 - `reuseMessage`, `intoField` - message-reuse
 - `queueEdits`, `takeBackQueued`, `case 'queuedTaken'`, `before` в `intoTheQueue` - queue-edit
 - `pickTab`, `focusToken` (фокус в `startSession`, `resume`, `closeSession`) - composer-field
+- `onQuote` у `SelectionMenu` и `addToDraft` (вставка снаружи встаёт в каретку) - composer-field
 - `spellcheck`, `setSpellcheck`, `case 'spellcheck'`, атрибут на корне документа - composer-field
 - `shareEditor`, `editorContext`, `editorOnce`, `editorShown`, `openEditorMenu`, `pickEditor`, `withEditor` в `submit`, `case 'editorContext'` - editor-context
 - `menuConversation` (сообщение `sessionMenu` для меню правой кнопки), `status` в `runLocal`, `case 'sessionInfo'` - session-info
@@ -50,6 +51,7 @@ paths:
 - `sendAnswers`, `dismissAsk` - permissions
 - `latestTodo` (список задач из реплея не всплывает) - history
 - выбор из истории, какую вкладку занять - history
+- `historyCanDelete`, `historyRefusal`, `deletingHistory`, `case 'historyDeleted'`, `onDelete`/`refusal` у `History` - history (удаление в корзину)
 - `branchFrom` / форк и шкала контекста форка - fork-tabs
 - `fork(quote, point)`, `forkWhole`, `forkable`, разрез из выделения (`forkPointAfter`), `openOriginal` - fork-tabs
 - `openRewind`, `confirmRewind`, `rewindOutcome`, `rewindInFork`, `rewinding`, `case 'rewindPreview'`/`'rewound'`, `uuid` в `submit` - rewind
@@ -79,7 +81,8 @@ paths:
 - `ImagePreview` рядом с `Tooltips`, `case 'imagePreview'`, `SaidImagesContext` вокруг `Feed`, `openPicture` и `OpenPictureContext`, `sessionId` у `Queue` - image-preview
 - `missingFiles`, `case 'fileMissing'`, очистка в `openFile` - open-in-editor
 - `sideThreads`, `askAside`, `forgetSide`, `case 'sideAnswer'`/`'sideProgress'`, Esc над карточкой вопроса сбоку, `SideQuestionCard` в `dockCards` - btw
-- только в `mobile/App.tsx`: `PhoneRewind`, `refills`, `RewindSheet` - rewind; `forkFrom`/`forkWhole` (`kind: 'branch'`, `before`) - fork-tabs;
+- только в `mobile/App.tsx`: `onQuote` у `Thread` (цитата выделением) и `isWorking` в `counting` - remote-access;
+  `PhoneRewind`, `refills`, `RewindSheet` - rewind; `forkFrom`/`forkWhole` (`kind: 'branch'`, `before`) - fork-tabs;
   `openMachineScreen`, `openRepository`, `Door`/`from`, `edit.home`/`edit.origin` -
   remote-access и scenarios; `vividOf` - calm-colors; `case 'effort'` в `mobile/feed.ts` - models
 
@@ -87,6 +90,7 @@ paths:
 - любое новое сообщение - remote-access: реши про него в `RemoteCommands`, иначе красный `RemoteCommandsTest`
 - `rejected` - prompt-improver; `'withdrawn'` - permissions; `PaintedTerm`, `matchCase`, `wholeWords` - search
 - `mcpList` с `ifRunning` - idle-sleep; `cursor` в `replayFinished`, `historyPage` - history
+- `canDelete` у `history`, `deleteConversation`, `historyDeleted`, `HistoryDeleteOutcome` - history (удаление в корзину)
 - `effort`, `fastMode`, `setFastMode`, `fast_mode_state`, `fast` у `ModelInfo`, `setCustomModels`, `customModels` - models; `setSendKey`, `spellcheck`, `setSpellcheck` - composer-field;
   `queue` - remote-access
 - `models` у `usage`, `ModelUsageWindow`, `hiddenIndicators`, `setHiddenIndicators`, факт `indicators` - indicators
@@ -194,6 +198,7 @@ panel-keys; `answerClosedTabs` (зеркало полосы и закрытые 
   `carryOnChanged`, `carryOnWhatIsDue`, `cancelCarryOn`, `RESTART` в `onProcessDropping` - accounts (работа, остановленная не человеком)
 - `settingSources` у `conversations`, `sendAccountOutranked` - setting-sources
 - `resumeConversation`, сообщение `conversation` в `attach`/`resetJournal` - history
+- `holdsConversation`, `forgetClosedConversation`, `emitToDesk` - history (удаление в корзину) и reopen-tabs
 - `PROJECT_ORDER`, `broadcastProject` - remote-access и calm-colors; `indicators` в нём - indicators;
   `refreshCommandHints` - slash-hints
 - `stats` - stats; круг сна простаивающих - idle-sleep; прогрев `ClaudeHome` - claude-home
@@ -217,7 +222,7 @@ editor-context; `rewind`, `previewRewind`, `cut`, `uuid` в `userMessage` - rewi
 `newSession`, `onBorn`, `setPermissionMode` - models; `renewAfterSignIn` - expired-sign-in;
 `releasedRole` и рамка в `prompt` - scenarios; `branchFrom(before)`, `originOf`, `restoreFork`, `forkOrigin` в `moveTo` - fork-tabs; `rewind`, `previewRewind` - rewind.
 
-**`ProjectCatalog.kt`**: `sendCalmColors` - calm-colors; `runShellCommand` - editor-sync; `sendCustomModels` -
+**`ProjectCatalog.kt`**: `deleteConversation`, `historyMessage` (с `canDelete`) - history; `sendCalmColors` - calm-colors; `runShellCommand` - editor-sync; `sendCustomModels` -
 models; `pasteCollapse` в `sendInit` - paste; `authenticateMcp`, `sayProject` - remote-access;
 `installedPlugins`, `refreshCommandHints` - slash-hints; список `files` - open-in-editor; страницы нерождённого
 форка в `sendHistoryPage` - fork-tabs; `sendIndicators` и

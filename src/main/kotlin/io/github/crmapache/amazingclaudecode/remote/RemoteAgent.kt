@@ -1410,6 +1410,19 @@ internal class RemoteAgent : Disposable {
                                      */
                                     if (snapshot.awaits.isNotEmpty()) put("awaits", snapshot.awaits)
                                     if (snapshot.changedAt > 0) put("since", snapshot.changedAt)
+                                    /*
+                                     * The work that outlives its turn. A request that raised background
+                                     * agents ends its turn with the work only beginning, and a list going
+                                     * by the status alone called it done while they worked on for half an
+                                     * hour - the panel's own dot never did (see stillWorking in App.tsx).
+                                     * How many are left, so the row can say it is them rather than the
+                                     * conversation itself, and when the work began, so its counter does
+                                     * not start over with every turn an agent's report raises (see
+                                     * SessionSnapshot.workSince). Both absent while there is nothing to
+                                     * say, which is also what an IDE older than them sends.
+                                     */
+                                    if (snapshot.pendingAgents.isNotEmpty()) put("agents", snapshot.pendingAgents.size)
+                                    if (snapshot.workSince > 0) put("workSince", snapshot.workSince)
                                     // The other two states the panel's own dot has, so that one mark
                                     // means the same thing on both screens: work that is done, and a
                                     // conversation whose process died under it. Neither can be worked

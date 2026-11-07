@@ -49,6 +49,7 @@ import {
   CAP_PARTS,
   CAP_TELL,
   chatKey,
+  isWorking,
   waitingFor,
   type AgentEntry,
   type Inventory,
@@ -697,7 +698,7 @@ export const App = () => {
   const counting =
     screen.at === 'sessions' &&
     Object.values(inventories).some((inventory) =>
-      inventory.projects.some((project) => project.sessions.some((session) => session.status === 'running')),
+      inventory.projects.some((project) => project.sessions.some(isWorking)),
     )
 
   useEffect(() => {
@@ -3077,6 +3078,8 @@ export const App = () => {
                 [key]: (current[key] ?? []).filter((_, at) => at !== index),
               }))
             }
+            // A piece of an answer, selected - the same list the message sheet's whole-message quote joins.
+            onQuote={(text) => setQuotes((current) => ({ ...current, [key]: [...(current[key] ?? []), text] }))}
             onSearch={() => openSearch(screen.agentId, screen.projectKey, screen.sessionId)}
             capsule={capsuleProps}
             focus={feedFocus?.key === threadKey ? feedFocus : undefined}

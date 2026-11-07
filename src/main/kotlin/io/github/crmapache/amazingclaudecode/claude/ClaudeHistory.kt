@@ -1,11 +1,13 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.util.io.TrashBin
 import io.github.crmapache.amazingclaudecode.scenario.ScenarioConversations
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.nio.file.StandardOpenOption
+import java.text.Normalizer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -18,6 +20,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import kotlin.math.abs
 
 /**
  * This project's past conversations.
@@ -83,6 +86,69 @@ internal object ClaudeHistory {
         directoriesFor(workingDirectory)
             .map { it.resolve("$id.jsonl") }
             .firstOrNull { it.isFile }
+
+    /**
+     * Whether this project's past conversations can be deleted from the history at all: only into a trash,
+     * where a press made by mistake can be taken back - and only into one that really takes them.
+     *
+     * Asked of the IDE's own trash for the folder the CLI keeps this project's conversations in, not of the
+     * machine. Java's move to the trash, on Windows, deletes for good and without a word whatever the recycle
+     * bin will not take (it tells Windows not to ask, see awt_Desktop.cpp): a network path, and that is exactly
+     * where a WSL project's conversations are read from. The IDE's trash agrees only to a path on the volume
+     * of the home folder - the one its own "delete to trash" in the project tree trusts - and on Linux it
+     * knows the desktop's trash, which Java's does not. No trash for that folder, no button on the rows.
+     */
+    fun canTrash(workingDirectory: String?): Boolean =
+        SystemTrash.accepts(ClaudeHome.of(workingDirectory).projectsDirectory)
+
+    /**
+     * Moves a past conversation into the trash: its transcript, and the folder beside it the CLI keeps the
+     * conversation's subagents and tool output in, so that nothing of it is left to be found by the search.
+     * False when the trash would not take the transcript or failed to; true when it went, or was not there to
+     * begin with - gone either way, which is all the history asks.
+     *
+     * The identifier comes from the panel and is part of a path, so only a plain name is taken - anything
+     * with a separator or a dot in it could reach outside the project's folder.
+     */
+    fun moveToTrash(workingDirectory: String?, id: String): Boolean =
+        trashIn(directoriesFor(workingDirectory), id, SystemTrash)
+
+    /** [moveToTrash] over the folders given and with the trash given - apart so a test needs neither. */
+    internal fun trashIn(directories: List<File>, id: String, trash: Trash): Boolean {
+        if (!SAFE_ID.matches(id)) return false
+        val transcript = directories.map { it.resolve("$id.jsonl") }.firstOrNull { it.isFile } ?: return true
+
+        // Asked of each path rather than once: a folder of the CLI's may be a link to another volume.
+        if (!trash.accepts(transcript)) return false
+        runCatching { trash.take(transcript) }.onFailure {
+            thisLogger().warn("The trash did not take a conversation", it)
+            return false
+        }
+
+        val beside = File(transcript.parentFile, id)
+        if (beside.isDirectory && trash.accepts(beside)) {
+            runCatching { trash.take(beside) }.onFailure { thisLogger().warn("The trash did not take a conversation's folder", it) }
+        }
+        return true
+    }
+
+    /** Where a deleted conversation goes - the IDE's trash, or a test's stand-in. */
+    internal interface Trash {
+        /** Whether this file can go to the trash and be taken back from it - never a deletion for good. */
+        fun accepts(file: File): Boolean
+
+        /** Into the trash; throws when it did not go. */
+        fun take(file: File)
+    }
+
+    private object SystemTrash : Trash {
+        override fun accepts(file: File): Boolean =
+            runCatching { TrashBin.isSupported() && TrashBin.canMoveToTrash(file.toPath()) }.getOrDefault(false)
+
+        override fun take(file: File) = TrashBin.moveToTrash(file.toPath())
+    }
+
+    private val SAFE_ID = Regex("[A-Za-z0-9_-]+")
 
     /**
      * The name a person gave the conversation, as its file says last - null when none stands. Read after
@@ -866,8 +932,38 @@ internal object ClaudeHistory {
      * Windows always did, because the colon after the drive letter stayed where it was. The panel
      * looked into a folder that did not exist and showed an empty list, while the conversations lay
      * right beside it.
+     *
+     * "A letter or a digit" is the CLI's ASCII class `[a-zA-Z0-9]`, not Kotlin's [Char.isLetterOrDigit]:
+     * the latter also keeps Chinese, Cyrillic, accented and every other non-Latin letter, so a project in
+     * a folder named in such a language got a name the CLI never makes. The list showed nothing, and a
+     * closed tab could not be reopened - it was taken for a conversation gone from disk and dropped. The
+     * string is walked by UTF-16 unit, as the CLI's regular expression does, so a character outside the
+     * basic plane becomes two hyphens there and here alike.
+     *
+     * Two more steps belong to the same rule, and both are the CLI's own (read in its code and checked by
+     * running 2.1.293). The path is first brought to the composed form of Unicode (NFC): the CLI does that
+     * to its working directory before anything else, so an "é" kept on disk as "e" plus an accent is one
+     * hyphen, not two. And a name longer than [SLUG_LIMIT] is cut there and followed by a hyphen and a hash
+     * of the whole path - a folder's name has a length limit of its own, and a project deep enough came up
+     * with an empty history. The hash is the CLI's: `31 * h + unit` over the UTF-16 units, which is exactly
+     * [String.hashCode], made positive and written in base 36.
      */
-    internal fun slugFor(path: String): String = path.map { if (it.isLetterOrDigit()) it else '-' }.joinToString("")
+    internal fun slugFor(path: String): String {
+        val composed = Normalizer.normalize(path, Normalizer.Form.NFC)
+        val whole = wholeSlugOf(composed)
+        if (whole.length <= SLUG_LIMIT) return whole
+
+        // Made positive as a Long: the lowest Int has no positive twin and would stay negative, while the
+        // CLI's Math.abs works on a double and writes it without the minus.
+        return whole.take(SLUG_LIMIT) + "-" + abs(composed.hashCode().toLong()).toString(36)
+    }
+
+    /** The name before it is cut - what the CLI holds a transcript's working directory against. */
+    private fun wholeSlugOf(composed: String): String =
+        composed.map { if (it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9') it else '-' }.joinToString("")
+
+    /** Longer than this, the CLI cuts the folder's name and adds a hash of the path. */
+    private const val SLUG_LIMIT = 200
 
     /**
      * Where to look for this project's conversations - inside the CLI's own directory, under the name the
@@ -879,15 +975,84 @@ internal object ClaudeHistory {
      * word (the whole story is in ClaudeHome). There are two candidate folders, because a project's path
      * and the path the CLI knows it by do not always match: `/tmp` on macOS is really `/private/tmp`, and
      * a project may well sit behind a symbolic link. The CLI files conversations under the real path
-     * while the IDE hands over its own - so we look into both and show whatever was found.
+     * while the IDE hands over its own - so we look into both and show whatever was found. A project
+     * with a long path may have more, see [underAnotherHash].
      */
     internal fun directoriesFor(workingDirectory: String?): List<File> = directoriesFor(ClaudeHome.of(workingDirectory))
 
     internal fun directoriesFor(home: ClaudeHome): List<File> =
         home.projectPaths
-            .map { File(home.projectsDirectory, slugFor(it)) }
+            .flatMap { path -> listOf(File(home.projectsDirectory, slugFor(path))) + underAnotherHash(home.projectsDirectory, path) }
             .distinctBy { it.path }
             .filter { it.isDirectory }
+
+    /**
+     * A long path's folders under a hash other than today's. The CLI's builds did not always agree on the
+     * hash, so a project deep enough can have its conversations in several folders that begin the same, and
+     * the CLI's own resume list looks into all of them. Beginning the same
+     * is not enough to be ours: projects deep in one tree share the first two hundred characters, and only
+     * the hash told them apart. So a folder counts when one of its transcripts was written in this very
+     * directory - the CLI's own test, see [workingDirectoryOf].
+     *
+     * Costs nothing for an ordinary project: the projects folder is not even listed below the limit.
+     */
+    private fun underAnotherHash(projects: File, path: String): List<File> {
+        val composed = Normalizer.normalize(path, Normalizer.Form.NFC)
+        val whole = wholeSlugOf(composed)
+        if (whole.length <= SLUG_LIMIT) return emptyList()
+
+        val cut = whole.take(SLUG_LIMIT) + "-"
+        val own = slugFor(composed)
+        val alike = projects.listFiles { file -> file.name.startsWith(cut) && file.name != own && file.isDirectory }
+            ?: return emptyList()
+
+        return alike.filter { folder ->
+            val transcripts = folder.listFiles { file -> file.name.endsWith(".jsonl") && file.isFile } ?: emptyArray()
+            transcripts.any { transcript ->
+                workingDirectoryOf(transcript)?.let { wholeSlugOf(Normalizer.normalize(it, Normalizer.Form.NFC)) } == whole
+            }
+        }
+    }
+
+    /**
+     * The directory a transcript was written in, read the way the CLI reads it to tell whose a folder is:
+     * the last `relocated` record in the file's final 64 KB when the conversation was moved, otherwise the
+     * first `cwd` in its first 64 KB. Null when neither is there or the file cannot be read.
+     */
+    internal fun workingDirectoryOf(file: File): String? = runCatching {
+        RandomAccessFile(file, "r").use { transcript ->
+            val size = transcript.length()
+            val head = transcript.text(0, minOf(size, PEEK_BYTES))
+            val tail = if (size > PEEK_BYTES) transcript.text(size - PEEK_BYTES, PEEK_BYTES) else head
+
+            tail.lines().asReversed().firstNotNullOfOrNull { line ->
+                if (line.contains("\"relocatedCwd\":") && line.contains("\"type\":\"relocated\"")) {
+                    stringField(line, "relocatedCwd", type = "relocated")
+                } else {
+                    null
+                }
+            } ?: head.lines().firstNotNullOfOrNull { line ->
+                if (line.contains("\"cwd\":")) stringField(line, "cwd") else null
+            }
+        }
+    }.getOrNull()
+
+    private fun RandomAccessFile.text(from: Long, length: Long): String {
+        val bytes = ByteArray(length.toInt())
+        seek(from)
+        readFully(bytes)
+        return String(bytes, Charsets.UTF_8)
+    }
+
+    /** A string field of a whole JSON line - null for a line cut at the edge of what was read, or of another type. */
+    private fun stringField(line: String, field: String, type: String? = null): String? = runCatching {
+        val payload = Json.parseToJsonElement(line).jsonObject
+        if (type != null && payload["type"]?.jsonPrimitive?.contentOrNull != type) return@runCatching null
+        payload[field]?.jsonPrimitive?.takeIf { it.isString }?.content
+    }.getOrNull()
+
+    /** As much of a transcript's head and of its tail as the CLI reads to tell whose it is. */
+    private const val PEEK_BYTES = 64L * 1024
 
     private fun entryFor(file: File): Entry? {
         val id = file.nameWithoutExtension

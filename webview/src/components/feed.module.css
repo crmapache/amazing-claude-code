@@ -1409,10 +1409,9 @@
 
 /* The chip stands in the row on the baseline - like everything else in the head. But the baseline aligns
    by letters, while beside the text what is seen is not the chip's letters but its fill: the rectangle
-   whole. That box is symmetrical around the metrics of its own, smaller font, and its middle ends up above
-   the middle of the neighbouring word - to the eye the chip hangs above the row. We drop it by a pixel so
-   that the middles meet; the shift is a painted one, does not meddle with the flow, does not touch the
-   row's height and leaves the caption inside the chip exactly at its centre. */
+   whole. Its middle meets the middle of the lowercase letters beside it only while the caption stands at
+   the middle of the fill, and that holds at any zoom only with the font's own leading - see
+   --acc-chip-leading in tokens.css. */
 .toolChip {
   flex: none;
   /* The same three numbers the strut is built from (see .toolHead::before): they are one measurement,
