@@ -9,6 +9,11 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.58] - 2026-11-06
+
+- Fixed: a shell command of several lines showed only its first line in the conversation. A script that fetched and then deleted branches in a loop read as a plain "git fetch", and the rest of it could only be seen in the permission question, which an allowed command never gets. Now the line of the call says how many more lines there are, and opening the call shows the whole command above its output. A long script scrolls inside its own block, so the output stays right under it.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.57] - 2026-11-04
 
 - Added: delete a past conversation from the history. Hover a row under Today or Earlier and a Delete button appears; after you confirm, the conversation goes to the trash of your system, where you can put it back from. A conversation open in a tab can't be deleted until you close the tab, and the list says so above the rows. Where the IDE has no trash for the folder Claude Code keeps conversations in, for example a project inside WSL, the button is not shown at all, so nothing is ever deleted for good.
@@ -1139,7 +1144,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.57...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.58...HEAD
+[0.13.58]: https://github.com/crmapache/amazing-claude-code/compare/0.13.57...0.13.58
 [0.13.57]: https://github.com/crmapache/amazing-claude-code/compare/0.13.56...0.13.57
 [0.13.56]: https://github.com/crmapache/amazing-claude-code/compare/0.13.55...0.13.56
 [0.13.55]: https://github.com/crmapache/amazing-claude-code/compare/0.13.54...0.13.55
