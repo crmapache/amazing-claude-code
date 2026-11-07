@@ -93,6 +93,15 @@ const asInput = (input: unknown): ToolInput =>
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '')
 
+/**
+ * A shell command as the card reads it: the blank lines around it are not part of it.
+ *
+ * The head's line (see targetFor) and the count of the lines it leaves out (see hiddenCommandOf) are both
+ * taken from here, so they cannot part: a command that opened on an empty line used to give an empty head
+ * over "1 more line", with two lines hidden behind it.
+ */
+const commandOf = (input: unknown): string => str(asInput(input).command).trim()
+
 /** A path is shown relative to the project: a full one does not fit and adds nothing. */
 export const shortenPath = (path: string, workingDirectory: string): string => {
   if (!path) return ''
@@ -196,8 +205,7 @@ export const targetFor = (name: string, input: unknown, workingDirectory: string
   if (filePath) return shortenPath(filePath, workingDirectory)
 
   if (name === 'Bash' || name === 'BashOutput') {
-    const command = str(data.command)
-    return command.split('\n')[0] ?? name
+    return commandOf(data).split('\n')[0] ?? name
   }
 
   const pattern = str(data.pattern)
@@ -224,7 +232,7 @@ export const targetFor = (name: string, input: unknown, workingDirectory: string
 export const hiddenCommandOf = (name: string, input: unknown): { text: string; extraLines: number } | null => {
   if (name !== 'Bash') return null
 
-  const text = str(asInput(input).command).trim()
+  const text = commandOf(input)
   const extraLines = text.split('\n').length - 1
   return extraLines > 0 ? { text, extraLines } : null
 }

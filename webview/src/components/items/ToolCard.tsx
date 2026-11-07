@@ -160,9 +160,18 @@ export const ToolCard = ({ item, open, awaitingPermission, onToggle }: ToolCardP
             {item.target}
           </button>
         ) : (
-          <span className={`${s.toolTarget} ${item.isError ? s.toolError : ''}`}>{item.target}</span>
+          <span className={`${s.toolTarget} ${item.isError ? s.toolError : ''}`}>
+            {item.target}
+            {/*
+              How much of the command is behind the caret, said inside the caption rather than beside it:
+              it is the caption's own continuation, and the end of a caption is what a narrow head clips
+              first. As a neighbour of its own it kept its width while the command gave way, and on a phone
+              "git fetch --prune" came down to "git …" beside "… 3 more lines". Only on this branch: a
+              shell command is never a file to open.
+            */}
+            {command ? <span className={s.toolMore}>{t.feed.tool.moreLines(command.extraLines)}</span> : null}
+          </span>
         )}
-        {command ? <span className={s.toolMeta}>{t.feed.tool.moreLines(command.extraLines)}</span> : null}
         <span
           className={`${s.toolMeta} ${item.pending ? (awaitingPermission ? s.waiting : s.running) : ''}`}
         >

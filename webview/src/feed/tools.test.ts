@@ -129,7 +129,9 @@ describe('a shell command of several lines', () => {
     expect(hiddenCommandOf('Bash', { command: '' })).toBeNull()
   })
 
-  it('does not count the blank lines around it', () => {
+  /** The head and the count read the same lines: an empty head over "1 more line" hid two of them. */
+  it('does not count the blank lines around it, and neither does the head', () => {
+    expect(targetFor('Bash', { command: '\n\ngit fetch\ngit pull\n\n' }, '')).toBe('git fetch')
     expect(hiddenCommandOf('Bash', { command: '\n\ngit fetch\ngit pull\n\n' })).toEqual({
       text: 'git fetch\ngit pull',
       extraLines: 1,
