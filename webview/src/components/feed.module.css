@@ -1475,6 +1475,14 @@
   color: var(--acc-fg-faint);
 }
 
+/* "… 3 more lines" at the end of a command's caption (see ToolCard): in the quiet words of the meta, but
+   inside the caption, so its ellipsis takes them before it takes a letter of the command. */
+.toolMore {
+  margin-left: var(--acc-head-gap);
+  font: var(--acc-fs-meta, 11px) var(--acc-mono);
+  color: var(--acc-fg-faint);
+}
+
 .toolDur {
   flex: none;
   font: var(--acc-fs-label, 10px) var(--acc-mono);
@@ -1541,6 +1549,19 @@
   color: var(--acc-fg-body);
   max-height: 220px;
   overflow-y: auto;
+}
+
+/* The whole command of a call whose head shows only its first line (see ToolCard). The same block as the
+   errand above, for the same reasons: it is what was asked, so it is brighter than what came back under it,
+   and it is capped - a script written out in a heredoc runs to a hundred lines, and the output a card is
+   usually opened for would otherwise sit below all of them. Parted from that output by a gap, not a rule
+   (see taskLog for why). */
+.toolCommand {
+  composes: taskPrompt;
+}
+
+.toolCommand:not(:last-child) {
+  margin-bottom: 8px;
 }
 
 /* The agent's own log under the errand - what is above is what it was asked, what is below is what it
