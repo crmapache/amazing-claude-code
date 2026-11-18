@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.60] - 2026-11-18
+
+- Changed: a small internal cleanup with no visible effect. In the code that pairs a phone, one function was written in a way that Kotlin 2.5 turns from a warning into an error, which would have stopped the plugin from building with it. That is fixed, along with a few checks for a missing value in places where the value is always there. The plugin works exactly as before.
+
 ## [0.13.59] - 2026-11-17
 
 - Changed: a small internal cleanup with no visible effect. Improving a prompt, searching your conversations with AI and writing a scenario from a sentence each start a short Claude Code run of their own, and each kept its own copy of the check that leaves out launch options your installed Claude Code doesn't know yet. The three now share one check.
@@ -1148,7 +1152,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.59...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.60...HEAD
+[0.13.60]: https://github.com/crmapache/amazing-claude-code/compare/0.13.59...0.13.60
 [0.13.59]: https://github.com/crmapache/amazing-claude-code/compare/0.13.58...0.13.59
 [0.13.58]: https://github.com/crmapache/amazing-claude-code/compare/0.13.57...0.13.58
 [0.13.57]: https://github.com/crmapache/amazing-claude-code/compare/0.13.56...0.13.57
