@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.59] - 2026-11-17
+
+- Changed: a small internal cleanup with no visible effect. Improving a prompt, searching your conversations with AI and writing a scenario from a sentence each start a short Claude Code run of their own, and each kept its own copy of the check that leaves out launch options your installed Claude Code doesn't know yet. The three now share one check.
+
 ## [0.13.58] - 2026-11-06
 
 - Fixed: a shell command of several lines showed only its first line in the conversation. A script that fetched and then deleted branches in a loop read as a plain "git fetch", and the rest of it could only be seen in the permission question, which an allowed command never gets. Now the line of the call says how many more lines there are, and opening the call shows the whole command above its output. A long script scrolls inside its own block, so the output stays right under it.
@@ -1144,7 +1148,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.58...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.59...HEAD
+[0.13.59]: https://github.com/crmapache/amazing-claude-code/compare/0.13.58...0.13.59
 [0.13.58]: https://github.com/crmapache/amazing-claude-code/compare/0.13.57...0.13.58
 [0.13.57]: https://github.com/crmapache/amazing-claude-code/compare/0.13.56...0.13.57
 [0.13.56]: https://github.com/crmapache/amazing-claude-code/compare/0.13.55...0.13.56
