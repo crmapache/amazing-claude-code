@@ -130,7 +130,7 @@ internal object FileReverts {
                 ChangeRevert.Outcome.REVERTED
             }
         }
-        file!!.refresh(false, false)
+        file.refresh(false, false)
         return onEventThread(project, if (restore) ChangeRevert.Outcome.RESTORED else ChangeRevert.Outcome.REVERTED) {
             val document = FileDocumentManager.getInstance().getDocument(file) ?: return@onEventThread ChangeRevert.Outcome.FAILED
             val same = document.text.replace("\r\n", "\n") == was.replace("\r\n", "\n")

@@ -128,8 +128,8 @@ class CarryOnsTest {
         val now = owed.of("tab")
         assertTrue(now?.silent == true)
         // Nothing is promised on the screens any more, and the queue still waits for the reset.
-        assertNull(now?.shownAt(0))
-        assertEquals(5_000L, now?.dueAt(0))
+        assertNull(now.shownAt(0))
+        assertEquals(5_000L, now.dueAt(0))
         assertEquals(Reason.LIMIT, owed.take("tab", now = 5_000)?.reason)
     }
 

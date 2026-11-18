@@ -35,13 +35,13 @@ class ClaudeRateLimitTest {
         val paid = ClaudeRateLimit.of(event(""""status":"rejected","isUsingOverage":true"""), now)
 
         assertTrue(paid?.extraUsage == true)
-        assertEquals(false, paid?.stopped)
+        assertEquals(false, paid.stopped)
 
         // The older CLI carries the same fact under the other name.
         val older = ClaudeRateLimit.of(event(""""status":"rejected","overageInUse":true"""), now)
 
         assertTrue(older?.extraUsage == true)
-        assertEquals(false, older?.stopped)
+        assertEquals(false, older.stopped)
     }
 
     @Test

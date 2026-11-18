@@ -1705,7 +1705,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         val launch = SessionLaunch(model = record.model, effort = record.effort, mode = record.mode, fast = record.fast.takeIf { it })
         if (!launch.isEmpty) conversations.rememberLaunch(id, launch)
         when {
-            onDisk -> conversations.resume(id, conversation!!)
+            onDisk -> conversations.resume(id, conversation)
             fork != null -> conversations.restoreFork(id, fork)
         }
 
@@ -1719,7 +1719,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         when {
             onDisk -> replayTranscript(
                 id,
-                conversation!!,
+                conversation,
                 adoptTranscriptModel = record.model.isEmpty(),
                 wakeAfter = false,
                 whenMissing = fork?.let { origin -> { bringBackFork(id, origin, launch) } },

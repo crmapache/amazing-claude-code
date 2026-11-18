@@ -621,7 +621,7 @@ internal class RemoteAgent : Disposable {
      * tell anybody how nearly right it was. A wrong one does not burn the code either - noise on a
      * public relay should not cost a person their pairing - but a run of them does.
      */
-    private fun pairInit(address: ByteArray, deviceId: String, payload: JsonObject) = synchronized(pairingLock) {
+    private fun pairInit(address: ByteArray, deviceId: String, payload: JsonObject): Unit = synchronized(pairingLock) {
         val live = offer
 
         if (live == null || live.used || System.currentTimeMillis() > live.expiresAt) {

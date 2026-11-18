@@ -1018,7 +1018,7 @@ internal class ClaudeSessions(
         val owed = session != null &&
             stillOwed(session.isRunning, session.startedAt, waiting.processStartedAt)
 
-        if (!owed || session == null) {
+        if (!owed) {
             waiting.then()
             return
         }

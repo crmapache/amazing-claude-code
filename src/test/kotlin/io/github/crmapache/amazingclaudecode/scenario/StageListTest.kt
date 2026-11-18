@@ -123,7 +123,7 @@ class StageListTest {
         )
         assertEquals(StepState.SKIPPED, after[1].state)
         assertEquals(listOf("one", "one"), after.subList(4, 6).map { it.item?.label })
-        assertTrue(after.subList(4, 6).all { it.item?.again == "Notion asked to sign in" && it.item?.index == 1 && it.state == StepState.WAITING })
+        assertTrue(after.subList(4, 6).all { it.item?.again == "Notion asked to sign in" && it.item.index == 1 && it.state == StepState.WAITING })
         assertEquals(2, StageList.afterPass(after, 0))
     }
 

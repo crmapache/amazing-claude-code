@@ -61,7 +61,6 @@ internal object JournalTrim {
         is JsonObject -> shortenObject(element, limit, spare)
         is JsonArray -> JsonArray(element.map { shorten(it, limit, spare) })
         is JsonPrimitive -> shortenPrimitive(element, limit)
-        else -> element
     }
 
     private fun shortenObject(entry: JsonObject, limit: Limit, spare: Boolean): JsonObject {
