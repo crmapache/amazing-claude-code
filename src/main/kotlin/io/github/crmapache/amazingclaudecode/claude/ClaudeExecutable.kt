@@ -173,3 +173,19 @@ internal object ClaudeExecutable {
         return answer
     }
 }
+
+/**
+ * A flag the CLI in front of us may not have heard of: added, with its value, only when it knows it.
+ *
+ * Asked of the file rather than worked out from a version number, for the reason written out at
+ * [ClaudeExecutable.supportsFlag]: an unknown flag is not ignored by the CLI, it fails while parsing its
+ * own arguments - so a guess that went wrong would turn every run into an error.
+ *
+ * For the one-off `claude -p` runs that build their arguments flag by flag (PromptImprover, AiSearch,
+ * ScenarioAuthor).
+ */
+internal fun MutableList<String>.addIfSupported(executable: File, flag: String, value: String? = null) {
+    if (!ClaudeExecutable.supportsFlag(executable, flag)) return
+    add(flag)
+    value?.let { add(it) }
+}

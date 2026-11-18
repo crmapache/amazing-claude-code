@@ -7,7 +7,7 @@ import io.github.crmapache.amazingclaudecode.claude.ClaudeExecutable
 import io.github.crmapache.amazingclaudecode.claude.CommandHint
 import io.github.crmapache.amazingclaudecode.claude.ModelNames
 import io.github.crmapache.amazingclaudecode.claude.SettingSources
-import java.io.File
+import io.github.crmapache.amazingclaudecode.claude.addIfSupported
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -586,10 +586,4 @@ Two or three stages and a handful of cards is a scenario somebody will actually 
         this[name]?.let { runCatching { it.jsonArray }.getOrNull() }
             ?.mapNotNull { it as? JsonObject }
             .orEmpty()
-
-    private fun MutableList<String>.addIfSupported(executable: File, flag: String, value: String? = null) {
-        if (!ClaudeExecutable.supportsFlag(executable, flag)) return
-        add(flag)
-        value?.let { add(it) }
-    }
 }

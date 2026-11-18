@@ -1,7 +1,6 @@
 package io.github.crmapache.amazingclaudecode.claude
 
 import com.intellij.util.concurrency.AppExecutorUtil
-import java.io.File
 
 /**
  * The sparkle button beside the paperclip: a draft in the input field, rewritten into a prompt worth
@@ -242,22 +241,5 @@ internal object PromptImprover {
         append("<<<DRAFT\n")
         append(draft)
         append("\nDRAFT>>>\n")
-    }
-
-    /**
-     * A flag the CLI in front of us may not have heard of.
-     *
-     * Asked of the file rather than worked out from a version number, and for the reason written out at
-     * ClaudeExecutable.supportsFlag: an unknown flag is not ignored by the CLI, it fails while parsing its
-     * own arguments - so a plugin that guessed wrong would answer every press with an error.
-     */
-    private fun MutableList<String>.addIfSupported(
-        executable: File,
-        flag: String,
-        value: String? = null,
-    ) {
-        if (!ClaudeExecutable.supportsFlag(executable, flag)) return
-        add(flag)
-        value?.let { add(it) }
     }
 }

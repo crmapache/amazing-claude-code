@@ -8,6 +8,7 @@ import com.intellij.openapi.util.Key
 import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.ClaudeCli
 import io.github.crmapache.amazingclaudecode.claude.ClaudeExecutable
+import io.github.crmapache.amazingclaudecode.claude.addIfSupported
 import java.io.File
 import java.nio.file.Path
 import java.time.LocalDate
@@ -343,10 +344,4 @@ Best match first, at most ten, and none at all - {"hits": []} - when nothing gen
     }
 
     private fun JsonObject.string(name: String): String? = (this[name] as? JsonPrimitive)?.contentOrNull
-
-    private fun MutableList<String>.addIfSupported(executable: File, flag: String, value: String? = null) {
-        if (!ClaudeExecutable.supportsFlag(executable, flag)) return
-        add(flag)
-        value?.let { add(it) }
-    }
 }
