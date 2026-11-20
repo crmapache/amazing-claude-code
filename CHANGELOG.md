@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.61] - 2026-11-20
+
+- Changed: a small internal cleanup in the phone client with no visible effect. The phone keeps what it knows about each project, its past conversations and its card on the first screen under a name made of the machine and the project, and that name was spelled out by hand in about twenty places that have to agree with each other. They now all take it from one shared definition, and so does the name of a conversation. The phone works exactly as before.
+
 ## [0.13.60] - 2026-11-18
 
 - Changed: a small internal cleanup with no visible effect. In the code that pairs a phone, one function was written in a way that Kotlin 2.5 turns from a warning into an error, which would have stopped the plugin from building with it. That is fixed, along with a few checks for a missing value in places where the value is always there. The plugin works exactly as before.
@@ -1152,7 +1156,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.60...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.61...HEAD
+[0.13.61]: https://github.com/crmapache/amazing-claude-code/compare/0.13.60...0.13.61
 [0.13.60]: https://github.com/crmapache/amazing-claude-code/compare/0.13.59...0.13.60
 [0.13.59]: https://github.com/crmapache/amazing-claude-code/compare/0.13.58...0.13.59
 [0.13.58]: https://github.com/crmapache/amazing-claude-code/compare/0.13.57...0.13.58
