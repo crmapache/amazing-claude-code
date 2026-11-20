@@ -13,6 +13,7 @@ import type {
   ScenarioSchedule,
   ShellMessage,
 } from '../protocol'
+import { projectId } from './projects'
 
 /**
  * What a phone knows about a project rather than about one conversation in it.
@@ -369,4 +370,4 @@ export const customModelsOf = (
   machine: string[] | undefined,
   agentId: string,
   projectKey: string,
-): string[] => facts[`${agentId}:${projectKey}`]?.customModels ?? machine ?? []
+): string[] => facts[projectId(agentId, projectKey)]?.customModels ?? machine ?? []

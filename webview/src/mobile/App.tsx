@@ -50,6 +50,7 @@ import {
   CAP_TELL,
   chatKey,
   isWorking,
+  projectId,
   waitingFor,
   type AgentEntry,
   type Inventory,
@@ -832,7 +833,7 @@ export const App = () => {
     // while nothing is being watched at all - the screen that asked for it is a list of past
     // conversations, not a feed.
     if (message.type === 'history') {
-      setHistories((current) => ({ ...current, [`${agentId}:${projectKey}`]: message.conversations }))
+      setHistories((current) => ({ ...current, [projectId(agentId, projectKey)]: message.conversations }))
       return
     }
 
@@ -1032,7 +1033,7 @@ export const App = () => {
     // The project's own facts, which belong to no conversation at all and so must be taken before the
     // guard below turns everything without a matching sessionId away.
     if (isFact(message)) {
-      const key = `${agentId}:${projectKey}`
+      const key = projectId(agentId, projectKey)
       setFacts((current) => ({
         ...current,
         [key]: applyFact(current[key] ?? emptyFacts(), message, watchedRun.current),
@@ -1662,7 +1663,9 @@ export const App = () => {
       setScreen({ at: 'scenarios', agentId, projectKey })
       openRepository(agentId, projectKey, (opened) => {
         setHomeAnchor((current) =>
-          current?.project === `${agentId}:${projectKey}` ? { ...current, project: `${agentId}:${opened}` } : current,
+          current?.project === projectId(agentId, projectKey)
+            ? { ...current, project: projectId(agentId, opened) }
+            : current,
         )
         openScenarios(agentId, opened)
       })
@@ -1683,7 +1686,7 @@ export const App = () => {
         agentId: project.agentId,
         projectKey: project.key,
         name: project.name,
-        canShare: facts[`${project.agentId}:${project.key}`]?.scenarios?.canShare ?? true,
+        canShare: facts[projectId(project.agentId, project.key)]?.scenarios?.canShare ?? true,
         closed: project.closed,
         // Whether that machine can open it for its shelves - a plugin older than this client answers
         // such a request with a refusal written for another cause (see CAP_OPEN_BARE).
@@ -1741,7 +1744,7 @@ export const App = () => {
    */
   const leaveDictation = dictation.cancel
   /** Which conversation is on screen, as one string - the thing a dictation is tied to. */
-  const dictatingIn = showingFeed ? `${screen.agentId}:${screen.projectKey}:${screen.sessionId}` : ''
+  const dictatingIn = showingFeed ? chatKey(screen.agentId, screen.projectKey, screen.sessionId) : ''
 
   useEffect(() => {
     if (!dictatingIn) return undefined
@@ -2398,7 +2401,7 @@ export const App = () => {
     }
 
     if (screen.at === 'accounts') {
-      const book = facts[`${screen.agentId}:${screen.projectKey}`]?.usage
+      const book = facts[projectId(screen.agentId, screen.projectKey)]?.usage
       const held = accounts[screen.agentId] ?? null
 
       return (
@@ -2422,7 +2425,7 @@ export const App = () => {
 
     if (screen.at === 'scenarios') {
       const at = screen
-      const held = facts[`${at.agentId}:${at.projectKey}`]
+      const held = facts[projectId(at.agentId, at.projectKey)]
 
       return (
         <div className={m.screen}>
@@ -2529,7 +2532,7 @@ export const App = () => {
       return (
         <div className={m.screen}>
           <ScenarioRun
-            run={facts[`${at.agentId}:${at.projectKey}`]?.runs?.[at.runId] ?? null}
+            run={facts[projectId(at.agentId, at.projectKey)]?.runs?.[at.runId] ?? null}
             problem={scenarioNote}
             onPause={() => command(at.agentId, at.projectKey, { type: 'scenarioPause', runId: at.runId })}
             onResume={() => command(at.agentId, at.projectKey, { type: 'scenarioResume', runId: at.runId })}
@@ -2538,7 +2541,7 @@ export const App = () => {
             // The main thread's conversation, opened the way one is opened from the history: in a tab of
             // its own on that machine, under the run's name (see openPast).
             onOpenChat={() => {
-              const run = facts[`${at.agentId}:${at.projectKey}`]?.runs?.[at.runId]
+              const run = facts[projectId(at.agentId, at.projectKey)]?.runs?.[at.runId]
               if (!run?.headConversationId) return
               openPast(
                 at.agentId,
@@ -2589,7 +2592,7 @@ export const App = () => {
             tell={
               (inventories[at.agentId]?.caps ?? []).includes(CAP_TELL)
                 ? {
-                    facts: facts[`${at.agentId}:${at.projectKey}`] ?? emptyFacts(),
+                    facts: facts[projectId(at.agentId, at.projectKey)] ?? emptyFacts(),
                     photos: (inventories[at.agentId]?.caps ?? []).includes(CAP_PARTS) ? ROOMY : NARROW,
                     connected: states[at.agentId] === 'connected',
                     voice: dictation,
@@ -2614,7 +2617,7 @@ export const App = () => {
 
     if (screen.at === 'scenarioStep') {
       const at = screen
-      const run = facts[`${at.agentId}:${at.projectKey}`]?.runs?.[at.runId] ?? null
+      const run = facts[projectId(at.agentId, at.projectKey)]?.runs?.[at.runId] ?? null
 
       return (
         <div className={m.screen}>
@@ -2750,7 +2753,7 @@ export const App = () => {
         <div className={m.screen}>
           <History
             project={project}
-            conversations={histories[`${screen.agentId}:${screen.projectKey}`] ?? null}
+            conversations={histories[projectId(screen.agentId, screen.projectKey)] ?? null}
             busy={opening !== null && opening.error === ''}
             error={opening?.error ?? ''}
             onOpen={(entry) => openPast(screen.agentId, screen.projectKey, entry)}
@@ -2914,7 +2917,7 @@ export const App = () => {
             siblings={siblings}
             sessionId={screen.sessionId}
             facts={factsFor(
-              facts[`${screen.agentId}:${screen.projectKey}`] ?? emptyFacts(),
+              facts[projectId(screen.agentId, screen.projectKey)] ?? emptyFacts(),
               chatAccounts[chatKey(screen.agentId, screen.projectKey, screen.sessionId)] ?? '',
             )}
             // Photos at full size where the machine takes a message in parts, one frame's worth where it
@@ -3426,7 +3429,7 @@ const JUMP_PAGE_LIMIT = 40
  * far better than falling back to English on the screen that lists the work.
  */
 const localeOf = (facts: Record<string, ProjectFacts>, screen: Screen): ProjectFacts['locale'] => {
-  const key = 'agentId' in screen ? `${screen.agentId}:${screen.projectKey}` : ''
+  const key = 'agentId' in screen ? projectId(screen.agentId, screen.projectKey) : ''
   return facts[key]?.locale ?? Object.values(facts).find((fact) => fact.locale)?.locale
 }
 
@@ -3438,7 +3441,7 @@ const localeOf = (facts: Record<string, ProjectFacts>, screen: Screen): ProjectF
  * truthy fact would walk straight past the very machine whose gauges were damped all the way.
  */
 const vividOf = (facts: Record<string, ProjectFacts>, screen: Screen): number | undefined => {
-  const key = 'agentId' in screen ? `${screen.agentId}:${screen.projectKey}` : ''
+  const key = 'agentId' in screen ? projectId(screen.agentId, screen.projectKey) : ''
   return facts[key]?.calmVivid ?? Object.values(facts).find((fact) => fact.calmVivid !== undefined)?.calmVivid
 }
 

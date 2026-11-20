@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from 'react'
 import { ChatRow } from './ChatRow'
 import { Magnifier } from '../../components/SearchCapsule'
 import type { AgentEntry, ProjectEntry, SessionEntry } from '../projects'
-import { waitingFor } from '../projects'
+import { chatKey, projectId, waitingFor } from '../projects'
 import { liveRunsOf, type ProjectFacts } from '../facts'
 import type { LinkState } from '../link'
 import { runDot, runMarks } from '../../scenarios/runs'
@@ -218,7 +218,7 @@ export const Projects = ({
             <p className={`${m.bandTitle} ${m.homeBand}`}>{t.mobile.sessions.waitingForYou}</p>
             {waiting.map((session) => (
               <button
-                key={`${session.agentId}:${session.projectKey}:${session.sessionId}`}
+                key={chatKey(session.agentId, session.projectKey, session.sessionId)}
                 type="button"
                 className={m.waitCard}
                 onClick={() => onDecide(session)}
@@ -246,7 +246,7 @@ export const Projects = ({
         )}
 
         {projects.map((project, index) => {
-          const fact = facts[`${project.agentId}:${project.key}`]
+          const fact = facts[projectId(project.agentId, project.key)]
           // How many conversations the project holds, tinted by whether any of them is stopped. A count
           // of what waits would repeat the band at the top of the screen; what the corner is actually
           // asked is "how much is going on in here".
@@ -264,7 +264,7 @@ export const Projects = ({
           const scenariosOpen = project.online && (!project.closed || canOpenBare(project.agentId))
 
           return (
-            <div key={`${project.agentId}:${project.key}`}>
+            <div key={cardId(project)}>
               {index === firstClosed && (
                 <p className={`${m.bandTitle} ${m.homeBand}`}>{t.mobile.sessions.recentlyOpened}</p>
               )}
@@ -403,7 +403,7 @@ export const Projects = ({
 }
 
 /** The key a card is drawn and anchored under. */
-const cardId = (project: ProjectEntry): string => `${project.agentId}:${project.key}`
+const cardId = (project: ProjectEntry): string => projectId(project.agentId, project.key)
 
 /** One card of the list, by its key - compared as data rather than put into a selector it could break. */
 const cardIn = (list: HTMLElement, id: string): HTMLElement | undefined =>

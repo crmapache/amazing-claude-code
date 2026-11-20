@@ -51,9 +51,6 @@ export interface RepositoryChoice {
  */
 export type ShelfChoice = { scope: 'user' } | { scope: 'project'; agentId: string; projectKey: string }
 
-/** The two coordinates of a project, as one string - the key the facts and the screens are held by. */
-export const repositoryKey = (agentId: string, projectKey: string): string => `${agentId}:${projectKey}`
-
 /**
  * The project a scenario on this shelf is written through.
  *

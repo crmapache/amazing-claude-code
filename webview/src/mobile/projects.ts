@@ -201,6 +201,16 @@ export interface PairedFacts {
 }
 
 /**
+ * How one project is named on this phone, across every IDE: the key its facts, its past conversations
+ * and its card on the first screen are held by.
+ *
+ * Both parts, because a project's key is the IDE's own and says nothing about which machine it is on.
+ * One spelling for all of them, since they are looked up by each other - the card the scenarios were
+ * entered from is found again by the project they were opened for.
+ */
+export const projectId = (agentId: string, projectKey: string): string => `${agentId}:${projectKey}`
+
+/**
  * How one conversation is named on this phone, across every IDE and every project.
  *
  * All three parts, because the conversation's own identifier is unique nowhere but inside its project:
@@ -209,7 +219,7 @@ export interface PairedFacts {
  * project's main tab hid every other project's along with it.
  */
 export const chatKey = (agentId: string, projectKey: string, sessionId: string): string =>
-  `${agentId}:${projectKey}:${sessionId}`
+  `${projectId(agentId, projectKey)}:${sessionId}`
 
 /**
  * Every project on every paired IDE, in the order it deserves attention.
