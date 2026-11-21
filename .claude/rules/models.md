@@ -18,6 +18,8 @@ paths:
   - "webview/src/feed/fastMode.test.ts"
   - "webview/src/mobile/screens/RunSheet.tsx"
   - "src/main/kotlin/io/github/crmapache/amazingclaudecode/claude/SessionLaunch.kt"
+  - "src/main/kotlin/io/github/crmapache/amazingclaudecode/claude/ModelNames.kt"
+  - "src/test/kotlin/io/github/crmapache/amazingclaudecode/claude/ModelNamesTest.kt"
 ---
 
 ## MODEL, EFFORT и MODE принадлежат разговору, а не окну
@@ -134,6 +136,23 @@ paths:
   ОБЯЗАН быть отложенным хотя бы на тик: панель помечает выбор «запрошенным» сразу после отправки, и
   синхронный ответ ложится раньше этой пометки - тогда чип навсегда остаётся с давно отвеченным
   выбором. У настоящей IDE это круг по мосту, так что состояние достижимо только в харнессе.
+
+### Подпись, которая не называет модель
+
+Модель разговора читается из подписи под каждым ответом, и две подписи модели не называют. `<synthetic>` и
+прочее в угловых скобках - слова, которые CLI сам вкладывает модели в рот (прерванный ход, неизвестная
+команда, текст ошибки API). `custom` - заглушка некоторых прокси и роутеров моделей: ответы через них
+подписаны то настоящей моделью, то этим словом (PR #25, DeepSeek через роутер). Сам CLI `custom` не пишет
+нигде - проверено по строкам 2.1.293.
+
+- **Правило одно на каждую сторону**: `realModel` в `feed/build.ts` (лента, нижняя строка, плашка «switched
+  by Claude Code») и `ModelNames.isModel` в IDE (модель разговора из истории - `ClaudeHistory.lastModel`,
+  карточка моделей в статистике и чистка книги при чтении). Пропущенная в IDE заглушка поднимала бы разговор
+  из истории с `--model custom` и заводила бы в статистике строку модели, которой никто не запускал.
+- **Поиск слова таких ответов индексирует** (`TranscriptText`): их сказала модель, а не CLI. Выбрасываются там
+  только подписи в угловых скобках.
+- Проверить без IDE: `build.test.ts` («ignores a "custom" placeholder signature»), `ModelNamesTest`,
+  `ClaudeHistoryTest`, `StatsCollectorTest`.
 
 ### Новая вкладка стартует с закреплённого, а не с выбранного последним
 

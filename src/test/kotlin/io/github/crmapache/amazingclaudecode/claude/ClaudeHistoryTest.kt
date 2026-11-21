@@ -528,6 +528,8 @@ class ClaudeHistoryTest {
             """{"type":"user","uuid":"u2","message":{"role":"user","content":[{"type":"text","text":"two"}]}}""",
             """{"type":"assistant","uuid":"a3","message":{"model":"claude-opus-5","content":[{"type":"text","text":"three"}]}}""",
             """{"type":"assistant","uuid":"a4","message":{"model":"<synthetic>","content":[{"type":"text","text":"Unknown command"}]}}""",
+            // A proxy signing part of its answers with a placeholder (PR #25).
+            """{"type":"assistant","uuid":"a5","message":{"model":"custom","content":[{"type":"text","text":"four"}]}}""",
         )
 
         assertEquals("claude-opus-5", ClaudeHistory.lastModel(lines))

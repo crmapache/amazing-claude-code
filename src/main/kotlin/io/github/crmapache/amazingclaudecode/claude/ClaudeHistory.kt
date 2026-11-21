@@ -461,8 +461,9 @@ internal object ClaudeHistory {
 
     /**
      * The model that last answered in [lines], by the signature under the answer - the same field the
-     * feed reads the model from (see realModel in feed/build.ts). The CLI's own placeholders sign as
-     * <synthetic> and are not a model anybody can be launched on.
+     * feed reads the model from (see realModel in feed/build.ts). A signature that names no model - the
+     * CLI's own <synthetic>, a proxy's `custom` (see ModelNames.isModel) - is stepped over to the answer
+     * before it.
      *
      * The signature names the model and nothing more - never its window: that comes from a line of the
      * CLI's own (see [modelIdentity]), and the two are put together by [modelOf].
@@ -471,7 +472,7 @@ internal object ClaudeHistory {
         for (line in lines.asReversed()) {
             if (!line.contains(REPLY)) continue
             val model = MODEL_FIELD.find(line)?.groupValues?.get(1) ?: continue
-            if (model.isNotBlank() && !model.startsWith("<")) return model
+            if (model.isNotBlank() && ModelNames.isModel(model)) return model
         }
         return ""
     }

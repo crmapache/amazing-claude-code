@@ -1265,7 +1265,9 @@ const rateLimitState = (
  * for instance - the placeholder the CLI closes a turn interrupted by the person with. Custom proxies
  * and model routers can also sign events with the literal placeholder "custom" alongside the real model
  * name. No real model of that name exists, and letting it through means declaring the conversation has
- * moved to it: the panel would name it in the bottom line and announce a fake swap in the feed.
+ * moved to it: the panel would name it in the bottom line and announce a fake swap in the feed. The IDE
+ * steps over the same signatures (ModelNames.isModel) when it picks the model a conversation from the
+ * history comes up on and counts the statistics' models.
  */
 const realModel = (model: string | undefined): string | undefined =>
   model && !model.startsWith('<') && model.toLowerCase() !== 'custom' ? model : undefined
