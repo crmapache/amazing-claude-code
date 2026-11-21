@@ -820,6 +820,11 @@ export const App = () => {
    * the harness shows.
    */
   const [textSize, setTextSizeState] = useState<TextSize>({ chosen: TEXT_SIZE_FOLLOW, console: DESIGN_SIZE })
+  const [fontInfo, setFontInfo] = useState<{ chosen: string; console: string; available: string[] }>({
+    chosen: '',
+    console: 'JetBrains Mono',
+    available: [],
+  })
   const [loginWaiting, setLoginWaiting] = useState(false)
   /**
    * Why the sign-in could not even be started, when it could not (see protocol.ts).
@@ -3318,6 +3323,11 @@ export const App = () => {
 
           case 'typography': {
             applyTypography(message.monoFamily, message.uiFamily, message.lineHeight)
+            setFontInfo((current) => ({
+              chosen: message.fontFamily ?? '',
+              console: message.consoleMonoFamily ?? message.monoFamily ?? current.console,
+              available: message.availableFonts ?? current.available,
+            }))
             const chosen = normalizeTextSize(message.textSize)
             // Our own sizes, come back round in the order they were sent - the same care as the
             // indicators': the echo of the first of three presses must not pull the figure back two
@@ -3842,6 +3852,15 @@ export const App = () => {
 
     window.addEventListener('pagehide', flush)
     return () => window.removeEventListener('pagehide', flush)
+  }, [])
+
+  const setFontFamily = useCallback((font: string) => {
+    const next = font.trim()
+    setFontInfo((current) => {
+      applyTypography(next || current.console, '', 0)
+      return { ...current, chosen: next }
+    })
+    send({ type: 'setFontFamily', font: next })
   }, [])
 
   /** Whether the tabs come back after a restart - applied here at once, and every window is told. */
@@ -7392,9 +7411,13 @@ export const App = () => {
           <Appearance
             t={t}
             size={textSize}
+            fontFamily={fontInfo.chosen}
+            consoleFont={fontInfo.console}
+            availableFonts={fontInfo.available}
             theme={theme?.choice ?? ''}
             ideDark={theme?.ideDark ?? true}
             onTextSize={setTextSize}
+            onFontFamily={setFontFamily}
             onTheme={setTheme}
           />
         ) : null}

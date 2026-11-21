@@ -28,20 +28,35 @@ import s from './sideMenu.module.css'
 export const Appearance = ({
   t,
   size,
+  fontFamily,
+  consoleFont,
+  availableFonts,
   theme,
   ideDark,
   onTextSize,
+  onFontFamily,
   onTheme,
 }: {
   t: Dict
   size: TextSize
+  fontFamily: string
+  consoleFont: string
+  availableFonts: string[]
   theme: ThemeChoice
   ideDark: boolean
   onTextSize: (size: number) => void
+  onFontFamily: (font: string) => void
   onTheme: (theme: ThemeChoice) => void
 }) => {
   const following = size.chosen === TEXT_SIZE_FOLLOW
   const drawn = drawnSize(size)
+  const followingFont = fontFamily === ''
+  const fontOptions = Array.from(
+    new Set(
+      [fontFamily, consoleFont, ...availableFonts].filter((name) => name.length > 0),
+    ),
+  )
+  const selectedFont = fontFamily || consoleFont || fontOptions[0] || ''
 
   return (
     <div className={`${s.screen} ${s.screenList}`}>
@@ -100,6 +115,49 @@ export const Appearance = ({
             </svg>
           </button>
         </div>
+      </div>
+
+      <span className={`${s.screenLabel} ${s.listLabel} ${s.listLabelNext}`}>{t.appearance.font}</span>
+
+      <ChoiceOption
+        option={{
+          id: 'followFont',
+          label: t.appearance.followConsoleFont,
+          sub: t.appearance.followConsoleFontSub(consoleFont || 'JetBrains Mono'),
+        }}
+        on={followingFont}
+        onPick={() => onFontFamily('')}
+      />
+
+      <div className={`${s.choice} ${s.fontPicker} ${followingFont ? '' : s.choiceOn}`}>
+        <button
+          type="button"
+          className={s.choiceHit}
+          onClick={() => {
+            if (followingFont && selectedFont) onFontFamily(selectedFont)
+          }}
+        >
+          <span className={s.choiceTick}>{followingFont ? '' : '✓'}</span>
+          <span className={s.choiceBody}>
+            <span className={s.choiceTop}>
+              <span className={`${s.choiceLabel} ${followingFont ? '' : s.choiceLabelOn}`}>{t.appearance.ownFont}</span>
+            </span>
+            <span className={s.choiceSub}>{t.appearance.ownFontSub}</span>
+          </span>
+        </button>
+
+        <select
+          className={s.fontSelect}
+          aria-label={t.appearance.fontSelectLabel}
+          value={selectedFont}
+          onChange={(event) => onFontFamily(event.target.value)}
+        >
+          {fontOptions.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <span className={`${s.screenLabel} ${s.listLabel} ${s.listLabelNext}`}>{t.appearance.theme}</span>

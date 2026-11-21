@@ -2032,11 +2032,14 @@ type ShellMessageBody =
   | {
       type: 'typography'
       monoFamily: string
+      consoleMonoFamily?: string
+      fontFamily?: string
       uiFamily: string
       lineHeight: number
       consoleSize?: number
       textSize?: number
       size?: number
+      availableFonts?: string[]
     }
   /**
    * The panel's theme: the choice made in its settings ('dark', 'light', or '' for the IDE's) and whether
@@ -2654,6 +2657,7 @@ export type WebviewMessage =
    */
   | { type: 'setTheme'; theme: string }
   | { type: 'setTextSize'; size: number }
+  | { type: 'setFontFamily'; font: string }
   /**
    * The tabs coming back after a restart, the panel's two halves of it: what is being written in a tab's
    * input field (null when it is empty - the message went, or the words were deleted), and which tab is

@@ -447,6 +447,7 @@ internal object RemoteCommands {
          */
         "setTheme",
         "setTextSize",
+        "setFontFamily",
         /**
          * The tabs coming back after a restart: the desk's drafts, the tab on the desk's screen, and the
          * switch for the whole thing. A phone has an input field and a screen of its own, and reporting

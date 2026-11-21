@@ -165,6 +165,12 @@ export const ko: Dict = {
     darkWord: '어두운 테마',
     lightWord: '밝은 테마',
     auto: '자동',
+    font: '글꼴',
+    followConsoleFont: '콘솔 글꼴과 같게',
+    followConsoleFontSub: (font: string): string => `IDE 콘솔 글꼴 따르기 — 현재 ${font}`,
+    ownFont: '자체 글꼴',
+    ownFontSub: '패널에만 적용 — 편집기와 터미널은 그대로 유지됩니다',
+    fontSelectLabel: '글꼴 모음',
   },
 
   restoreTabs: {

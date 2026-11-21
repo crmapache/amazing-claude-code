@@ -168,6 +168,12 @@ export const de: Dict = {
     darkWord: 'dunkel',
     lightWord: 'hell',
     auto: 'Auto',
+    font: 'SCHRIFTART',
+    followConsoleFont: 'Wie in der Konsole',
+    followConsoleFontSub: (font: string): string => `Wie die Konsolenschrift der IDE – aktuell ${font}`,
+    ownFont: 'Eigene Schriftart',
+    ownFontSub: 'Nur für das Panel – Editor und Terminal bleiben unverändert',
+    fontSelectLabel: 'Schriftfamilie',
   },
 
   restoreTabs: {

@@ -169,6 +169,12 @@ export const fr: Dict = {
     darkWord: 'sombre',
     lightWord: 'clair',
     auto: 'Auto',
+    font: 'POLICE',
+    followConsoleFont: 'Comme dans la console',
+    followConsoleFontSub: (font: string): string => `Suivre la police de la console de l’IDE — actuellement ${font}`,
+    ownFont: 'Police personnalisée',
+    ownFontSub: 'Uniquement pour le panneau — l’éditeur et le terminal restent inchangés',
+    fontSelectLabel: 'Famille de police',
   },
 
   restoreTabs: {

@@ -167,6 +167,12 @@ export const ja: Dict = {
     darkWord: 'ダーク',
     lightWord: 'ライト',
     auto: '自動',
+    font: 'フォント',
+    followConsoleFont: 'コンソールと同じ',
+    followConsoleFontSub: (font: string): string => `IDE のコンソールフォントに従う — 現在 ${font}`,
+    ownFont: '独自のフォント',
+    ownFontSub: 'パネルのみ — エディターとターミナルはそのまま',
+    fontSelectLabel: 'フォントファミリー',
   },
 
   restoreTabs: {

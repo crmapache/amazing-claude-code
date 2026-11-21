@@ -200,6 +200,14 @@ internal object ClaudePreferences {
         set(value) = write(TEXT_SIZE_KEY, if (value in TEXT_SIZE_MIN..TEXT_SIZE_MAX) value.toString() else "")
 
     /**
+     * The panel's own monospace/feed font family, or empty - the default - to follow the IDE's console
+     * font. Machine-wide, like [textSize] above.
+     */
+    var fontFamily: String
+        get() = read(FONT_FAMILY_KEY).trim().take(FONT_FAMILY_MAX)
+        set(value) = write(FONT_FAMILY_KEY, value.trim().take(FONT_FAMILY_MAX))
+
+    /**
      * Whether the tabs open when a project was last closed - and what was being typed in them - come back
      * when it is opened again (see TabMemory).
      *
@@ -429,6 +437,7 @@ internal object ClaudePreferences {
     const val TEXT_SIZE_FOLLOW = 0
     const val TEXT_SIZE_MIN = 8
     const val TEXT_SIZE_MAX = 32
+    const val FONT_FAMILY_MAX = 100
 
     private const val UNUSABLE_IN_MODEL = "\"'`\\,"
     private const val MAX_MODEL_NAME = 120
@@ -470,6 +479,7 @@ internal object ClaudePreferences {
     private const val LANGUAGE_KEY = "acc.language"
     private const val THEME_KEY = "acc.theme"
     private const val TEXT_SIZE_KEY = "acc.textSize"
+    private const val FONT_FAMILY_KEY = "acc.fontFamily"
     private const val RESTORE_TABS_KEY = "acc.restoreTabs"
     private const val RESTORE_TABS_OFF = "off"
     private const val SHARE_EDITOR_KEY = "acc.shareEditor"

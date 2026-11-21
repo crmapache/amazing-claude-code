@@ -214,6 +214,12 @@ export const en = {
     lightWord: 'light',
     /** The value beside the row in the settings list when nothing is chosen - "Auto · 13 pt". */
     auto: 'Auto',
+    font: 'FONT',
+    followConsoleFont: 'As the console font',
+    followConsoleFontSub: (font: string): string => `Follow the IDE's console font - ${font} right now`,
+    ownFont: 'A font of its own',
+    ownFontSub: 'The panel alone - the editor and the terminal stay as they are',
+    fontSelectLabel: 'Font family',
   },
 
   /**

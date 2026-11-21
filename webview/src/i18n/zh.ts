@@ -165,6 +165,12 @@ export const zh: Dict = {
     darkWord: '深色',
     lightWord: '浅色',
     auto: '自动',
+    font: '字体',
+    followConsoleFont: '与控制台一致',
+    followConsoleFontSub: (font: string): string => `跟随 IDE 控制台字体 — 当前为 ${font}`,
+    ownFont: '自定义字体',
+    ownFontSub: '仅用于此面板 — 编辑器和终端保持不变',
+    fontSelectLabel: '字体名称',
   },
 
   restoreTabs: {

@@ -165,6 +165,12 @@ export const es: Dict = {
     darkWord: 'oscuro',
     lightWord: 'claro',
     auto: 'Automático',
+    font: 'FUENTE',
+    followConsoleFont: 'Como en la consola',
+    followConsoleFontSub: (font: string): string => `Seguir la fuente de la consola del IDE — ahora ${font}`,
+    ownFont: 'Fuente propia',
+    ownFontSub: 'Solo para el panel — el editor y la terminal no cambian',
+    fontSelectLabel: 'Familia tipográfica',
   },
 
   restoreTabs: {

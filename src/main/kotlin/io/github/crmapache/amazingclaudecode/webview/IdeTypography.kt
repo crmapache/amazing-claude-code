@@ -33,6 +33,10 @@ internal data class IdeTypography(
     val size: Double,
     /** How many times the page has to be scaled up relative to its own layout. */
     val scale: Double,
+    /** The IDE console's own font family - what the panel follows when no custom font is chosen. */
+    val consoleMonoFamily: String = monoFamily,
+    /** The panel's own font family, or empty while following the console font. */
+    val fontFamily: String = "",
 ) {
     internal companion object {
         /**
@@ -58,14 +62,18 @@ internal data class IdeTypography(
             val scheme = EditorColorsManager.getInstance().globalScheme
             val consoleSize = scheme.consoleFontSize2D.toDouble()
             val size = sizeOf(consoleSize, ClaudePreferences.textSize)
+            val consoleMonoFamily = scheme.consoleFontName
+            val fontFamily = ClaudePreferences.fontFamily
 
             return IdeTypography(
-                monoFamily = scheme.consoleFontName,
+                monoFamily = fontFamily.ifEmpty { consoleMonoFamily },
                 uiFamily = JBFont.label().family,
                 lineHeight = scheme.consoleLineSpacing.coerceAtLeast(MIN_LINE_HEIGHT),
                 consoleSize = consoleSize,
                 size = size,
                 scale = scaleOf(size),
+                consoleMonoFamily = consoleMonoFamily,
+                fontFamily = fontFamily,
             )
         }
 

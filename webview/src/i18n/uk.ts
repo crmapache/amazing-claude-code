@@ -171,6 +171,12 @@ export const uk: Dict = {
     darkWord: 'темна',
     lightWord: 'світла',
     auto: 'Авто',
+    font: 'ШРИФТ',
+    followConsoleFont: 'Як у консолі',
+    followConsoleFontSub: (font: string): string => `Як шрифт консолі в IDE — зараз ${font}`,
+    ownFont: 'Власний шрифт',
+    ownFontSub: 'Лише для панелі — редактор і термінал не змінюються',
+    fontSelectLabel: 'Сімейство шрифту',
   },
 
   restoreTabs: {
