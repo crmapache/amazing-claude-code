@@ -68,7 +68,7 @@ paths:
 - голосовая вставка в черновик - voice
 - `hiddenIndicators`, `indicatorsSent`, `case 'indicators'`, `metersNode` - indicators
 - `suggestion` у поля разговора, `editDeclines` и `suggestionDismissed` в `changeDraft` - prompt-suggestions
-- `theme`, `setTheme`, `textSize`, `textSizeSent`, `case 'typography'`, `case 'theme'` - appearance
+- `theme`, `setTheme`, `textSize`, `textSizeSent`, `case 'typography'`, `case 'theme'`, `fontInfo`, `fontFamilies`, `setFontFamily`, экран `font` - appearance
 - `calls`/`setCalls`, свечение в `alert`, эффект с `callsStanding`, `activeCalling`, `case 'calledAway'` - tab-calls
 - `draftsKnown`, `draftsSent`, `draftSaves`, `shellNamedTab`, `case 'drafts'`, `case 'activeTab'`, `restoreTabs` - restore-tabs
 - `nameSession`, `case 'sessionTitle'`, `resumedTitle`/`searchHitTitleSource` при открытии из истории и поиска - tab-names
@@ -99,7 +99,7 @@ paths:
 - `settingSources` в `init`, `setSettingSources`, `askSettingSources`, `accountOutranked`, `api_error_status` - setting-sources
 - `sideQuestion`, `sideQuestionCancel`, `sideAnswer`, `sideProgress` - btw
 - `panelKey`, `panelKeys`, `openKeymap`, `PanelKeyCommand`, `PanelKeyName`, `PanelKeyStroke` - panel-keys
-- `theme`, `setTheme`, `setTextSize`, размеры в `typography` - appearance
+- `theme`, `setTheme`, `setTextSize`, размеры и шрифт в `typography`, `setFontFamily`, `fontFamilies` - appearance
 - `claudeConfig`, `askClaudeConfig`, `setClaudeConfig`, `ClaudeConfigSetting` - claude-config
 - `activeTab`, `drafts`, `restoreTabs`, `saveDraft`, `tabShown`, `setRestoreTabs` - restore-tabs
 - `ClosedTab`, `closedTabs`, `tabReopened`, `reopenTab`, `panelTabClosed`, `TabPlace` (одно описание, `tabs.ts` его переэкспортирует), `held` у `queue` - reopen-tabs
@@ -233,7 +233,7 @@ remote-access; остальное - по заметке фичи, которой
 
 **`toolwindow/ClaudePanel.kt`**: сообщения аккаунтов и `designLogin` у двери окна - accounts; `setCustomModels` -
 models; `openFile` - open-in-editor; фидбэк и лог незнакомого сообщения (только тип и длина) - feedback;
-`setHiddenIndicators` - indicators; `setTheme`, `setTextSize`, `sendTheme`, `appearanceChanged` - appearance;
+`setHiddenIndicators` - indicators; `setTheme`, `setTextSize`, `setFontFamily`, `fontFamilies`, `sendTheme`, `appearanceChanged` - appearance;
 `saveDraft`, `tabShown`, `setRestoreTabs`, `sendDrafts` - restore-tabs; `reopenTab`, `panelTabClosed` - reopen-tabs; `watchEditor`, `sendEditorContext`,
 `setShareEditor` - editor-context; `sessionMenu`, `sendSessionInfo`, `onSessionIdCopied` - session-info; `setSpellcheck`, `spellcheckChanged` - composer-field; счёт фич `UsageFeatures.ofMessage` у двери окна, `setUsageStats`,
 `usageStatsPreview`, `usageChanged` - usage-stats; `PanelKeys.install`, `pressPanelKey`, `sendPanelKeys`,
@@ -248,7 +248,7 @@ models; `openFile` - open-in-editor; фидбэк и лог незнакомог
 
 **`ClaudePreferences.kt`** (подгружает models): `gaugeVivid` - calm-colors; `language` - i18n;
 `improveInstructions` - prompt-improver; стартовая модель новой вкладки переехала в `StartingChoice.kt` -
-models; `hiddenIndicators` - indicators; `theme`, `textSize` - appearance; `restoreTabs` - restore-tabs;
+models; `hiddenIndicators` - indicators; `theme`, `textSize`, `fontFamily` - appearance; `restoreTabs` - restore-tabs;
 `shareEditor` - editor-context; `spellcheck` - composer-field.
 
 **`RemoteCommands.kt`** (подгружает remote-access): почему телефону разрешено или запрещено конкретное
