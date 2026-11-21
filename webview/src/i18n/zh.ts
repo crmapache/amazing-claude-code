@@ -1031,6 +1031,7 @@ export const zh: Dict = {
     fork: '分叉此对话：新标签页从这里接着聊，当前这个保持不变',
     forkEmpty: '还没有可以分叉的内容：这个标签页里还没有对话',
     renameTab: '重命名对话',
+    tabMenu: '这个对话',
     menu: '菜单',
   },
 

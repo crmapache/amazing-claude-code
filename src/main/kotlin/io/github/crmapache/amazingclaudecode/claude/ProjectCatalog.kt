@@ -770,6 +770,34 @@ internal class ProjectCatalog(
     }
 
     /**
+     * A past conversation named from its row in the history (PR #26). Where the name goes is decided here
+     * rather than by the panel, whose list of tabs can be a step behind this one:
+     *
+     * - A conversation open in a tab is named the way its tab is (see ClaudeSessionHub.nameSession): the tab
+     *   wears it, and the conversation gets it through its process. A line put into the file behind a live
+     *   process would sink under the name it holds in memory (see tab-names.md).
+     * - Any other one gets the line in its transcript (see ClaudeHistory.rename), and a closed tab of it in
+     *   "Recently closed" the name too (see ClaudeSessionHub.renameClosedConversation). The list goes to every
+     *   window at the desk afterwards, whether the file took the line or not: the panel shows the name at once,
+     *   and a name the file refused has to go back.
+     */
+    fun renameConversation(id: String, title: String) {
+        val name = SessionTitle.own(title) ?: return
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val tab = hub.tabHolding(id)
+            if (tab != null) {
+                hub.nameSession(tab, name)
+                return@executeOnPooledThread
+            }
+
+            val file = ClaudeHistory.transcriptFile(project.basePath, id)
+            if (file != null && ClaudeHistory.rename(file, id, name)) hub.renameClosedConversation(id, name)
+            hub.emitToDesk(historyMessage())
+        }
+    }
+
+    /**
      * A page of this conversation's messages older than what the client already has - read straight off
      * the transcript Claude Code keeps for it (see ClaudeHistory.page), not off the in-memory journal:
      * that one exists to protect the live transport and forgets its own beginning long before the disk

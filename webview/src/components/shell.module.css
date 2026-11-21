@@ -1898,6 +1898,22 @@
 }
 
 /*
+ * A menu opened by a right click (see ContextMenu) stands one step above everything a menu usually stands
+ * over: the history it is opened from lives in the side menu's sheet, which is at 41 itself. Its scrim
+ * covers the whole panel, header included - a context menu is put away by a click anywhere outside it,
+ * and a click on another tab that switched tabs under a menu still offering the first one would act on
+ * the wrong conversation.
+ */
+.menuScrimRaised {
+  top: 0;
+  z-index: 42;
+}
+
+.menuRaised {
+  z-index: 43;
+}
+
+/*
  * The title and its hint share a line while they fit, and the hint drops whole onto the next one when
  * they do not. Left to wrap word by word, a long hint ("shift+tab cycles every mode but Don't ask" in a
  * narrow panel) broke both halves across two ragged lines at once - the title itself came out as

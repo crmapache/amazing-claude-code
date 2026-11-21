@@ -6444,6 +6444,14 @@ export const App = () => {
         onNameSession={nameSession}
         naming={namingTab}
         onNaming={setNamingTab}
+        conversationOf={(tab) => panelsRef.current[tab]?.sessionId}
+        onCopySessionId={(tab) => {
+          const conversation = panelsRef.current[tab]?.sessionId
+          if (!conversation) return
+          void copyToClipboard(conversation)
+          // Counted like the browser menu's entry and /status (see PanelContextMenu.kt).
+          send({ type: 'stat', kind: 'feature', id: 'session_info' })
+        }}
         onReturnToInput={() => setFocusToken((current) => current + 1)}
         onOpenMenu={openMenu}
         panelTabs={headerPanelTabs}
@@ -7141,6 +7149,17 @@ export const App = () => {
                   }
                 : undefined
             }
+            onRename={(entry, title) => {
+              // Shown at once; the list that comes back after a name put on disk says the last word, so a
+              // name the file refused goes back to what it was (see ProjectCatalog.renameConversation).
+              setHistory(
+                (current) =>
+                  current?.map((item) => (item.id === entry.id ? { ...item, title, titleSource: 'user' } : item)) ??
+                  current,
+              )
+              // Open in a tab or not is the IDE's to tell: the tab list here can be a step behind it.
+              send({ type: 'renameConversation', id: entry.id, title })
+            }}
             isOpen={(id) => tabHolding(id, sessions, (tab) => panelsRef.current[tab]?.sessionId) !== undefined}
             refusal={historyRefusal}
           />

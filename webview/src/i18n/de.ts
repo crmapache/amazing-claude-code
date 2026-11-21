@@ -1040,6 +1040,7 @@ export const de: Dict = {
     fork: 'Diese Unterhaltung forken: ein neuer Tab, der von hier aus weitermacht, während dieser bleibt, wie er ist',
     forkEmpty: 'Noch nichts zu forken: In diesem Tab gibt es noch keine Unterhaltung',
     renameTab: 'Gespräch umbenennen',
+    tabMenu: 'DIESES GESPRÄCH',
     menu: 'Menü',
   },
 

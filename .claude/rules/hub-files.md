@@ -198,7 +198,7 @@ panel-keys; `answerClosedTabs` (зеркало полосы и закрытые 
   `carryOnChanged`, `carryOnWhatIsDue`, `cancelCarryOn`, `RESTART` в `onProcessDropping` - accounts (работа, остановленная не человеком)
 - `settingSources` у `conversations`, `sendAccountOutranked` - setting-sources
 - `resumeConversation`, сообщение `conversation` в `attach`/`resetJournal` - history
-- `holdsConversation`, `forgetClosedConversation`, `emitToDesk` - history (удаление в корзину) и reopen-tabs
+- `holdsConversation`, `tabHolding`, `forgetClosedConversation`, `renameClosedConversation`, `emitToDesk` - history (удаление в корзину, переименование) и reopen-tabs
 - `PROJECT_ORDER`, `broadcastProject` - remote-access и calm-colors; `indicators` в нём - indicators;
   `refreshCommandHints` - slash-hints
 - `stats` - stats; круг сна простаивающих - idle-sleep; прогрев `ClaudeHome` - claude-home
@@ -222,7 +222,7 @@ editor-context; `rewind`, `previewRewind`, `cut`, `uuid` в `userMessage` - rewi
 `newSession`, `onBorn`, `setPermissionMode` - models; `renewAfterSignIn` - expired-sign-in;
 `releasedRole` и рамка в `prompt` - scenarios; `branchFrom(before)`, `originOf`, `restoreFork`, `forkOrigin` в `moveTo` - fork-tabs; `rewind`, `previewRewind` - rewind.
 
-**`ProjectCatalog.kt`**: `deleteConversation`, `historyMessage` (с `canDelete`) - history; `sendCalmColors` - calm-colors; `runShellCommand` - editor-sync; `sendCustomModels` -
+**`ProjectCatalog.kt`**: `deleteConversation`, `renameConversation`, `historyMessage` (с `canDelete`) - history; `sendCalmColors` - calm-colors; `runShellCommand` - editor-sync; `sendCustomModels` -
 models; `pasteCollapse` в `sendInit` - paste; `authenticateMcp`, `sayProject` - remote-access;
 `installedPlugins`, `refreshCommandHints` - slash-hints; список `files` - open-in-editor; страницы нерождённого
 форка в `sendHistoryPage` - fork-tabs; `sendIndicators` и

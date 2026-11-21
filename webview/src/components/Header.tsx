@@ -1,15 +1,16 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { isSideComposerLayout, type ComposerLayout } from '../composerLayout'
 import { SPARK_PATH } from './StatusBar'
 import s from './shell.module.css'
 import { useT } from '../i18n'
 import type { Dict } from '../i18n/en'
-import { useFieldHistory } from '../hooks/useFieldHistory'
 import { useResting } from '../hooks/useResting'
 import type { TitleSource } from '../protocol'
 import { splitTabTitle } from '../feed/title'
 import type { TabCall } from '../sounds'
 import { beforeOf, placeOn, rowFor, shotOf, SWAP_GAP_PX, type Point, type Shot, type TabRect } from '../tabDrag'
+import { ContextMenu } from './ContextMenu'
+import { NameField } from './NameField'
 
 /**
  * What is happening in a tab: nothing, work under way, work finished, or someone being waited for. The
@@ -118,7 +119,7 @@ interface HeaderProps {
   onReorderTabs: (sessionId: string, beforeSessionId: string | null) => void
   /**
    * The name the person typed into a conversation's tab - a double click on it opens the field (see
-   * TabNameField). Only when it changed: a name confirmed as it stood is not a new one, and it would
+   * NameField). Only when it changed: a name confirmed as it stood is not a new one, and it would
    * otherwise pin whatever the model had called the conversation as the person's own.
    */
   onNameSession: (id: string, title: string) => void
@@ -129,6 +130,12 @@ interface HeaderProps {
    */
   naming: string | null
   onNaming: (id: string | null) => void
+  /**
+   * The conversation a tab holds, if one has been born in it - for "Copy Session ID" in the tab's right-click
+   * menu (see tabMenu). Asked when the menu opens: the strip itself knows tabs, not conversations.
+   */
+  conversationOf?: (tabId: string) => string | undefined
+  onCopySessionId?: (tabId: string) => void
   /**
    * Enter or Escape has ended a naming, and the keyboard goes back to the input field. Left to itself the
    * focus went nowhere - the field it was in is gone - and the next word typed after naming a tab needed a
@@ -200,95 +207,6 @@ export interface PanelTab {
   state?: SessionState
   /** The word under the pointer for that dot. Empty leaves the dot without a hint at all. */
   hint?: string
-}
-
-/**
- * The longest name the field takes. The IDE holds the same line (SessionTitle.OWN_MAX_LENGTH): the strip
- * cuts a name long before this, and a pasted paragraph has no business in every list of tabs.
- */
-const TAB_NAME_MAX = 100
-
-/**
- * The field a conversation's name is typed into, standing where the name stood (see naming in Header).
- *
- * A component of its own rather than a piece of sessionTab, for the reason OwnAnswer is one: the keys
- * the embedded browser does not give a plain field come from a hook (see useFieldHistory), and a hook
- * cannot be called inside the strip's loop.
- *
- * Enter keeps the name, Escape keeps the old one, and the focus leaving keeps what was typed - the way
- * a rename field behaves in the IDE around it and everywhere else.
- */
-const TabNameField = ({
-  title,
-  label,
-  onDone,
-}: {
-  title: string
-  label: string
-  /**
-   * The name typed, or null when the naming was called off, and whether a key ended it (Enter or Escape)
-   * rather than the focus leaving - see onReturnToInput in Header.
-   */
-  onDone: (name: string | null, byKey: boolean) => void
-}) => {
-  const [value, setValue] = useState(title)
-  const field = useFieldHistory(value, setValue)
-  const input = useRef<HTMLInputElement>(null)
-  /** Enter unmounts the field, and the blur that follows must not count as a second answer. */
-  const done = useRef(false)
-
-  const finish = (name: string | null, byKey: boolean) => {
-    if (done.current) return
-    done.current = true
-    onDone(name, byKey)
-  }
-
-  // The whole name selected, as every rename field opens: typing replaces it, an arrow keeps it.
-  useLayoutEffect(() => {
-    input.current?.focus()
-    input.current?.select()
-  }, [])
-
-  return (
-    <input
-      ref={input}
-      className={s.tabNameField}
-      value={value}
-      maxLength={TAB_NAME_MAX}
-      aria-label={label}
-      spellCheck={false}
-      onChange={field.onChange}
-      onKeyDown={(event) => {
-        // Every key here is the field's own. The tab around it opens on Enter and Space - Space would
-        // never reach the name at all - and the panel stops the agent on Escape and changes the mode on
-        // Shift+Tab (see App).
-        event.stopPropagation()
-        // Enter confirms an input method's candidate and Escape throws its half-typed character away:
-        // neither is an answer to the naming (see composer-field in the rules).
-        if (event.nativeEvent.isComposing) return
-
-        if (event.key === 'Enter') {
-          event.preventDefault()
-          finish(value, true)
-          return
-        }
-
-        if (event.key === 'Escape') {
-          event.preventDefault()
-          finish(null, true)
-          return
-        }
-
-        field.onKeyDown(event)
-      }}
-      onBlur={() => finish(value, false)}
-      // A press inside the field places the caret rather than starting a drag of the tab, a click does not
-      // pick the tab again, and a double click selects a word rather than opening the field anew.
-      onMouseDown={(event) => event.stopPropagation()}
-      onClick={(event) => event.stopPropagation()}
-      onDoubleClick={(event) => event.stopPropagation()}
-    />
-  )
 }
 
 const ELLIPSIS = '…'
@@ -603,6 +521,8 @@ export const Header = ({
   onNameSession,
   naming,
   onNaming,
+  conversationOf,
+  onCopySessionId,
   onReturnToInput,
   onOpenMenu,
   layout,
@@ -663,6 +583,14 @@ export const Header = ({
    * now (see projectionFor) - otherwise nothing, and the strip is as tall as its tabs.
    */
   const [reach, setReach] = useState<number | null>(null)
+  /**
+   * The right-click menu of a conversation's tab and the tab it was opened on (see ContextMenu). Renaming
+   * there opens the same field a double click does - the menu is the door that can be seen, a double click
+   * on a tab is one nobody guesses.
+   */
+  const [tabMenu, setTabMenu] = useState<{ sessionId: string; x: number; y: number } | null>(null)
+  // Steady across renders: the menu listens for Escape and the pointer with it (see Menu).
+  const closeTabMenu = useCallback(() => setTabMenu(null), [])
 
   /**
    * The two reorder callbacks as they stand when the tab is dropped rather than when it was pressed. A
@@ -872,7 +800,7 @@ export const Header = ({
 
     // The preventDefault below keeps the focus where it was, and a name being typed into a tab would
     // stay open under a press that picks or drags another. So the field is put down first, keeping what
-    // was typed - the way a press anywhere else in the panel puts it down (see TabNameField).
+    // was typed - the way a press anywhere else in the panel puts it down (see NameField).
     const focused = document.activeElement
     if (focused instanceof HTMLInputElement && tabs.current?.contains(focused)) focused.blur()
 
@@ -1171,6 +1099,12 @@ export const Header = ({
           if ((event.target as HTMLElement).closest('button') || dragged.current) return
           onNaming(session.id)
         }}
+        onContextMenu={(event) => {
+          // The cross keeps the browser's menu, and so does the name field: cut and paste live there.
+          if ((event.target as HTMLElement).closest('button, input') || dragged.current) return
+          event.preventDefault()
+          setTabMenu({ sessionId: session.id, x: event.clientX, y: event.clientY })
+        }}
         onKeyDown={(event) => {
           if (event.key !== 'Enter' && event.key !== ' ') return
           // Space scrolls the strip otherwise, and the tab under the finger never opens.
@@ -1183,9 +1117,10 @@ export const Header = ({
         <span className={`${s.dot} ${DOT_CLASS[session.state]}`} data-tooltip={dotTitle(t)[session.state]} />
         {session.depth > 0 ? <span className={s.tabFork}>⑂</span> : null}
         {naming === session.id ? (
-          <TabNameField
+          <NameField
             title={session.title}
             label={t.header.renameTab}
+            className={s.tabNameField}
             onDone={(name, byKey) => finishNaming(session, name, byKey)}
           />
         ) : (
@@ -1340,6 +1275,25 @@ export const Header = ({
           <HamburgerIcon />
         </button>
       </div>
+
+      {tabMenu ? (
+        <ContextMenu
+          x={tabMenu.x}
+          y={tabMenu.y}
+          title={t.header.tabMenu}
+          options={[
+            { id: 'rename', label: t.header.renameTab },
+            ...(onCopySessionId && conversationOf?.(tabMenu.sessionId)
+              ? [{ id: 'copyId', label: t.feed.session.copyId }]
+              : []),
+          ]}
+          onPick={(id) => {
+            if (id === 'rename') onNaming(tabMenu.sessionId)
+            if (id === 'copyId') onCopySessionId?.(tabMenu.sessionId)
+          }}
+          onClose={closeTabMenu}
+        />
+      ) : null}
     </header>
   )
 }

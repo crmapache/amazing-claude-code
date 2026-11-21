@@ -60,9 +60,11 @@ interface MenuProps {
   selected: string
   onPick: (id: string) => void
   onClose: () => void
+  /** One step up the stack and a scrim over the header too - a right-click menu's (see ContextMenu). */
+  raised?: boolean
 }
 
-export const Menu = ({ title, hint, width, anchor, options, selected, onPick, onClose }: MenuProps) => {
+export const Menu = ({ title, hint, width, anchor, options, selected, onPick, onClose, raised = false }: MenuProps) => {
   /*
    * The entry under the cursor, by its id - the same way the command hint above the input field does it
    * (see .suggestItemOn in SlashSuggest), and for the same reason: inside the IDE the panel is an
@@ -178,9 +180,22 @@ export const Menu = ({ title, hint, width, anchor, options, selected, onPick, on
 
   return (
     <>
-      <div ref={scrim} className={s.menuScrim} onClick={onClose} />
       <div
-        className={s.menu}
+        ref={scrim}
+        className={`${s.menuScrim} ${raised ? s.menuScrimRaised : ''}`}
+        onClick={onClose}
+        // A right click beside a right-click menu puts it away rather than opening the browser's own on top.
+        onContextMenu={
+          raised
+            ? (event) => {
+                event.preventDefault()
+                onClose()
+              }
+            : undefined
+        }
+      />
+      <div
+        className={`${s.menu} ${raised ? s.menuRaised : ''}`}
         /* One handler for the whole list rather than one per entry: a disabled entry gets no mouse events
            of its own (the browser swallows them), and here that arrives as a movement over the menu with
            no entry under it - which is precisely "nothing is highlighted". */
