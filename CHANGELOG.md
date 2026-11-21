@@ -9,6 +9,13 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.62] - 2026-11-21
+
+- Added: rename a conversation with a right click. Right-click a tab and choose Rename conversation - the same field a double click opens, which few people ever found. The same menu has Copy Session ID for the tab you clicked, not only the one on screen. In the history, right-click a row under Today or Earlier, type the new name right in the row and press Enter. If the conversation is open in a tab, the tab takes the new name too, and a closed tab of it under Recently closed comes back with the new name rather than the old one.
+- Added: a font of its own for the panel. Settings, Appearance has a Font section: the panel follows the IDE's console font as before, or uses a font you pick from a list, each name written in its own face. The list has the monospaced fonts on your computer that the panel can draw, because the conversation is set like a terminal and code and tables need every character as wide as the next. The editor and the terminal keep their fonts.
+- Fixed: with Claude Code going through a proxy or a model router, the conversation kept saying the model was "switched by Claude Code, not by you", and the model button lit up, though nothing had changed. Some routers sign part of their answers with the word "custom" instead of the model's name, and the panel took that word for a new model. Now it is ignored everywhere the plugin reads the model from an answer: in the conversation, in the model a conversation from the history comes back on, and in the models card of the statistics.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.61] - 2026-11-20
 
 - Changed: a small internal cleanup in the phone client with no visible effect. The phone keeps what it knows about each project, its past conversations and its card on the first screen under a name made of the machine and the project, and that name was spelled out by hand in about twenty places that have to agree with each other. They now all take it from one shared definition, and so does the name of a conversation. The phone works exactly as before.
@@ -1156,7 +1163,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.61...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.62...HEAD
+[0.13.62]: https://github.com/crmapache/amazing-claude-code/compare/0.13.61...0.13.62
 [0.13.61]: https://github.com/crmapache/amazing-claude-code/compare/0.13.60...0.13.61
 [0.13.60]: https://github.com/crmapache/amazing-claude-code/compare/0.13.59...0.13.60
 [0.13.59]: https://github.com/crmapache/amazing-claude-code/compare/0.13.58...0.13.59
