@@ -40,7 +40,8 @@ export const en = {
       mcp: { title: 'MCP SERVERS', hint: 'status · sign in · reconnect' },
       plugins: { title: 'PLUGINS', hint: 'installed · browse · marketplaces' },
       settings: { title: 'SETTINGS', hint: 'how the panel behaves and sounds' },
-      appearance: { title: 'APPEARANCE', hint: 'theme and text size' },
+      appearance: { title: 'APPEARANCE', hint: 'theme, text size and font' },
+      font: { title: 'FONT', hint: 'what the panel is set in' },
       sounds: { title: 'SOUND ALERTS', hint: 'when the panel calls you' },
       calmColors: { title: 'NO-STRESS COLORS', hint: 'how the gauges are painted' },
       indicators: { title: 'INDICATORS', hint: 'what stays around the field' },
@@ -219,7 +220,10 @@ export const en = {
     followConsoleFontSub: (font: string): string => `Follow the IDE's console font - ${font} right now`,
     ownFont: 'A font of its own',
     ownFontSub: 'The panel alone - the editor and the terminal stay as they are',
-    fontSelectLabel: 'Font family',
+    /** Under "A font of its own" once one is chosen. */
+    ownFontChosen: (font: string): string => `${font}, in the panel alone`,
+    /** Above the list of fonts: why only monospaced ones are offered. */
+    fontsNote: 'Monospaced fonts this computer has. The feed is set like a terminal, so code and tables keep their columns.',
   },
 
   /**

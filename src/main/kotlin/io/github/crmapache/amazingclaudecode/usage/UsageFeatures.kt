@@ -92,6 +92,7 @@ internal object UsageFeatures {
         "plugins",
         "settings",
         "appearance",
+        "font",
         "sounds",
         "calmColors",
         "indicators",

@@ -200,12 +200,13 @@ internal object ClaudePreferences {
         set(value) = write(TEXT_SIZE_KEY, if (value in TEXT_SIZE_MIN..TEXT_SIZE_MAX) value.toString() else "")
 
     /**
-     * The panel's own monospace/feed font family, or empty - the default - to follow the IDE's console
-     * font. Machine-wide, like [textSize] above.
+     * The font family the panel is set in, or empty - the default - to follow the IDE's console font, as
+     * [textSize] follows its size. Machine-wide like it, and only a name: the page quotes it into CSS and
+     * draws the list it was picked from (see fontFamilies.ts).
      */
     var fontFamily: String
-        get() = read(FONT_FAMILY_KEY).trim().take(FONT_FAMILY_MAX)
-        set(value) = write(FONT_FAMILY_KEY, value.trim().take(FONT_FAMILY_MAX))
+        get() = fontName(read(FONT_FAMILY_KEY))
+        set(value) = write(FONT_FAMILY_KEY, fontName(value))
 
     /**
      * Whether the tabs open when a project was last closed - and what was being typed in them - come back
@@ -438,6 +439,9 @@ internal object ClaudePreferences {
     const val TEXT_SIZE_MIN = 8
     const val TEXT_SIZE_MAX = 32
     const val FONT_FAMILY_MAX = 100
+
+    /** One line, no control characters, no longer than any family's name gets. */
+    internal fun fontName(value: String): String = value.filterNot(Char::isISOControl).trim().take(FONT_FAMILY_MAX)
 
     private const val UNUSABLE_IN_MODEL = "\"'`\\,"
     private const val MAX_MODEL_NAME = 120

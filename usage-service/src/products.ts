@@ -157,6 +157,6 @@ const SHARED_SETTINGS: Record<string, string> = {
 }
 
 export const REPORTED_SETTINGS: Record<Product, Record<string, string>> = {
-  acc: { ...SHARED_SETTINGS, accounts: 'Claude accounts' },
+  acc: { ...SHARED_SETTINGS, accounts: 'Claude accounts', font: 'Own panel font' },
   acx: { ...SHARED_SETTINGS, accounts: 'Codex accounts' },
 }

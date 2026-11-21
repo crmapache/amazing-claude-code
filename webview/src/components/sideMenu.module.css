@@ -1033,28 +1033,6 @@
   border-color: var(--acc-accent-40);
 }
 
-.fontPicker {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.fontSelect {
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid var(--acc-line);
-  border-radius: var(--acc-r-sm);
-  background: var(--acc-bg-panel);
-  color: var(--acc-fg);
-  font: 12px var(--acc-font);
-  cursor: pointer;
-}
-
-.fontSelect:focus-visible {
-  outline: none;
-  border-color: var(--acc-accent-40);
-}
-
 .inputRow {
   display: flex;
   gap: 6px;

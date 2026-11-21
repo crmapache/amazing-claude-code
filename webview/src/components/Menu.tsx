@@ -23,6 +23,8 @@ export interface MenuOption {
    * errand drawn in the card's own faint ink.
    */
   iconTone?: 'accent' | 'warn' | 'dim'
+  /** The label drawn in this font family - a font's own name in the list of fonts (see Appearance). */
+  labelFont?: string
 }
 
 const PAST_MENU_ATTRIBUTE = 'data-past-menu'

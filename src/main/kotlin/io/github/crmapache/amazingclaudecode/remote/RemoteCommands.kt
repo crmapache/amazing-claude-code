@@ -449,6 +449,8 @@ internal object RemoteCommands {
         "setTheme",
         "setTextSize",
         "setFontFamily",
+        // The machine's font families, for the desk's own font screen.
+        "fontFamilies",
         /**
          * The tabs coming back after a restart: the desk's drafts, the tab on the desk's screen, and the
          * switch for the whole thing. A phone has an input field and a screen of its own, and reporting

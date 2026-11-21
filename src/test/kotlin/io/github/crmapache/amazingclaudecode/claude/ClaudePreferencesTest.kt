@@ -22,6 +22,21 @@ class ClaudePreferencesTest : BasePlatformTestCase() {
         assertNull(PropertiesComponent.getInstance().getValue("acc.feedback.email"))
     }
 
+    /**
+     * The panel's own font is a name the page puts into CSS and nothing more: one line, without what a control
+     * character would do to a stylesheet, and empty for "as the console's".
+     */
+    fun testTheFontIsAPlainName() {
+        ClaudePreferences.fontFamily = "  Menlo\n"
+        assertEquals("Menlo", ClaudePreferences.fontFamily)
+
+        ClaudePreferences.fontFamily = "Fira\u0000 Code"
+        assertEquals("Fira Code", ClaudePreferences.fontFamily)
+
+        ClaudePreferences.fontFamily = ""
+        assertEquals("", ClaudePreferences.fontFamily)
+    }
+
     fun testSnapshotKeepsWhatWasWritten() {
         ClaudePreferences.mode = "acceptEdits"
         ClaudePreferences.composerLayout = "right"

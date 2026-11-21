@@ -432,6 +432,33 @@ const answerUsageStats = (message: WebviewMessage): void => {
   }
 }
 
+/**
+ * The families a Mac names, monospaced and not, the IDE's own among them - the page sorts out which it can
+ * draw and which are monospaced (see fontFamilies.ts), so a browser without some of them shows a shorter list.
+ */
+const FONT_FAMILIES = [
+  'Andale Mono',
+  'Arial',
+  'Courier New',
+  'Fira Code',
+  'Georgia',
+  'Helvetica',
+  'JetBrains Mono',
+  'JetBrains Mono NL',
+  'Menlo',
+  'Monaco',
+  'PT Mono',
+  'SF Mono',
+  'Source Code Pro',
+  'Times New Roman',
+]
+
+const answerFonts = (message: WebviewMessage): void => {
+  if (message.type !== 'fontFamilies') return
+  // A beat late, as the IDE is, so the list's loading line can be seen.
+  setTimeout(() => window.__accReceive?.({ type: 'fontFamilies', families: FONT_FAMILIES }), 200)
+}
+
 const answerFeedback = (message: WebviewMessage): void => {
   // A beat late on purpose, so that the screen's "Building it…" can be looked at too.
   if (message.type === 'feedbackReport') {
@@ -1927,6 +1954,7 @@ const listenToPanel = () => {
 
     if (message) answerFeedback(message)
     if (message) answerUsageStats(message)
+    if (message) answerFonts(message)
     if (message) answerHistoryPage(message)
     if (message) answerAgentTranscript(message)
     if (message) answerResume(message)

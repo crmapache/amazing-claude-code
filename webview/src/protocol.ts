@@ -2031,16 +2031,23 @@ type ShellMessageBody =
    */
   | {
       type: 'typography'
+      /** What the feed is set in: the panel's own font if one is chosen, the console's otherwise. */
       monoFamily: string
+      /** The IDE console's font, whatever the panel is set in - what "As the console font" names. */
       consoleMonoFamily?: string
+      /** The panel's own font, or empty while it follows the console's (see ClaudePreferences.fontFamily). */
       fontFamily?: string
       uiFamily: string
       lineHeight: number
       consoleSize?: number
       textSize?: number
       size?: number
-      availableFonts?: string[]
     }
+  /**
+   * Every font family the machine has, for the font screen to pick the panel's from - asked when the screen
+   * opens rather than sent with every typography: a few hundred names nobody needs until then.
+   */
+  | { type: 'fontFamilies'; families: string[] }
   /**
    * The panel's theme: the choice made in its settings ('dark', 'light', or '' for the IDE's) and whether
    * the IDE is dark right now. Sent as the two rather than as the theme they amount to - the settings
@@ -2657,7 +2664,10 @@ export type WebviewMessage =
    */
   | { type: 'setTheme'; theme: string }
   | { type: 'setTextSize'; size: number }
+  /** The panel's own font family; empty follows the IDE console's again. */
   | { type: 'setFontFamily'; font: string }
+  /** The font screen opened: name the machine's families (see the shell message of the same name). */
+  | { type: 'fontFamilies' }
   /**
    * The tabs coming back after a restart, the panel's two halves of it: what is being written in a tab's
    * input field (null when it is empty - the message went, or the words were deleted), and which tab is

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { createPortal } from 'react-dom'
 import { send, subscribe } from './bridge'
 import { copyToClipboard, installClipboardBridge, pasteFromKeys, resolveClipboard } from './clipboard'
+import { cssFamily } from './fontFamilies'
 import { resolvePastedFile } from './pasted'
 import { openPicture, resolveImagePreview, resolvePictureUnopened } from './imagePreviewLoad'
 import {
@@ -62,7 +63,7 @@ import type { Dict } from './i18n/en'
 import { StatisticsTab, type StatisticsView } from './components/stats/StatisticsTab'
 import { dressAll, summarize } from './stats/achievements'
 import { ChoiceList, LayoutChoice } from './components/Choices'
-import { Appearance, appearanceSummary } from './components/Appearance'
+import { Appearance, appearanceSummary, FontFamilies } from './components/Appearance'
 import { CalmColors } from './components/CalmColors'
 import { RestoreTabs } from './components/RestoreTabs'
 import { ShareEditor } from './components/ShareEditor'
@@ -342,8 +343,8 @@ const defaultTitle = (sessionId: string): string => (sessionId === MAIN_SESSION 
 const applyTypography = (monoFamily: string, uiFamily: string, lineHeight: number): void => {
   const root = document.documentElement.style
 
-  if (monoFamily) root.setProperty('--acc-mono', `'${monoFamily}', ui-monospace, monospace`)
-  if (uiFamily) root.setProperty('--acc-font', `'${uiFamily}', system-ui, sans-serif`)
+  if (monoFamily) root.setProperty('--acc-mono', `${cssFamily(monoFamily)}, ui-monospace, monospace`)
+  if (uiFamily) root.setProperty('--acc-font', `${cssFamily(uiFamily)}, system-ui, sans-serif`)
   if (lineHeight > 0) root.setProperty('--acc-leading', String(lineHeight))
 }
 
@@ -820,11 +821,15 @@ export const App = () => {
    * the harness shows.
    */
   const [textSize, setTextSizeState] = useState<TextSize>({ chosen: TEXT_SIZE_FOLLOW, console: DESIGN_SIZE })
-  const [fontInfo, setFontInfo] = useState<{ chosen: string; console: string; available: string[] }>({
-    chosen: '',
-    console: 'JetBrains Mono',
-    available: [],
-  })
+  /**
+   * The panel's own font (empty while it follows the console's) and the console's, for the settings screen -
+   * what the feed is set in arrives with the typography and goes into the document's root (see
+   * applyTypography). The console's is the design's until the IDE says otherwise, which is what the harness
+   * shows.
+   */
+  const [fontInfo, setFontInfo] = useState<{ chosen: string; console: string }>({ chosen: '', console: 'JetBrains Mono' })
+  /** Every font family the machine has, asked when the font screen opens - null until the IDE answers. */
+  const [fontFamilies, setFontFamilies] = useState<string[] | null>(null)
   const [loginWaiting, setLoginWaiting] = useState(false)
   /**
    * Why the sign-in could not even be started, when it could not (see protocol.ts).
@@ -3321,13 +3326,13 @@ export const App = () => {
             }))
             break
 
+          case 'fontFamilies':
+            setFontFamilies(message.families)
+            break
+
           case 'typography': {
             applyTypography(message.monoFamily, message.uiFamily, message.lineHeight)
-            setFontInfo((current) => ({
-              chosen: message.fontFamily ?? '',
-              console: message.consoleMonoFamily ?? message.monoFamily ?? current.console,
-              available: message.availableFonts ?? current.available,
-            }))
+            setFontInfo({ chosen: message.fontFamily ?? '', console: message.consoleMonoFamily ?? message.monoFamily })
             const chosen = normalizeTextSize(message.textSize)
             // Our own sizes, come back round in the order they were sent - the same care as the
             // indicators': the echo of the first of three presses must not pull the figure back two
@@ -3854,14 +3859,19 @@ export const App = () => {
     return () => window.removeEventListener('pagehide', flush)
   }, [])
 
-  const setFontFamily = useCallback((font: string) => {
-    const next = font.trim()
-    setFontInfo((current) => {
-      applyTypography(next || current.console, '', 0)
-      return { ...current, chosen: next }
-    })
-    send({ type: 'setFontFamily', font: next })
-  }, [])
+  /**
+   * The panel's own font, or the console's again for an empty one - drawn here at once, and every window is
+   * told: the IDE answers with a typography of its own, the same as for the size.
+   */
+  const setFontFamily = useCallback(
+    (font: string) => {
+      const next = font.trim()
+      applyTypography(next || fontInfo.console, '', 0)
+      setFontInfo((current) => ({ ...current, chosen: next }))
+      send({ type: 'setFontFamily', font: next })
+    },
+    [fontInfo.console],
+  )
 
   /** Whether the tabs come back after a restart - applied here at once, and every window is told. */
   const setRestoreTabs = useCallback((on: boolean) => {
@@ -7432,12 +7442,30 @@ export const App = () => {
             size={textSize}
             fontFamily={fontInfo.chosen}
             consoleFont={fontInfo.console}
-            availableFonts={fontInfo.available}
             theme={theme?.choice ?? ''}
             ideDark={theme?.ideDark ?? true}
             onTextSize={setTextSize}
             onFontFamily={setFontFamily}
+            onOpenFonts={() => {
+              // Asked every time: a font installed since the last look belongs on the list.
+              send({ type: 'fontFamilies' })
+              openScreen('font')
+            }}
             onTheme={setTheme}
+          />
+        ) : null}
+
+        {sideMenu.open && sideMenu.screen === 'font' ? (
+          <FontFamilies
+            t={t}
+            families={fontFamilies}
+            fontFamily={fontInfo.chosen}
+            consoleFont={fontInfo.console}
+            onPick={(font) => {
+              setFontFamily(font)
+              // Back to the screen that sent us here, as the microphone's list does: a choice made ends the step.
+              setSideMenu({ open: true, screen: 'appearance' })
+            }}
           />
         ) : null}
 

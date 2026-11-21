@@ -55,7 +55,12 @@ export const ChoiceOption = ({
     <span className={s.choiceTick}>{on ? '✓' : ''}</span>
     <span className={s.choiceBody}>
       <span className={s.choiceTop}>
-        <span className={`${s.choiceLabel} ${on ? s.choiceLabelOn : ''}`}>{option.label}</span>
+        <span
+          className={`${s.choiceLabel} ${on ? s.choiceLabelOn : ''}`}
+          style={option.labelFont ? { fontFamily: option.labelFont } : undefined}
+        >
+          {option.label}
+        </span>
         {option.tag ? (
           <span className={`${s.choiceTag} ${option.danger ? s.choiceTagDanger : ''}`}>{option.tag}</span>
         ) : null}
