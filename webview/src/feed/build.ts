@@ -1262,12 +1262,13 @@ const rateLimitState = (
  * A real model - or nothing.
  *
  * Some messages are signed not with a model but with an internal mark in angle brackets: "<synthetic>",
- * for instance - the placeholder the CLI closes a turn interrupted by the person with. No model of that
- * name exists, and letting it through means declaring the conversation has moved to it: the panel would
- * name it in the bottom line and offer it as a separate row in the model list.
+ * for instance - the placeholder the CLI closes a turn interrupted by the person with. Custom proxies
+ * and model routers can also sign events with the literal placeholder "custom" alongside the real model
+ * name. No real model of that name exists, and letting it through means declaring the conversation has
+ * moved to it: the panel would name it in the bottom line and announce a fake swap in the feed.
  */
 const realModel = (model: string | undefined): string | undefined =>
-  model && !model.startsWith('<') ? model : undefined
+  model && !model.startsWith('<') && model.toLowerCase() !== 'custom' ? model : undefined
 
 /**
  * Is there an answer on a new model on its way, put there by the person themselves?
