@@ -591,6 +591,18 @@ describe('the model swapped by the CLI itself', () => {
     expect(modelSwitches(state)).toEqual([])
   })
 
+  it('ignores a "custom" placeholder signature without announcing a model switch', () => {
+    const state = play([
+      initEvent('deepseek-ai/DeepSeek-V4.1-Flash-1017'),
+      signedTextEvent('deepseek-ai/DeepSeek-V4.1-Flash-1017', 'Hello.'),
+      signedTextEvent('custom', 'Still here.'),
+    ])
+
+    expect(state.model).toBe('deepseek-ai/DeepSeek-V4.1-Flash-1017')
+    expect(state.switchedFrom).toBeUndefined()
+    expect(modelSwitches(state)).toEqual([])
+  })
+
   it('keeps quiet about a change the person asked for themselves', () => {
     let state = play([initEvent('claude-fable-5'), signedTextEvent('claude-fable-5', 'Hello.')])
     state = reducePanel(state, { kind: 'modelRequested', model: 'opus' })

@@ -63,6 +63,24 @@ internal object ModelNames {
         }
     }
 
+    /**
+     * Whether the signature under an answer names a model at all.
+     *
+     * Two kinds of signature do not. The CLI signs the words it puts in the model's mouth itself with a
+     * mark in angle brackets - `<synthetic>` closes a turn the person interrupted, an unknown command, the
+     * text of an API error. And some proxies and model routers sign part of their answers with the bare
+     * word `custom`, between answers signed with the real model (PR #25). Neither is a model anybody can
+     * be launched on, and taking one for a model gets three things wrong: a conversation opened from the
+     * history comes up on it (see ClaudeHistory.lastModel), the statistics' models card grows a row for
+     * something nobody ran and takes the turn away from the model that did the work, and the feed
+     * announces a swap that never happened. The panel's feed drops the same signatures (realModel in
+     * feed/build.ts).
+     */
+    fun isModel(signature: String): Boolean =
+        signature.isNotEmpty() && !signature.startsWith("<") && !signature.equals(PLACEHOLDER, ignoreCase = true)
+
+    private const val PLACEHOLDER = "custom"
+
     /** The name without its window mark - `claude-opus-5` for `claude-opus-5[1m]`; an unmarked name as it is. */
     fun unmarked(model: String): String = model.substringBefore('[')
 
