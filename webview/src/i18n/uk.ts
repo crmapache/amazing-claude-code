@@ -25,7 +25,8 @@ export const uk: Dict = {
       mcp: { title: 'СЕРВЕРИ MCP', hint: 'стан · вхід · перепідключення' },
       plugins: { title: 'ПЛАГІНИ', hint: 'встановлені · каталог · маркетплейси' },
       settings: { title: 'НАЛАШТУВАННЯ', hint: 'як панель поводиться і як звучить' },
-      appearance: { title: 'ВИГЛЯД', hint: 'тема й розмір тексту' },
+      appearance: { title: 'ВИГЛЯД', hint: 'тема, розмір тексту й шрифт' },
+      font: { title: 'ШРИФТ', hint: 'чим набрана панель' },
       sounds: { title: 'ЗВУКОВІ СИГНАЛИ', hint: 'коли панель вас кличе' },
       calmColors: { title: 'СПОКІЙНІ КОЛЬОРИ', hint: 'яким кольором малюються шкали' },
       indicators: { title: 'ІНДИКАТОРИ', hint: 'що лишається довкола поля' },
@@ -171,6 +172,13 @@ export const uk: Dict = {
     darkWord: 'темна',
     lightWord: 'світла',
     auto: 'Авто',
+    font: 'ШРИФТ',
+    followConsoleFont: 'Як у консолі',
+    followConsoleFontSub: (font) => `Як шрифт консолі в IDE - зараз ${font}`,
+    ownFont: 'Власний шрифт',
+    ownFontSub: 'Лише для панелі - редактор і термінал залишаться як є',
+    ownFontChosen: (font) => `${font}, лише для панелі`,
+    fontsNote: 'Моноширинні шрифти цього комп’ютера. Стрічка набрана як термінал, тож у коду й таблиць рівні колонки.',
   },
 
   restoreTabs: {

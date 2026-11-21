@@ -62,6 +62,8 @@ internal object UsageFacts {
             "improveCustom" to preferences.improveInstructions.isNotBlank(),
             "theme" to preferences.theme.takeIf { it == ClaudePreferences.THEME_DARK || it == ClaudePreferences.THEME_LIGHT }.orEmpty().ifEmpty { "auto" },
             "textSize" to (preferences.textSize != ClaudePreferences.TEXT_SIZE_FOLLOW),
+            // Whether one is chosen, never which: a font's name says something about the machine.
+            "font" to preferences.fontFamily.isNotBlank(),
             "language" to preferences.language.isNotBlank(),
             "pasteCollapse" to preferences.pasteCollapse.takeIf { it.isNotEmpty() && it.all(Char::isDigit) }.orEmpty().ifEmpty { "default" },
             "accounts" to (runCatching { ClaudeAccounts.getInstance().list().size }.getOrNull() ?: 0),

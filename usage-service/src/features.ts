@@ -171,6 +171,7 @@ const SHARED_SCREENS: Record<string, string> = {
 export const SCREENS: Record<Product, Record<string, string>> = {
   acc: {
     ...SHARED_SCREENS,
+    font: 'Appearance: font',
     accounts: 'Claude accounts',
     settingSources: 'Claude Code settings sources',
     claudeConfig: 'Claude Code settings',
@@ -207,6 +208,7 @@ const SHARED_SETTINGS: Record<string, string> = {
 export const SETTINGS: Record<Product, Record<string, string>> = {
   acc: {
     ...SHARED_SETTINGS,
+    font_family: 'Panel font',
     executable: 'Path to Claude Code',
     claude_config: 'Claude Code settings',
     setting_sources: 'Claude Code settings sources',

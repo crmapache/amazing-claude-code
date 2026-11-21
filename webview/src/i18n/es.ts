@@ -25,7 +25,8 @@ export const es: Dict = {
       mcp: { title: 'SERVIDORES MCP', hint: 'estado · iniciar sesión · reconectar' },
       plugins: { title: 'PLUGINS', hint: 'instalados · explorar · marketplaces' },
       settings: { title: 'AJUSTES', hint: 'cómo se comporta y cómo suena el panel' },
-      appearance: { title: 'APARIENCIA', hint: 'tema y tamaño del texto' },
+      appearance: { title: 'APARIENCIA', hint: 'tema, tamaño del texto y fuente' },
+      font: { title: 'FUENTE', hint: 'la letra del panel' },
       sounds: { title: 'AVISOS SONOROS', hint: 'cuándo te llama el panel' },
       calmColors: { title: 'COLORES TRANQUILOS', hint: 'cómo se pintan los medidores' },
       indicators: { title: 'INDICADORES', hint: 'qué queda alrededor del campo' },
@@ -165,6 +166,13 @@ export const es: Dict = {
     darkWord: 'oscuro',
     lightWord: 'claro',
     auto: 'Automático',
+    font: 'FUENTE',
+    followConsoleFont: 'Como en la consola',
+    followConsoleFontSub: (font) => `Seguir la fuente de la consola del IDE - ahora ${font}`,
+    ownFont: 'Fuente propia',
+    ownFontSub: 'Solo el panel - el editor y la terminal quedan como están',
+    ownFontChosen: (font) => `${font}, solo en el panel`,
+    fontsNote: 'Fuentes monoespaciadas de esta computadora. El panel se compone como una terminal, así el código y las tablas conservan sus columnas.',
   },
 
   restoreTabs: {

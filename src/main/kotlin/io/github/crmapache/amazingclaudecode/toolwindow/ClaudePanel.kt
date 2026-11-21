@@ -53,6 +53,7 @@ import io.github.crmapache.amazingclaudecode.webview.WebviewFileDrop
 import io.github.crmapache.amazingclaudecode.webview.WebviewHost
 import java.awt.BorderLayout
 import java.awt.Component
+import java.awt.GraphicsEnvironment
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JButton
@@ -61,6 +62,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -70,6 +72,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
 /**
@@ -700,6 +703,25 @@ internal class ClaudePanel(
                 ClaudePanels.everyPanel { it.appearanceChanged() }
             }
 
+            "setFontFamily" -> {
+                ClaudePreferences.fontFamily = field("font")
+                ClaudePanels.everyPanel { it.appearanceChanged() }
+            }
+
+            // Every family the machine has, for the font screen (see FontFamilies in Appearance.tsx), which
+            // keeps the monospaced ones its browser can draw. Asked when the screen opens rather than sent with
+            // every typography, and off the interface thread: the first call reads every font file the
+            // system has.
+            "fontFamilies" -> ApplicationManager.getApplication().executeOnPooledThread {
+                val families = GraphicsEnvironment.getLocalGraphicsEnvironment().availableFontFamilyNames
+                webview?.send(
+                    buildJsonObject {
+                        put("type", "fontFamilies")
+                        putJsonArray("families") { families.forEach { add(it) } }
+                    }.toString(),
+                )
+            }
+
             // What is being written in a tab's input field, and which tab is on screen - the two halves of
             // the tabs coming back after a restart that only the panel knows (see TabMemory). At this door
             // rather than among the conversation commands: a phone has a field and a screen of its own,
@@ -1277,6 +1299,8 @@ internal class ClaudePanel(
             buildJsonObject {
                 put("type", "typography")
                 put("monoFamily", typography.monoFamily)
+                put("consoleMonoFamily", typography.consoleMonoFamily)
+                put("fontFamily", typography.fontFamily)
                 put("uiFamily", typography.uiFamily)
                 put("lineHeight", typography.lineHeight)
                 // The three sizes the settings screen speaks of: what the console has, what the panel

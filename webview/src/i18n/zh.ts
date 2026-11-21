@@ -25,7 +25,8 @@ export const zh: Dict = {
       mcp: { title: 'MCP 服务器', hint: '状态 · 登录 · 重新连接' },
       plugins: { title: '插件', hint: '已安装 · 浏览 · 市场' },
       settings: { title: '设置', hint: '面板的行为和提示音' },
-      appearance: { title: '外观', hint: '主题和文字大小' },
+      appearance: { title: '外观', hint: '主题、文字大小和字体' },
+      font: { title: '字体', hint: '面板用的字体' },
       sounds: { title: '提示音', hint: '面板需要你的时候' },
       calmColors: { title: '柔和配色', hint: '仪表用什么颜色画' },
       indicators: { title: '指示器', hint: '输入框周围保留什么' },
@@ -165,6 +166,13 @@ export const zh: Dict = {
     darkWord: '深色',
     lightWord: '浅色',
     auto: '自动',
+    font: '字体',
+    followConsoleFont: '与控制台一致',
+    followConsoleFontSub: (font) => `跟随 IDE 的控制台字体 - 当前是 ${font}`,
+    ownFont: '单独设置字体',
+    ownFontSub: '只影响面板 - 编辑器和终端保持不变',
+    ownFontChosen: (font) => `${font}，只用于面板`,
+    fontsNote: '这台电脑上的等宽字体。面板按终端的方式排版，代码和表格的列才能对齐。',
   },
 
   restoreTabs: {

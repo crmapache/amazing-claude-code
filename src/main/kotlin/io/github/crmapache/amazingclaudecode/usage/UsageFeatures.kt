@@ -92,6 +92,7 @@ internal object UsageFeatures {
         "plugins",
         "settings",
         "appearance",
+        "font",
         "sounds",
         "calmColors",
         "indicators",
@@ -127,6 +128,7 @@ internal object UsageFeatures {
     val SETTINGS: Set<String> = setOf(
         "theme",
         "text_size",
+        "font_family",
         "language",
         "layout",
         "send_key",
@@ -316,6 +318,7 @@ internal object UsageFeatures {
     private fun settingOf(type: String): String? = when (type) {
         "setTheme" -> "theme"
         "setTextSize" -> "text_size"
+        "setFontFamily" -> "font_family"
         "setLanguage" -> "language"
         "setComposerLayout" -> "layout"
         "setSendKey" -> "send_key"

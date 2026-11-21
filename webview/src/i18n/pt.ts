@@ -25,7 +25,8 @@ export const pt: Dict = {
       mcp: { title: 'SERVIDORES MCP', hint: 'estado · entrar · reconectar' },
       plugins: { title: 'PLUGINS', hint: 'instalados · explorar · marketplaces' },
       settings: { title: 'CONFIGURAÇÕES', hint: 'como o painel se comporta e como ele soa' },
-      appearance: { title: 'APARÊNCIA', hint: 'tema e tamanho do texto' },
+      appearance: { title: 'APARÊNCIA', hint: 'tema, tamanho do texto e fonte' },
+      font: { title: 'FONTE', hint: 'a letra do painel' },
       sounds: { title: 'AVISOS SONOROS', hint: 'quando o painel chama você' },
       calmColors: { title: 'CORES TRANQUILAS', hint: 'como os medidores são pintados' },
       indicators: { title: 'INDICADORES', hint: 'o que fica em volta do campo' },
@@ -165,6 +166,13 @@ export const pt: Dict = {
     darkWord: 'escuro',
     lightWord: 'claro',
     auto: 'Automático',
+    font: 'FONTE',
+    followConsoleFont: 'Como no console',
+    followConsoleFontSub: (font) => `Seguir a fonte do console do IDE - agora ${font}`,
+    ownFont: 'Fonte própria',
+    ownFontSub: 'Só o painel - o editor e o terminal ficam como estão',
+    ownFontChosen: (font) => `${font}, só no painel`,
+    fontsNote: 'Fontes monoespaçadas deste computador. O painel é composto como um terminal, para que código e tabelas mantenham as colunas.',
   },
 
   restoreTabs: {

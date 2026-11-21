@@ -27,7 +27,8 @@ export const ja: Dict = {
       mcp: { title: 'MCP サーバー', hint: '状態 · サインイン · 再接続' },
       plugins: { title: 'プラグイン', hint: 'インストール済み · 一覧 · マーケットプレイス' },
       settings: { title: '設定', hint: 'パネルの動きと音' },
-      appearance: { title: '外観', hint: 'テーマと文字サイズ' },
+      appearance: { title: '外観', hint: 'テーマ、文字サイズ、フォント' },
+      font: { title: 'フォント', hint: 'パネルの書体' },
       sounds: { title: '通知音', hint: 'パネルがあなたを呼ぶとき' },
       calmColors: { title: '穏やかな色', hint: 'メーターの色の付け方' },
       indicators: { title: 'インジケーター', hint: '入力欄のまわりに残すもの' },
@@ -167,6 +168,13 @@ export const ja: Dict = {
     darkWord: 'ダーク',
     lightWord: 'ライト',
     auto: '自動',
+    font: 'フォント',
+    followConsoleFont: 'コンソールと同じ',
+    followConsoleFontSub: (font) => `IDE のコンソールフォントに合わせる - 現在は ${font}`,
+    ownFont: '独自のフォント',
+    ownFontSub: 'パネルだけ - エディターとターミナルはそのまま',
+    ownFontChosen: (font) => `${font}（パネルだけ）`,
+    fontsNote: 'このコンピューターの等幅フォントです。パネルはターミナルのように組まれるので、コードや表の桁がそろいます。',
   },
 
   restoreTabs: {

@@ -29,7 +29,8 @@ export const fr: Dict = {
       mcp: { title: 'SERVEURS MCP', hint: 'état · connexion · reconnexion' },
       plugins: { title: 'PLUGINS', hint: 'installés · parcourir · marketplaces' },
       settings: { title: 'RÉGLAGES', hint: 'comment le panneau se comporte et comment il sonne' },
-      appearance: { title: 'APPARENCE', hint: 'thème et taille du texte' },
+      appearance: { title: 'APPARENCE', hint: 'thème, taille du texte et police' },
+      font: { title: 'POLICE', hint: 'celle du panneau' },
       sounds: { title: 'ALERTES SONORES', hint: 'quand le panneau t’appelle' },
       calmColors: { title: 'COULEURS APAISÉES', hint: 'comment les jauges sont peintes' },
       indicators: { title: 'INDICATEURS', hint: 'ce qui reste autour du champ' },
@@ -169,6 +170,13 @@ export const fr: Dict = {
     darkWord: 'sombre',
     lightWord: 'clair',
     auto: 'Auto',
+    font: 'POLICE',
+    followConsoleFont: 'Comme dans la console',
+    followConsoleFontSub: (font) => `Suivre la police de la console de l’IDE - actuellement ${font}`,
+    ownFont: 'Police personnalisée',
+    ownFontSub: 'Le panneau seul - l’éditeur et le terminal restent tels quels',
+    ownFontChosen: (font) => `${font}, dans le panneau seul`,
+    fontsNote: 'Polices à chasse fixe de cet ordinateur. Le panneau est composé comme un terminal, pour que le code et les tableaux gardent leurs colonnes.',
   },
 
   restoreTabs: {

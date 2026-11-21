@@ -25,7 +25,8 @@ export const ru: Dict = {
       mcp: { title: 'СЕРВЕРЫ MCP', hint: 'состояние · вход · переподключение' },
       plugins: { title: 'ПЛАГИНЫ', hint: 'установленные · каталог · маркетплейсы' },
       settings: { title: 'НАСТРОЙКИ', hint: 'как панель себя ведёт и как звучит' },
-      appearance: { title: 'ВНЕШНИЙ ВИД', hint: 'тема и размер текста' },
+      appearance: { title: 'ВНЕШНИЙ ВИД', hint: 'тема, размер текста и шрифт' },
+      font: { title: 'ШРИФТ', hint: 'чем набрана панель' },
       sounds: { title: 'ЗВУКОВЫЕ СИГНАЛЫ', hint: 'когда панель вас зовёт' },
       calmColors: { title: 'СПОКОЙНЫЕ ЦВЕТА', hint: 'каким цветом рисуются шкалы' },
       indicators: { title: 'ИНДИКАТОРЫ', hint: 'что остаётся вокруг поля' },
@@ -171,6 +172,13 @@ export const ru: Dict = {
     darkWord: 'тёмная',
     lightWord: 'светлая',
     auto: 'Авто',
+    font: 'ШРИФТ',
+    followConsoleFont: 'Как в консоли',
+    followConsoleFontSub: (font) => `Как шрифт консоли в IDE - сейчас ${font}`,
+    ownFont: 'Свой шрифт',
+    ownFontSub: 'Только для панели - редактор и терминал останутся как есть',
+    ownFontChosen: (font) => `${font}, только для панели`,
+    fontsNote: 'Моноширинные шрифты этого компьютера. Лента набрана как терминал, поэтому у кода и таблиц ровные колонки.',
   },
 
   restoreTabs: {

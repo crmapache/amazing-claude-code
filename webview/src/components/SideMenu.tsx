@@ -19,6 +19,7 @@ export type MenuScreen =
   | 'plugins'
   | 'settings'
   | 'appearance'
+  | 'font'
   | 'sounds'
   | 'calmColors'
   | 'indicators'
@@ -199,6 +200,8 @@ export const parentOf = (screen: MenuScreen): MenuScreen => {
   // own - sixty-odd languages will not fit beside a key field, and coming back from either belongs to the
   // voice screen rather than to the settings list two steps up.
   if (screen === 'voiceLanguage' || screen === 'voiceDevice') return 'voice'
+  // The list of fonts is a step of the appearance screen, the way the microphones are of the voice one.
+  if (screen === 'font') return 'appearance'
   // The three lists of "new chats" belong to that screen rather than to the settings two steps up, for
   // the same reason: what one was in the middle of is the list of three, not the list of ten.
   if (NEW_CHAT_SCREENS.includes(screen)) return 'newChat'
