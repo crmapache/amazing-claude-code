@@ -121,6 +121,22 @@ class ClosedTabsTest {
     }
 
     @Test
+    fun `a conversation named from the history comes back under that name`() {
+        val closed = ClosedTabs()
+        closed.push(chat("a"))
+        closed.push(chat("b"))
+
+        assertTrue(closed.rename("c-a", "Refund webhooks"))
+        val tab = closed.chats().first { it.tab.conversationId == "c-a" }.tab
+        assertEquals("Refund webhooks", tab.title)
+        // The person's name: it outranks the model's when the tab comes back (see SessionRegistry.rename).
+        assertEquals(SessionSnapshot.TITLE_USER, tab.titleSource)
+        assertEquals("Tab b", closed.chats().first { it.tab.conversationId == "c-b" }.tab.title)
+        assertEquals(listOf("chat:c-b", "chat:c-a"), closed.list().map { it.key })
+        assertFalse(closed.rename("c-gone", "Anything"))
+    }
+
+    @Test
     fun `the list off the disk stands in order, the panel's own tabs of this session kept`() {
         val closed = ClosedTabs()
         closed.push(panel("__scenarios__"))

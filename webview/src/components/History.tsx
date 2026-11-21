@@ -1,13 +1,12 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { describeWhen } from '../feed/when'
 import { useT } from '../i18n'
 import type { ClosedTab, HistoryDeleteOutcome, HistoryEntry } from '../protocol'
 import { Confirm } from './Confirm'
 import { ContextMenu } from './ContextMenu'
+import { NameField } from './NameField'
 import { CrossIcon } from './scenarios/icons'
 import s from './sideMenu.module.css'
-
-const HISTORY_NAME_MAX = 100
 
 interface HistoryProps {
   /** null means the list has not arrived yet: it is read from disk by itself, before the menu opens. */
@@ -26,6 +25,11 @@ interface HistoryProps {
    * conversations, an IDE built before it), and then the rows have no button.
    */
   onDelete?: (entry: HistoryEntry) => void
+  /**
+   * Naming a past conversation, from its row's right-click menu. The IDE decides where the name goes: to the
+   * tab that holds the conversation, if one does, or into the transcript on disk (see
+   * ProjectCatalog.renameConversation).
+   */
   onRename?: (entry: HistoryEntry, title: string) => void
   /**
    * Whether a conversation is open in a tab: such a row offers no deleting, because the tab's process is
@@ -58,10 +62,31 @@ export const History = ({
   const t = useT()
   // Asked first: the press takes a whole conversation off the list, and the trash is the only way back.
   const [removing, setRemoving] = useState<HistoryEntry | null>(null)
+  /** A row's right-click menu and where it was opened (see ContextMenu). */
   const [menu, setMenu] = useState<{ entry: HistoryEntry; x: number; y: number } | null>(null)
-  const [renamingId, setRenamingId] = useState<string | null>(null)
+  // Steady across renders: the menu listens for Escape and the pointer with it (see Menu).
+  const closeMenu = useCallback(() => setMenu(null), [])
+  /** The row whose name is being typed - one at a time, as on the strip. */
+  const [renaming, setRenaming] = useState<string | null>(null)
   const deleteOf = (entry: HistoryEntry) =>
     onDelete && !isOpen?.(entry.id) ? () => setRemoving(entry) : undefined
+
+  const entryOf = (entry: HistoryEntry) => (
+    <Entry
+      key={entry.id}
+      entry={entry}
+      onOpen={onOpen}
+      onDelete={deleteOf(entry)}
+      onMenu={onRename ? (x, y) => setMenu({ entry, x, y }) : undefined}
+      renaming={renaming === entry.id}
+      onRenamed={(name) => {
+        setRenaming(null)
+        // An empty name or the same one is no naming - as on the strip (see finishNaming in Header).
+        const next = name?.trim()
+        if (next && next !== entry.title) onRename?.(entry, next)
+      }}
+    />
+  )
   const startOfToday = new Date().setHours(0, 0, 0, 0)
   const today = conversations?.filter((entry) => entry.updatedAt >= startOfToday) ?? []
   const earlier = conversations?.filter((entry) => entry.updatedAt < startOfToday) ?? []
@@ -110,27 +135,7 @@ export const History = ({
           <div className={s.screenGroup}>
             <span className={s.screenLabel}>{t.history.today}</span>
           </div>
-          {today.map((entry) => (
-            <Entry
-              key={entry.id}
-              entry={entry}
-              onOpen={onOpen}
-              onDelete={deleteOf(entry)}
-              renaming={renamingId === entry.id}
-              onContextMenu={
-                onRename
-                  ? (x, y) => {
-                      setMenu({ entry, x, y })
-                    }
-                  : undefined
-              }
-              onFinishRename={(next) => {
-                setRenamingId(null)
-                const trimmed = next?.trim()
-                if (trimmed && trimmed !== entry.title) onRename?.(entry, trimmed)
-              }}
-            />
-          ))}
+          {today.map(entryOf)}
         </>
       ) : null}
 
@@ -139,27 +144,7 @@ export const History = ({
           <div className={s.screenGroup}>
             <span className={s.screenLabel}>{t.history.earlier}</span>
           </div>
-          {earlier.map((entry) => (
-            <Entry
-              key={entry.id}
-              entry={entry}
-              onOpen={onOpen}
-              onDelete={deleteOf(entry)}
-              renaming={renamingId === entry.id}
-              onContextMenu={
-                onRename
-                  ? (x, y) => {
-                      setMenu({ entry, x, y })
-                    }
-                  : undefined
-              }
-              onFinishRename={(next) => {
-                setRenamingId(null)
-                const trimmed = next?.trim()
-                if (trimmed && trimmed !== entry.title) onRename?.(entry, trimmed)
-              }}
-            />
-          ))}
+          {earlier.map(entryOf)}
         </>
       ) : null}
 
@@ -167,8 +152,10 @@ export const History = ({
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          items={[{ id: 'rename', label: t.header.renameTab, onSelect: () => setRenamingId(menu.entry.id) }]}
-          onClose={() => setMenu(null)}
+          title={t.header.tabMenu}
+          options={[{ id: 'rename', label: t.header.renameTab }]}
+          onPick={() => setRenaming(menu.entry.id)}
+          onClose={closeMenu}
         />
       ) : null}
 
@@ -193,16 +180,17 @@ const Entry = ({
   entry,
   onOpen,
   onDelete,
+  onMenu,
   renaming,
-  onContextMenu,
-  onFinishRename,
+  onRenamed,
 }: {
   entry: HistoryEntry
   onOpen: (entry: HistoryEntry) => void
   onDelete?: () => void
+  /** The right-click menu - absent where nothing can be renamed (an IDE built before it). */
+  onMenu?: (x: number, y: number) => void
   renaming: boolean
-  onContextMenu?: (x: number, y: number) => void
-  onFinishRename: (title: string | null) => void
+  onRenamed: (name: string | null) => void
 }) => {
   const t = useT()
 
@@ -212,9 +200,16 @@ const Entry = ({
     </span>
   )
 
+  // The name field stands where the name stood, in a row that is no longer a button: a press in the field
+  // places the caret rather than opening the conversation.
   const row = renaming ? (
     <div className={s.historyRow}>
-      <HistoryNameField title={entry.title} label={t.header.renameTab} onDone={onFinishRename} />
+      <NameField
+        title={entry.title}
+        label={t.header.renameTab}
+        className={s.historyRenameInput}
+        onDone={(name) => onRenamed(name)}
+      />
       {meta}
     </div>
   ) : (
@@ -223,11 +218,10 @@ const Entry = ({
       className={s.historyRow}
       onClick={() => onOpen(entry)}
       onContextMenu={
-        onContextMenu
+        onMenu
           ? (event) => {
               event.preventDefault()
-              event.stopPropagation()
-              onContextMenu(event.clientX, event.clientY)
+              onMenu(event.clientX, event.clientY)
             }
           : undefined
       }
@@ -255,55 +249,5 @@ const Entry = ({
         <CrossIcon />
       </button>
     </div>
-  )
-}
-
-const HistoryNameField = ({
-  title,
-  label,
-  onDone,
-}: {
-  title: string
-  label: string
-  onDone: (title: string | null) => void
-}) => {
-  const [value, setValue] = useState(title)
-  const input = useRef<HTMLInputElement>(null)
-  const done = useRef(false)
-
-  const finish = (next: string | null) => {
-    if (done.current) return
-    done.current = true
-    onDone(next)
-  }
-
-  useLayoutEffect(() => {
-    input.current?.focus()
-    input.current?.select()
-  }, [])
-
-  return (
-    <input
-      ref={input}
-      className={s.historyRenameInput}
-      value={value}
-      maxLength={HISTORY_NAME_MAX}
-      aria-label={label}
-      spellCheck={false}
-      onChange={(event) => setValue(event.target.value)}
-      onKeyDown={(event) => {
-        event.stopPropagation()
-        if (event.nativeEvent.isComposing) return
-        if (event.key === 'Enter') {
-          event.preventDefault()
-          finish(value)
-        } else if (event.key === 'Escape') {
-          event.preventDefault()
-          finish(null)
-        }
-      }}
-      onBlur={() => finish(value)}
-      onClick={(event) => event.stopPropagation()}
-    />
   )
 }

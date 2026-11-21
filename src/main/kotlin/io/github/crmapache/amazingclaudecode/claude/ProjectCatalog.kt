@@ -770,21 +770,30 @@ internal class ProjectCatalog(
     }
 
     /**
-     * Rename a past conversation in the history (see ClaudeHistory.rename) and refresh the list across
-     * every window at this desk.
+     * A past conversation named from its row in the history (PR #26). Where the name goes is decided here
+     * rather than by the panel, whose list of tabs can be a step behind this one:
      *
-     * A conversation currently held by an open tab is renamed via `nameSession` instead, so that the
-     * running process updates its own memory and transcript; this path handles closed transcripts on disk.
+     * - A conversation open in a tab is named the way its tab is (see ClaudeSessionHub.nameSession): the tab
+     *   wears it, and the conversation gets it through its process. A line put into the file behind a live
+     *   process would sink under the name it holds in memory (see tab-names.md).
+     * - Any other one gets the line in its transcript (see ClaudeHistory.rename), and a closed tab of it in
+     *   "Recently closed" the name too (see ClaudeSessionHub.renameClosedConversation). The list goes to every
+     *   window at the desk afterwards, whether the file took the line or not: the panel shows the name at once,
+     *   and a name the file refused has to go back.
      */
     fun renameConversation(id: String, title: String) {
         val name = SessionTitle.own(title) ?: return
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            if (hub.holdsConversation(id)) return@executeOnPooledThread
-            val file = ClaudeHistory.transcriptFile(project.basePath, id) ?: return@executeOnPooledThread
-            if (ClaudeHistory.rename(file, id, name)) {
-                hub.emitToDesk(historyMessage())
+            val tab = hub.tabHolding(id)
+            if (tab != null) {
+                hub.nameSession(tab, name)
+                return@executeOnPooledThread
             }
+
+            val file = ClaudeHistory.transcriptFile(project.basePath, id)
+            if (file != null && ClaudeHistory.rename(file, id, name)) hub.renameClosedConversation(id, name)
+            hub.emitToDesk(historyMessage())
         }
     }
 

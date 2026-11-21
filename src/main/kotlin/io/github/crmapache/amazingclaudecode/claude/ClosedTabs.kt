@@ -88,6 +88,23 @@ internal class ClosedTabs(private val limit: Int = LIMIT) {
         return null
     }
 
+    /**
+     * A conversation named from the history while closed: its tab here takes the name, as the person's. Left
+     * with the old one, the tab would bring it back on reopening and hand it to the transcript over the new
+     * one (see ClaudeSession.nameAfterPerson). Whether any stood here.
+     */
+    @Synchronized
+    fun rename(conversation: String, title: String): Boolean {
+        var renamed = false
+        for ((index, entry) in entries.withIndex()) {
+            if (entry !is Chat || entry.kept.tab.conversationId != conversation) continue
+            val tab = entry.kept.tab.copy(title = title, titleSource = SessionSnapshot.TITLE_USER)
+            entries[index] = entry.copy(kept = entry.kept.copy(tab = tab))
+            renamed = true
+        }
+        return renamed
+    }
+
     /** A conversation deleted from the history: its closed tabs go too. Whether any stood here. */
     @Synchronized
     fun forget(conversation: String): Boolean = entries.removeAll { it is Chat && it.kept.tab.conversationId == conversation }
