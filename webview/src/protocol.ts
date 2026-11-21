@@ -2782,6 +2782,11 @@ export type WebviewMessage =
    * window at the desk (see ProjectCatalog.deleteConversation).
    */
   | { type: 'deleteConversation'; id: string }
+  /**
+   * Rename a past conversation on disk and refresh the history list across windows at this desk (see
+   * ProjectCatalog.renameConversation).
+   */
+  | { type: 'renameConversation'; id: string; title: string }
   /** A page further back than the journal's own catch-up reaches - see ShellMessageBody's historyPage. */
   | { type: 'historyPage'; sessionId: string; before?: string }
   /**

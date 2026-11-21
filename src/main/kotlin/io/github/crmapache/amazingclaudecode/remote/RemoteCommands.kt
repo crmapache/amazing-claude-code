@@ -348,6 +348,7 @@ internal object RemoteCommands {
          * so it is a press for the desk only, like closing a tab.
          */
         "deleteConversation",
+        "renameConversation",
         "closeSession",
         "reorderGroups",
         // The same list, one step finer: the order the tabs at the desk are drawn in, which a phone has

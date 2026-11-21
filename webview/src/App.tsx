@@ -7141,6 +7141,19 @@ export const App = () => {
                   }
                 : undefined
             }
+            onRename={(entry, title) => {
+              setHistory(
+                (current) =>
+                  current?.map((item) => (item.id === entry.id ? { ...item, title, titleSource: 'user' } : item)) ??
+                  current,
+              )
+              const openTabId = tabHolding(entry.id, sessions, (tab) => panelsRef.current[tab]?.sessionId)
+              if (openTabId) {
+                nameSession(openTabId, title)
+              } else {
+                send({ type: 'renameConversation', id: entry.id, title })
+              }
+            }}
             isOpen={(id) => tabHolding(id, sessions, (tab) => panelsRef.current[tab]?.sessionId) !== undefined}
             refusal={historyRefusal}
           />

@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { describeWhen } from '../feed/when'
 import { useT } from '../i18n'
 import type { ClosedTab, HistoryDeleteOutcome, HistoryEntry } from '../protocol'
 import { Confirm } from './Confirm'
+import { ContextMenu } from './ContextMenu'
 import { CrossIcon } from './scenarios/icons'
 import s from './sideMenu.module.css'
+
+const HISTORY_NAME_MAX = 100
 
 interface HistoryProps {
   /** null means the list has not arrived yet: it is read from disk by itself, before the menu opens. */
@@ -23,6 +26,7 @@ interface HistoryProps {
    * conversations, an IDE built before it), and then the rows have no button.
    */
   onDelete?: (entry: HistoryEntry) => void
+  onRename?: (entry: HistoryEntry, title: string) => void
   /**
    * Whether a conversation is open in a tab: such a row offers no deleting, because the tab's process is
    * writing into the very file and would carry on into a transcript nobody can find.
@@ -47,12 +51,15 @@ export const History = ({
   onReopen,
   reopenKey = '',
   onDelete,
+  onRename,
   isOpen,
   refusal = null,
 }: HistoryProps) => {
   const t = useT()
   // Asked first: the press takes a whole conversation off the list, and the trash is the only way back.
   const [removing, setRemoving] = useState<HistoryEntry | null>(null)
+  const [menu, setMenu] = useState<{ entry: HistoryEntry; x: number; y: number } | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
   const deleteOf = (entry: HistoryEntry) =>
     onDelete && !isOpen?.(entry.id) ? () => setRemoving(entry) : undefined
   const startOfToday = new Date().setHours(0, 0, 0, 0)
@@ -104,7 +111,25 @@ export const History = ({
             <span className={s.screenLabel}>{t.history.today}</span>
           </div>
           {today.map((entry) => (
-            <Entry key={entry.id} entry={entry} onOpen={onOpen} onDelete={deleteOf(entry)} />
+            <Entry
+              key={entry.id}
+              entry={entry}
+              onOpen={onOpen}
+              onDelete={deleteOf(entry)}
+              renaming={renamingId === entry.id}
+              onContextMenu={
+                onRename
+                  ? (x, y) => {
+                      setMenu({ entry, x, y })
+                    }
+                  : undefined
+              }
+              onFinishRename={(next) => {
+                setRenamingId(null)
+                const trimmed = next?.trim()
+                if (trimmed && trimmed !== entry.title) onRename?.(entry, trimmed)
+              }}
+            />
           ))}
         </>
       ) : null}
@@ -115,9 +140,36 @@ export const History = ({
             <span className={s.screenLabel}>{t.history.earlier}</span>
           </div>
           {earlier.map((entry) => (
-            <Entry key={entry.id} entry={entry} onOpen={onOpen} onDelete={deleteOf(entry)} />
+            <Entry
+              key={entry.id}
+              entry={entry}
+              onOpen={onOpen}
+              onDelete={deleteOf(entry)}
+              renaming={renamingId === entry.id}
+              onContextMenu={
+                onRename
+                  ? (x, y) => {
+                      setMenu({ entry, x, y })
+                    }
+                  : undefined
+              }
+              onFinishRename={(next) => {
+                setRenamingId(null)
+                const trimmed = next?.trim()
+                if (trimmed && trimmed !== entry.title) onRename?.(entry, trimmed)
+              }}
+            />
           ))}
         </>
+      ) : null}
+
+      {menu && onRename ? (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={[{ id: 'rename', label: t.header.renameTab, onSelect: () => setRenamingId(menu.entry.id) }]}
+          onClose={() => setMenu(null)}
+        />
       ) : null}
 
       {removing && onDelete ? (
@@ -141,19 +193,48 @@ const Entry = ({
   entry,
   onOpen,
   onDelete,
+  renaming,
+  onContextMenu,
+  onFinishRename,
 }: {
   entry: HistoryEntry
   onOpen: (entry: HistoryEntry) => void
   onDelete?: () => void
+  renaming: boolean
+  onContextMenu?: (x: number, y: number) => void
+  onFinishRename: (title: string | null) => void
 }) => {
   const t = useT()
 
-  const row = (
-    <button type="button" className={s.historyRow} onClick={() => onOpen(entry)} data-tooltip={entry.id}>
+  const meta = (
+    <span className={s.historyMeta}>
+      {describeWhen(entry.updatedAt)} · {t.history.messages(entry.messages)}
+    </span>
+  )
+
+  const row = renaming ? (
+    <div className={s.historyRow}>
+      <HistoryNameField title={entry.title} label={t.header.renameTab} onDone={onFinishRename} />
+      {meta}
+    </div>
+  ) : (
+    <button
+      type="button"
+      className={s.historyRow}
+      onClick={() => onOpen(entry)}
+      onContextMenu={
+        onContextMenu
+          ? (event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onContextMenu(event.clientX, event.clientY)
+            }
+          : undefined
+      }
+      data-tooltip={entry.id}
+    >
       <span className={s.historyTitle}>{entry.title}</span>
-      <span className={s.historyMeta}>
-        {describeWhen(entry.updatedAt)} · {t.history.messages(entry.messages)}
-      </span>
+      {meta}
     </button>
   )
 
@@ -174,5 +255,55 @@ const Entry = ({
         <CrossIcon />
       </button>
     </div>
+  )
+}
+
+const HistoryNameField = ({
+  title,
+  label,
+  onDone,
+}: {
+  title: string
+  label: string
+  onDone: (title: string | null) => void
+}) => {
+  const [value, setValue] = useState(title)
+  const input = useRef<HTMLInputElement>(null)
+  const done = useRef(false)
+
+  const finish = (next: string | null) => {
+    if (done.current) return
+    done.current = true
+    onDone(next)
+  }
+
+  useLayoutEffect(() => {
+    input.current?.focus()
+    input.current?.select()
+  }, [])
+
+  return (
+    <input
+      ref={input}
+      className={s.historyRenameInput}
+      value={value}
+      maxLength={HISTORY_NAME_MAX}
+      aria-label={label}
+      spellCheck={false}
+      onChange={(event) => setValue(event.target.value)}
+      onKeyDown={(event) => {
+        event.stopPropagation()
+        if (event.nativeEvent.isComposing) return
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          finish(value)
+        } else if (event.key === 'Escape') {
+          event.preventDefault()
+          finish(null)
+        }
+      }}
+      onBlur={() => finish(value)}
+      onClick={(event) => event.stopPropagation()}
+    />
   )
 }

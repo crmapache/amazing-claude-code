@@ -10,6 +10,7 @@ import type { TitleSource } from '../protocol'
 import { splitTabTitle } from '../feed/title'
 import type { TabCall } from '../sounds'
 import { beforeOf, placeOn, rowFor, shotOf, SWAP_GAP_PX, type Point, type Shot, type TabRect } from '../tabDrag'
+import { ContextMenu } from './ContextMenu'
 
 /**
  * What is happening in a tab: nothing, work under way, work finished, or someone being waited for. The
@@ -663,6 +664,7 @@ export const Header = ({
    * now (see projectionFor) - otherwise nothing, and the strip is as tall as its tabs.
    */
   const [reach, setReach] = useState<number | null>(null)
+  const [tabMenu, setTabMenu] = useState<{ sessionId: string; x: number; y: number } | null>(null)
 
   /**
    * The two reorder callbacks as they stand when the tab is dropped rather than when it was pressed. A
@@ -1171,6 +1173,12 @@ export const Header = ({
           if ((event.target as HTMLElement).closest('button') || dragged.current) return
           onNaming(session.id)
         }}
+        onContextMenu={(event) => {
+          if ((event.target as HTMLElement).closest('button') || dragged.current) return
+          event.preventDefault()
+          event.stopPropagation()
+          setTabMenu({ sessionId: session.id, x: event.clientX, y: event.clientY })
+        }}
         onKeyDown={(event) => {
           if (event.key !== 'Enter' && event.key !== ' ') return
           // Space scrolls the strip otherwise, and the tab under the finger never opens.
@@ -1340,6 +1348,15 @@ export const Header = ({
           <HamburgerIcon />
         </button>
       </div>
+
+      {tabMenu ? (
+        <ContextMenu
+          x={tabMenu.x}
+          y={tabMenu.y}
+          items={[{ id: 'rename', label: t.header.renameTab, onSelect: () => onNaming(tabMenu.sessionId) }]}
+          onClose={() => setTabMenu(null)}
+        />
+      ) : null}
     </header>
   )
 }

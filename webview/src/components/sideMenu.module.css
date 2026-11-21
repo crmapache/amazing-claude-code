@@ -733,6 +733,18 @@
   white-space: nowrap;
 }
 
+.historyRenameInput {
+  width: 100%;
+  padding: 1px 4px;
+  margin: -1px -4px;
+  border: 1px solid var(--acc-accent);
+  border-radius: var(--acc-r-sm);
+  background: var(--acc-bg-panel);
+  font: 500 12.5px var(--acc-font);
+  color: var(--acc-fg);
+  outline: none;
+}
+
 .historyMeta {
   font: 10.5px var(--acc-mono);
   color: var(--acc-fg-ghost);

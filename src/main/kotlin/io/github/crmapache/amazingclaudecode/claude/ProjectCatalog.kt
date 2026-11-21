@@ -770,6 +770,25 @@ internal class ProjectCatalog(
     }
 
     /**
+     * Rename a past conversation in the history (see ClaudeHistory.rename) and refresh the list across
+     * every window at this desk.
+     *
+     * A conversation currently held by an open tab is renamed via `nameSession` instead, so that the
+     * running process updates its own memory and transcript; this path handles closed transcripts on disk.
+     */
+    fun renameConversation(id: String, title: String) {
+        val name = SessionTitle.own(title) ?: return
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            if (hub.holdsConversation(id)) return@executeOnPooledThread
+            val file = ClaudeHistory.transcriptFile(project.basePath, id) ?: return@executeOnPooledThread
+            if (ClaudeHistory.rename(file, id, name)) {
+                hub.emitToDesk(historyMessage())
+            }
+        }
+    }
+
+    /**
      * A page of this conversation's messages older than what the client already has - read straight off
      * the transcript Claude Code keeps for it (see ClaudeHistory.page), not off the in-memory journal:
      * that one exists to protect the live transport and forgets its own beginning long before the disk
