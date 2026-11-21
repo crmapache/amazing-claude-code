@@ -429,6 +429,20 @@ class StatsCollectorTest {
     }
 
     @Test
+    fun `a proxy's placeholder signature does not take the turn from the model that worked`() {
+        collector.noteLine("main", toolUse("t1", "Read", """{"file_path":"src/app.ts"}"""))
+        collector.noteLine("main", toolResult("t1"))
+        // Some proxies sign part of their answers with the bare word "custom" (PR #25).
+        collector.noteLine(
+            "main",
+            """{"type":"assistant","message":{"model":"custom","content":[{"type":"text","text":"Done."}]}}""",
+        )
+        collector.noteLine("main", result(durationMs = 3_000))
+
+        assertEquals(setOf("Sonnet"), today().models.keys)
+    }
+
+    @Test
     fun `a press from a phone is counted as the phone's and tells the report somebody is using the plugin`() {
         var used = 0
         val phone = StatsCollector(

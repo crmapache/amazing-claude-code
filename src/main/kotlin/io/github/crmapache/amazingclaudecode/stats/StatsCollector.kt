@@ -6,6 +6,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.ClaudeHistory
 import io.github.crmapache.amazingclaudecode.claude.ClaudeRateLimit
+import io.github.crmapache.amazingclaudecode.claude.ModelNames
 import io.github.crmapache.amazingclaudecode.usage.UsageFeatures
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -166,7 +167,7 @@ internal class StatsCollector(
 
     private fun noteAssistant(conversation: Conversation, event: JsonObject) {
         val message = event["message"] as? JsonObject ?: return
-        message.string("model").takeIf { isRealModel(it) }?.let { conversation.lastModel = it }
+        message.string("model").takeIf { ModelNames.isModel(it) }?.let { conversation.lastModel = it }
 
         val blocks = message["content"] as? JsonArray ?: return
         for (element in blocks) {
@@ -683,18 +684,6 @@ internal class StatsCollector(
             val name = trimmed.drop(1).takeWhile { !it.isWhitespace() }.lowercase()
             return name.takeIf { it.isNotEmpty() }
         }
-
-        /**
-         * A real model - not one of the CLI's own marks.
-         *
-         * Some answers are signed not with a model but with a name in angle brackets: "<synthetic>" is
-         * what the CLI closes a turn with when the words are its own - a turn the person interrupted, an
-         * unknown command, the text of an API error. No model of that name exists, and taking it for one
-         * gets two things wrong at once: the models card grows a row for something nobody ran, and the
-         * turn is taken away from the model that did the work up to that point. The panel's feed drops
-         * the same marks for the same reason (realModel in feed/build.ts).
-         */
-        fun isRealModel(model: String): Boolean = model.isNotEmpty() && !model.startsWith("<")
 
         /** The model's family in one word: "claude-sonnet-5" -> "Sonnet". */
         fun familyOf(model: String): String {

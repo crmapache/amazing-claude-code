@@ -69,7 +69,8 @@ internal object TranscriptText {
         val message = payload["message"] as? JsonObject ?: return null
 
         // The CLI signs its own lines with a model in angle brackets: an interrupted turn, an API error
-        // put into the model's mouth. Neither was said by anybody (see StatsCollector.isRealModel).
+        // put into the model's mouth. Neither was said by anybody (see ModelNames.isModel). A proxy's
+        // `custom` signature stays: those words did come from a model.
         if (answered && message.string("model")?.startsWith("<") == true) return null
 
         val raw = textOf(message["content"]) ?: return null
