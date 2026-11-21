@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { describeWhen } from '../feed/when'
 import { useT } from '../i18n'
 import type { ClosedTab, HistoryDeleteOutcome, HistoryEntry } from '../protocol'
 import { Confirm } from './Confirm'
+import { ContextMenu } from './ContextMenu'
+import { NameField } from './NameField'
 import { CrossIcon } from './scenarios/icons'
 import s from './sideMenu.module.css'
 
@@ -23,6 +25,12 @@ interface HistoryProps {
    * conversations, an IDE built before it), and then the rows have no button.
    */
   onDelete?: (entry: HistoryEntry) => void
+  /**
+   * Naming a past conversation, from its row's right-click menu. The IDE decides where the name goes: to the
+   * tab that holds the conversation, if one does, or into the transcript on disk (see
+   * ProjectCatalog.renameConversation).
+   */
+  onRename?: (entry: HistoryEntry, title: string) => void
   /**
    * Whether a conversation is open in a tab: such a row offers no deleting, because the tab's process is
    * writing into the very file and would carry on into a transcript nobody can find.
@@ -47,14 +55,38 @@ export const History = ({
   onReopen,
   reopenKey = '',
   onDelete,
+  onRename,
   isOpen,
   refusal = null,
 }: HistoryProps) => {
   const t = useT()
   // Asked first: the press takes a whole conversation off the list, and the trash is the only way back.
   const [removing, setRemoving] = useState<HistoryEntry | null>(null)
+  /** A row's right-click menu and where it was opened (see ContextMenu). */
+  const [menu, setMenu] = useState<{ entry: HistoryEntry; x: number; y: number } | null>(null)
+  // Steady across renders: the menu listens for Escape and the pointer with it (see Menu).
+  const closeMenu = useCallback(() => setMenu(null), [])
+  /** The row whose name is being typed - one at a time, as on the strip. */
+  const [renaming, setRenaming] = useState<string | null>(null)
   const deleteOf = (entry: HistoryEntry) =>
     onDelete && !isOpen?.(entry.id) ? () => setRemoving(entry) : undefined
+
+  const entryOf = (entry: HistoryEntry) => (
+    <Entry
+      key={entry.id}
+      entry={entry}
+      onOpen={onOpen}
+      onDelete={deleteOf(entry)}
+      onMenu={onRename ? (x, y) => setMenu({ entry, x, y }) : undefined}
+      renaming={renaming === entry.id}
+      onRenamed={(name) => {
+        setRenaming(null)
+        // An empty name or the same one is no naming - as on the strip (see finishNaming in Header).
+        const next = name?.trim()
+        if (next && next !== entry.title) onRename?.(entry, next)
+      }}
+    />
+  )
   const startOfToday = new Date().setHours(0, 0, 0, 0)
   const today = conversations?.filter((entry) => entry.updatedAt >= startOfToday) ?? []
   const earlier = conversations?.filter((entry) => entry.updatedAt < startOfToday) ?? []
@@ -103,9 +135,7 @@ export const History = ({
           <div className={s.screenGroup}>
             <span className={s.screenLabel}>{t.history.today}</span>
           </div>
-          {today.map((entry) => (
-            <Entry key={entry.id} entry={entry} onOpen={onOpen} onDelete={deleteOf(entry)} />
-          ))}
+          {today.map(entryOf)}
         </>
       ) : null}
 
@@ -114,10 +144,19 @@ export const History = ({
           <div className={s.screenGroup}>
             <span className={s.screenLabel}>{t.history.earlier}</span>
           </div>
-          {earlier.map((entry) => (
-            <Entry key={entry.id} entry={entry} onOpen={onOpen} onDelete={deleteOf(entry)} />
-          ))}
+          {earlier.map(entryOf)}
         </>
+      ) : null}
+
+      {menu && onRename ? (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          title={t.header.tabMenu}
+          options={[{ id: 'rename', label: t.header.renameTab }]}
+          onPick={() => setRenaming(menu.entry.id)}
+          onClose={closeMenu}
+        />
       ) : null}
 
       {removing && onDelete ? (
@@ -141,19 +180,55 @@ const Entry = ({
   entry,
   onOpen,
   onDelete,
+  onMenu,
+  renaming,
+  onRenamed,
 }: {
   entry: HistoryEntry
   onOpen: (entry: HistoryEntry) => void
   onDelete?: () => void
+  /** The right-click menu - absent where nothing can be renamed (an IDE built before it). */
+  onMenu?: (x: number, y: number) => void
+  renaming: boolean
+  onRenamed: (name: string | null) => void
 }) => {
   const t = useT()
 
-  const row = (
-    <button type="button" className={s.historyRow} onClick={() => onOpen(entry)} data-tooltip={entry.id}>
+  const meta = (
+    <span className={s.historyMeta}>
+      {describeWhen(entry.updatedAt)} · {t.history.messages(entry.messages)}
+    </span>
+  )
+
+  // The name field stands where the name stood, in a row that is no longer a button: a press in the field
+  // places the caret rather than opening the conversation.
+  const row = renaming ? (
+    <div className={s.historyRow}>
+      <NameField
+        title={entry.title}
+        label={t.header.renameTab}
+        className={s.historyRenameInput}
+        onDone={(name) => onRenamed(name)}
+      />
+      {meta}
+    </div>
+  ) : (
+    <button
+      type="button"
+      className={s.historyRow}
+      onClick={() => onOpen(entry)}
+      onContextMenu={
+        onMenu
+          ? (event) => {
+              event.preventDefault()
+              onMenu(event.clientX, event.clientY)
+            }
+          : undefined
+      }
+      data-tooltip={entry.id}
+    >
       <span className={s.historyTitle}>{entry.title}</span>
-      <span className={s.historyMeta}>
-        {describeWhen(entry.updatedAt)} · {t.history.messages(entry.messages)}
-      </span>
+      {meta}
     </button>
   )
 

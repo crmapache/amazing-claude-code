@@ -16,6 +16,8 @@ paths:
   - "webview/src/hooks/useEarlierPages.ts"
   - "webview/src/hooks/useEarlierPages.test.ts"
   - "webview/src/components/History.tsx"
+  - "src/main/kotlin/io/github/crmapache/amazingclaudecode/claude/ClosedTabs.kt"
+  - "src/test/kotlin/io/github/crmapache/amazingclaudecode/claude/ClosedTabsTest.kt"
   - "src/main/kotlin/io/github/crmapache/amazingclaudecode/claude/JournalTrim.kt"
   - "src/test/kotlin/io/github/crmapache/amazingclaudecode/claude/JournalTrimTest.kt"
 ---
@@ -322,3 +324,25 @@ CLI не стирает откатанные ходы из файла, а пом
   в обход кнопки для разговора открытой вкладки. Отказ «refused» - кнопкой на запертом файле (`chflags uchg`: корзина
   отвечает «Cannot move the item to the bin»), строка вернулась с фразой над списком. Удалённый разговор, закрытый
   перед этим во вкладке, ушёл из «Recently closed». Windows и WSL живьём не проверялись.
+
+## Переименование из истории: куда идёт имя, решает IDE
+
+Правый клик по строке «Сегодня»/«Раньше» открывает меню с «Rename conversation», и имя набирается прямо в строке
+тем же полем, что на вкладке (см. «Правый клик по вкладке» в tab-names.md). Пришло PR #26, доделано перед
+вливанием.
+
+- **Панель шлёт одно сообщение, `renameConversation`, а дорогу выбирает IDE** (`ProjectCatalog.renameConversation`).
+  Разговор открыт во вкладке - имя идёт как с вкладки (`ClaudeSessionHub.nameSession`): вкладка его носит, а
+  разговор получает через свой процесс; строка в файле за спиной живого процесса утонула бы под именем, которое он
+  держит в памяти. Не открыт - строка `custom-title` в транскрипт (`ClaudeHistory.rename`). Первая версия
+  решала это в панели по её списку вкладок, а он бывает на шаг позади IDE - и тогда имя молча терялось.
+- **Закрытая вкладка этого разговора в «Recently closed» получает имя тоже** (`ClosedTabs.rename`, ранг человека,
+  с тестом). Иначе она возвращалась бы со старым именем и при первом сообщении записала бы его в транскрипт
+  поверх нового (`nameAfterPerson`).
+- **Имя на экране сразу, последнее слово за списком с диска**: после записи в файл IDE рассылает историю во все
+  окна у стола, получилось или нет, - отказанное файлом имя вернётся к старому. После имени через вкладку список не
+  рассылается: процесс пишет транскрипт не мгновенно, и ранний список откатил бы только что показанное имя.
+- **С телефона запрещено** (`RemoteCommands.DENIED`), как и `nameSession`: поля имени там нет. Счёт - та же фича
+  `tab_rename`, что у вкладки.
+- Проверить без IDE: харнесс, «Shot: a turn in progress» → меню → History, правый клик по строке, имя, Enter -
+  строка переименована, строки ниже не двигаются, пока поле открыто. Живьём в IDE (песочница) не проверялось.

@@ -1336,6 +1336,8 @@ export const en = {
     forkEmpty: 'Nothing to fork yet: this tab has no conversation',
     /** The field a double click on a conversation's tab opens in place of its name. */
     renameTab: 'Rename conversation',
+    /** The heading of a tab's right-click menu, and of a history row's (see ContextMenu). */
+    tabMenu: 'THIS CONVERSATION',
     menu: 'Menu',
   },
 

@@ -1043,6 +1043,7 @@ export const es: Dict = {
     fork: 'Bifurcar esta conversación: una pestaña nueva que sigue desde aquí, mientras esta queda como está',
     forkEmpty: 'Todavía no hay nada que bifurcar: esta pestaña no tiene conversación',
     renameTab: 'Renombrar conversación',
+    tabMenu: 'ESTA CONVERSACIÓN',
     menu: 'Menú',
   },
 

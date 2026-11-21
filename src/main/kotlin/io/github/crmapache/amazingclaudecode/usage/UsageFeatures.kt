@@ -237,7 +237,14 @@ internal object UsageFeatures {
     fun isPhoneAction(type: String): Boolean = type in PHONE_ACTIONS
 
     /** What the panel may report through `stat` - the uses the IDE cannot see arriving. */
-    private val PANEL: Set<String> = setOf("pin", "message_reuse", "statistics_tab", "scenarios_tab")
+    private val PANEL: Set<String> = setOf(
+        "pin",
+        "message_reuse",
+        "statistics_tab",
+        "scenarios_tab",
+        // The id copied from a tab's right-click menu - the panel's own menu, not the browser's (see ContextMenu.tsx).
+        "session_info",
+    )
 
     fun isKnown(id: String): Boolean = when {
         id.startsWith(SCREEN) -> id.removePrefix(SCREEN) in SCREENS
@@ -257,7 +264,8 @@ internal object UsageFeatures {
     fun ofMessage(type: String, payload: JsonObject): String? = when (type) {
         "newSession" -> if (payload.text("kind") == "branch") "fork" else "new_tab"
         "reopenTab" -> "reopen_tab"
-        "nameSession" -> "tab_rename"
+        // Named from the history's row - the same naming, wherever it lands (see ProjectCatalog.renameConversation).
+        "nameSession", "renameConversation" -> "tab_rename"
         "reorderTabs", "reorderGroups" -> "tab_reorder"
         "queuePrompt" -> "queue"
         "takeQueued" -> "queue_edit"

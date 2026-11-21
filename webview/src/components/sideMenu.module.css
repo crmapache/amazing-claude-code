@@ -733,6 +733,26 @@
   white-space: nowrap;
 }
 
+/* The name's field in a row of the history (see NameField) - dressed as the tab's (.tabNameField), and laid
+   over the name it replaces: the negative margins give back what the border and the padding take, so the
+   text stays where the name was and the rows below do not move while it is typed. */
+.historyRenameInput {
+  box-sizing: border-box;
+  width: calc(100% + 10px);
+  margin: -2px -5px;
+  padding: 1px 4px;
+  border: 1px solid var(--acc-accent-40);
+  border-radius: var(--acc-r-xs);
+  background: var(--acc-bg-raised);
+  font: 500 12.5px var(--acc-font);
+  color: var(--acc-fg);
+  user-select: text;
+}
+
+.historyRenameInput:focus-visible {
+  outline: none;
+}
+
 .historyMeta {
   font: 10.5px var(--acc-mono);
   color: var(--acc-fg-ghost);

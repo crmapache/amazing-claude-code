@@ -1047,6 +1047,7 @@ export const fr: Dict = {
     fork: 'Forker cette conversation : un nouvel onglet qui reprend d’ici, pendant que celui-ci reste tel quel',
     forkEmpty: 'Rien à forker pour l’instant : cet onglet n’a pas encore de conversation',
     renameTab: 'Renommer la conversation',
+    tabMenu: 'CETTE CONVERSATION',
     menu: 'Menu',
   },
 

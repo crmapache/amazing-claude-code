@@ -1043,6 +1043,7 @@ export const pt: Dict = {
     fork: 'Bifurcar esta conversa: uma aba nova que continua daqui, enquanto esta fica como está',
     forkEmpty: 'Ainda não há nada para bifurcar: esta aba não tem conversa',
     renameTab: 'Renomear conversa',
+    tabMenu: 'ESTA CONVERSA',
     menu: 'Menu',
   },
 

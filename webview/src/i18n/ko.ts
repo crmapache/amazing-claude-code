@@ -1037,6 +1037,7 @@ export const ko: Dict = {
     fork: '이 대화를 포크: 여기서 이어지는 새 탭을 열고, 이 탭은 그대로 둡니다',
     forkEmpty: '아직 포크할 것이 없습니다: 이 탭에는 아직 대화가 없습니다',
     renameTab: '대화 이름 바꾸기',
+    tabMenu: '이 대화',
     menu: '메뉴',
   },
 

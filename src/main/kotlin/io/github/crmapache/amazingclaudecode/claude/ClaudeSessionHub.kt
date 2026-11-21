@@ -1645,9 +1645,12 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     }
 
     /** Whether a tab on the strip holds this conversation - asleep or awake. */
-    internal fun holdsConversation(conversation: String): Boolean = tabs.tabs().any { tab ->
+    internal fun holdsConversation(conversation: String): Boolean = tabHolding(conversation) != null
+
+    /** The tab a conversation is open in, if it is - the same reading as [holdsConversation]. */
+    internal fun tabHolding(conversation: String): String? = tabs.tabs().firstOrNull { tab ->
         (conversations.conversationIdOf(tab.id) ?: remembered[tab.id]?.conversationId) == conversation
-    }
+    }?.id
 
     /**
      * A conversation's tab back on the strip, where it stood and holding what it held - the same road a tab
@@ -1740,6 +1743,17 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * closed" too, held words and all: the row would only fail to bring it back, and the person has just said
      * they want it gone.
      */
+    /**
+     * A conversation named from the history while no tab held it (see ProjectCatalog.renameConversation): a
+     * closed tab of it in "Recently closed" takes the name too, or reopening it would bring the old one back.
+     */
+    fun renameClosedConversation(conversation: String, title: String) {
+        if (!closedTabs.rename(conversation, title)) return
+
+        rememberTabs()
+        sendClosedTabs()
+    }
+
     fun forgetClosedConversation(conversation: String) {
         if (!closedTabs.forget(conversation)) return
 

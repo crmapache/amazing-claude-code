@@ -24,6 +24,16 @@ class ModelNamesTest {
     }
 
     @Test
+    fun `a signature that names no model is not a model`() {
+        assertTrue(ModelNames.isModel("claude-opus-5"))
+        assertTrue(ModelNames.isModel("deepseek-ai/DeepSeek-V4.1-Flash-1017"))
+        assertFalse(ModelNames.isModel("<synthetic>"))
+        assertFalse(ModelNames.isModel("custom"))
+        assertFalse(ModelNames.isModel("Custom"))
+        assertFalse(ModelNames.isModel(""))
+    }
+
+    @Test
     fun `different families stay apart`() {
         assertFalse(ModelNames.same("claude-opus-5", "claude-sonnet-5"))
         assertFalse(ModelNames.same("opus", "haiku"))

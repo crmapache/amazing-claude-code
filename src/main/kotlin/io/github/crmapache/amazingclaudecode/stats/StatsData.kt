@@ -1,5 +1,6 @@
 package io.github.crmapache.amazingclaudecode.stats
 
+import io.github.crmapache.amazingclaudecode.claude.ModelNames
 import java.time.Instant
 import java.time.ZoneId
 import java.util.TreeMap
@@ -849,10 +850,10 @@ internal object StatsJson {
         readCounts(day["models"], record.models)
         readCounts(day["features"], record.features)
         // A book written before the CLI's own marks were told apart from models holds rows like
-        // "<synthetic>" (see StatsCollector.isRealModel). They are dropped as the file is read rather
-        // than once at startup: this file is shared with the other JetBrains IDEs on the machine, and one
-        // of them running an older plugin would write them again.
-        record.models.keys.removeAll { !StatsCollector.isRealModel(it) }
+        // "<synthetic>", and one written before PR #25 a proxy's "custom" (see ModelNames.isModel). They
+        // are dropped as the file is read rather than once at startup: this file is shared with the other
+        // JetBrains IDEs on the machine, and one of them running an older plugin would write them again.
+        record.models.keys.removeAll { !ModelNames.isModel(it) }
         readStrings(day["files"], record.files)
         readStrings(day["slash"], record.slash)
         readStrings(day["thanksWays"], record.thanksWays)
