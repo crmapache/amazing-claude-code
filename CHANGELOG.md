@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.63] - 2026-11-23
+
+- Changed: a small maintenance update with no visible effect. The tools the panel and the phone client are built and tested with (Vite, Vitest and a source map library under them) move to patch releases that close several published security advisories. The advisories concern the development server and the test runner used while working on the plugin, not anything that ships with it, and the panel and the phone client built with the new versions are byte for byte the same as before. The plugin works exactly as before.
+
 ## [0.13.62] - 2026-11-21
 
 - Added: rename a conversation with a right click. Right-click a tab and choose Rename conversation - the same field a double click opens, which few people ever found. The same menu has Copy Session ID for the tab you clicked, not only the one on screen. In the history, right-click a row under Today or Earlier, type the new name right in the row and press Enter. If the conversation is open in a tab, the tab takes the new name too, and a closed tab of it under Recently closed comes back with the new name rather than the old one.
@@ -1163,7 +1167,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.62...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.63...HEAD
+[0.13.63]: https://github.com/crmapache/amazing-claude-code/compare/0.13.62...0.13.63
 [0.13.62]: https://github.com/crmapache/amazing-claude-code/compare/0.13.61...0.13.62
 [0.13.61]: https://github.com/crmapache/amazing-claude-code/compare/0.13.60...0.13.61
 [0.13.60]: https://github.com/crmapache/amazing-claude-code/compare/0.13.59...0.13.60
