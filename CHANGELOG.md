@@ -9,6 +9,14 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.64] - 2026-11-24
+
+- Added: carry a conversation on in the IDE terminal and bring it back to the chat. Right-click a tab and choose Continue in terminal, type /terminal, press the button under the /status line, or find Continue in Terminal with Find Action. The conversation opens in a terminal tab named after it, in Claude Code's own interface, on the same model, effort, mode and account as the tab. While the terminal runs, the tab waits: a card above the field says so, with Show terminal and Return to chat, and whatever you write in the panel or on the phone waits in the queue. When Claude Code in the terminal exits, with /exit or by closing its tab, everything done there appears in the conversation and the queued messages go out after it. While a turn is running, a question is open or background agents are at work, the hand-over is refused and the card says why, because closing the panel's process would cut that work off. The first time in a folder, Claude Code in the terminal may ask whether you trust it; that is its own question.
+- Fixed: a conversation continued somewhere else at the same time, such as the /status line pasted into your own terminal or another app working in the same project, got a second Claude Code process from the panel. Each one wrote its own turns into the same conversation, and neither knew what the other had said. Now the tab sees that another Claude Code holds the conversation, steps aside within a minute once it has nothing running, and waits until that one exits. A message written in the meantime waits in the queue, and when the other process is gone, what it did appears in the conversation before the message goes out.
+- Fixed: the command shown by /status for a tab on an added Claude account continued the conversation on your regular sign-in, so another subscription paid for it without a word. On macOS and Linux the command now carries the tab's account. On Windows it stays a plain command and says that it continues on the regular sign-in, while the Continue in terminal button keeps the account.
+- Fixed: a conversation from Claude Code's own interface in a terminal, opened from the history, showed only the answers, without the messages that asked for them. Claude Code marks what you type there the same way it marks automatic reports, and the panel skipped all of it as reports. Now your messages are shown.
+- Note for phones: reload the page in your browser after this one - the phone keeps the previous client until you do.
+
 ## [0.13.63] - 2026-11-23
 
 - Changed: a small maintenance update with no visible effect. The tools the panel and the phone client are built and tested with (Vite, Vitest and a source map library under them) move to patch releases that close several published security advisories. The advisories concern the development server and the test runner used while working on the plugin, not anything that ships with it, and the panel and the phone client built with the new versions are byte for byte the same as before. The plugin works exactly as before.
@@ -1167,7 +1175,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.63...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.64...HEAD
+[0.13.64]: https://github.com/crmapache/amazing-claude-code/compare/0.13.63...0.13.64
 [0.13.63]: https://github.com/crmapache/amazing-claude-code/compare/0.13.62...0.13.63
 [0.13.62]: https://github.com/crmapache/amazing-claude-code/compare/0.13.61...0.13.62
 [0.13.61]: https://github.com/crmapache/amazing-claude-code/compare/0.13.60...0.13.61
