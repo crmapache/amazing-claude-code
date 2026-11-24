@@ -920,7 +920,7 @@ internal object ClaudeHistory {
 
     internal const val HISTORY_STRING_CHARS = 8 * 1024
 
-    private fun uuidOf(line: String): String? = UUID_FIELD.find(line)?.groupValues?.get(1)
+    internal fun uuidOf(line: String): String? = UUID_FIELD.find(line)?.groupValues?.get(1)
 
     private val UUID_FIELD = Regex(""""uuid":"([^"]+)"""")
 

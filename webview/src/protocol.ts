@@ -403,6 +403,12 @@ export interface EditorRef {
   to?: number
 }
 
+/** Who holds a tab's conversation in a terminal - see the `terminal` message. */
+export type TerminalHoldState = 'here' | 'elsewhere'
+
+/** Why a conversation did not go into the terminal - TerminalDesk.Refusal's codes. */
+export type TerminalRefusal = 'noConversation' | 'busy' | 'background' | 'notFound' | 'account' | 'noTerminal'
+
 export interface QueuedMessage {
   id: string
   text: string
@@ -1700,8 +1706,32 @@ type ShellMessageBody =
    * whether it is ON the CLI says itself in the stream (`fast_mode_state`, see feed/fastMode.ts).
    */
   | { type: 'fastMode'; sessionId: string; on: boolean }
-  /** The answer to `/status` (see the `sessionInfo` request): the tab's conversation id, absent until its first message. */
-  | { type: 'sessionInfo'; sessionId: string; conversationId?: string }
+  /**
+   * The answer to `/status` (see the `sessionInfo` request): the tab's conversation id, absent until its first message.
+   *
+   * `command` is the line to paste into a terminal, built by the IDE on the tab's own account (see ResumeLine.kt):
+   * on an added account it names that account's credential drawer, without which the conversation would carry on
+   * as whoever the ordinary sign-in is. `account` names that account for the row's note, and `onDefault` says the
+   * line carries on on the ordinary sign-in after all (Windows, where no one form fits every shell). An IDE a
+   * version behind sends none of the three, and the panel writes the plain line itself.
+   */
+  | {
+      type: 'sessionInfo'
+      sessionId: string
+      conversationId?: string
+      command?: string
+      account?: string
+      onDefault?: boolean
+    }
+  /**
+   * Whether a terminal holds this tab's conversation (see TerminalDesk.kt): `here` - one the panel opened, Continue
+   * in terminal; `elsewhere` - a live process somebody else started over the same transcript. No state - the tab
+   * is its own again. Live, never journalled: a state of the tab, like its queue. Nothing raises a process for a
+   * held tab, and what is written into it waits in the queue until it comes back.
+   */
+  | { type: 'terminal'; sessionId: string; state?: TerminalHoldState }
+  /** The conversation did not go into the terminal, and why - the answer to a `toTerminal` (see TerminalDesk.Refusal). */
+  | { type: 'terminalRefused'; sessionId: string; reason: TerminalRefusal }
   /**
    * Which Claude account a conversation runs on - said at its birth, like the effort and the model.
    *
@@ -2790,6 +2820,19 @@ export type WebviewMessage =
   | { type: 'sessionMenu'; conversationId: string | null; label: string }
   /** `/status` - what the IDE knows of this tab's conversation, answered by a `sessionInfo` of its own. */
   | { type: 'sessionInfo'; sessionId: string }
+  /**
+   * Carry this tab's conversation on in a terminal of the IDE (see TerminalDesk.kt): the panel's process goes, the
+   * CLI comes up in a terminal tab on the same account with the tab's model, effort and mode, and the tab is held
+   * until that process ends. Answered by `terminal`, or by `terminalRefused`. The desk's alone, like the two below.
+   */
+  | { type: 'toTerminal'; sessionId: string }
+  /** The terminal holding this tab's conversation, brought to the front - one the panel opened. */
+  | { type: 'showTerminal'; sessionId: string }
+  /**
+   * Give the conversation back to the tab: the terminal the panel opened for it is closed, which ends the CLI in it,
+   * and its end is what gives the conversation back. Somebody else's process is not ended from here.
+   */
+  | { type: 'fromTerminal'; sessionId: string }
   | { type: 'history' }
   /**
    * A past conversation into the trash. The IDE answers `historyDeleted` to the asker and the list again to every
@@ -3284,7 +3327,7 @@ export type VoiceHotkeyGlyph = '' | 'option' | 'command' | 'win' | 'mouse' | 'le
  * The panel's own keys (see PanelKeys.kt): the IDE's actions, named the way the page is told about them.
  * The ids are the wire's - the Kotlin enum spells them the same.
  */
-export type PanelKeyCommand = 'nextTab' | 'previousTab' | 'newTab' | 'closeTab' | 'reopenTab' | 'queue'
+export type PanelKeyCommand = 'nextTab' | 'previousTab' | 'newTab' | 'closeTab' | 'reopenTab' | 'queue' | 'terminal'
 
 /**
  * Every key the IDE names for the page: the commands above, and the IDE's own action that brings the panel
@@ -3575,6 +3618,8 @@ export interface AgentUserEvent {
    * short (see JournalTrim: the history cut every one over eight kilobytes until it learned to spare the
    * conversation's own messages, and a phone's frame still cuts what does not fit it), and what was cut
    * off is exactly the end tag everything else recognised it by.
+   *
+   * `human` is the one origin that is the person: the CLI's own interface files every typed message under it.
    */
   origin?: { kind?: string } | null
   timestamp?: string

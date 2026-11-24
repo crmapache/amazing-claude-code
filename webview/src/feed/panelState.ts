@@ -1,5 +1,14 @@
 import type { FastModeReport } from './fastMode'
-import type { AgentEvent, AgentStatus, AgentUsage, EditorRef, QueuedMessage, RevertOutcome } from '../protocol'
+import type {
+  AgentEvent,
+  AgentStatus,
+  AgentUsage,
+  EditorRef,
+  QueuedMessage,
+  RevertOutcome,
+  TerminalHoldState,
+  TerminalRefusal,
+} from '../protocol'
 import type {
   BackgroundTask,
   CheckpointItem,
@@ -283,6 +292,15 @@ export interface PanelState {
    * SessionQueue.hold on the plugin's side).
    */
   queueHeld: boolean
+  /**
+   * A terminal holds this conversation (see TerminalDesk.kt): one the panel opened for it, or somebody else's
+   * process over the same transcript. While it does, nothing raises a process here - what is written waits in the
+   * queue - and the card over the field says why and how to come back. A state of the tab, told live by the IDE,
+   * like the queue.
+   */
+  terminal?: TerminalHoldState
+  /** Why the last Continue in terminal did not go - shown on the same card until it is closed or the next try. */
+  terminalRefused?: TerminalRefusal
   /**
    * The files the turn going on now has changed so far - laid into the feed as one row when it ends (see
    * closeChanges in feed/changes.ts), and empty again after that.
@@ -590,10 +608,14 @@ export type PanelAction =
   | { kind: 'effortApplied'; effort: string }
   /** Whether this conversation asks for fast mode - the shell's word, or a pick of one's own drawn at once. */
   | { kind: 'fastModeApplied'; on: boolean }
-  /** `/status` answered: a row with the conversation's id. */
-  | { kind: 'sessionInfo'; conversationId?: string }
+  /** `/status` answered: a row with the conversation's id, and the line for a terminal when the IDE built one. */
+  | { kind: 'sessionInfo'; conversationId?: string; command?: string; account?: string; onDefault?: boolean }
   /** The queue as the IDE now holds it - the whole list, from whichever window last changed it. */
   | { kind: 'queue'; items: QueuedMessage[]; held?: boolean }
+  /** Whether a terminal holds the conversation now - the IDE's word (see the `terminal` message). */
+  | { kind: 'terminal'; state?: TerminalHoldState }
+  /** Continue in terminal did not go, and why; `undefined` takes the note away (closed, or a new try). */
+  | { kind: 'terminalRefused'; reason?: TerminalRefusal }
   /** A mark from the panel in the feed: that this conversation was branched off another, for instance. */
   | { kind: 'checkpoint'; chip: string; target: string; targetKey?: CheckpointItem['targetKey'] }
   /** Once a second it pulls up the duration of the calls that have not finished. */

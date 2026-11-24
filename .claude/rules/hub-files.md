@@ -45,6 +45,7 @@ paths:
 - `spellcheck`, `setSpellcheck`, `case 'spellcheck'`, атрибут на корне документа - composer-field
 - `shareEditor`, `editorContext`, `editorOnce`, `editorShown`, `openEditorMenu`, `pickEditor`, `withEditor` в `submit`, `case 'editorContext'` - editor-context
 - `menuConversation` (сообщение `sessionMenu` для меню правой кнопки), `status` в `runLocal`, `case 'sessionInfo'` - session-info
+- `continueInTerminal`, `terminalHere`, `panel.terminal` в `submit` (отправка в очередь), `terminal` в `runLocal` и `pressPanelKey`, `case 'terminal'`/`'terminalRefused'`, `TerminalCard` в `dockCards`, `terminalOf`/`onContinueInTerminal` у `Header` - terminal-handoff
 - `improveSources`, `restoreDraft`, `registerApply` - prompt-improver
 - `feedPlaces`, `key={active}`, `forgetFeedFocus` - reading-place
 - `hiddenTaskIds` - subagents
@@ -94,7 +95,8 @@ paths:
 - `effort`, `fastMode`, `setFastMode`, `fast_mode_state`, `fast` у `ModelInfo`, `setCustomModels`, `customModels` - models; `setSendKey`, `spellcheck`, `setSpellcheck` - composer-field;
   `queue` - remote-access
 - `models` у `usage`, `ModelUsageWindow`, `hiddenIndicators`, `setHiddenIndicators`, факт `indicators` - indicators
-- `sessionMenu`, `sessionInfo` (запрос и ответ) - session-info
+- `sessionMenu`, `sessionInfo` (запрос и ответ) - session-info; `command`/`account`/`onDefault` у ответа `sessionInfo` - terminal-handoff
+- `terminal`, `terminalRefused`, `toTerminal`, `showTerminal`, `fromTerminal`, `TerminalHoldState`, `TerminalRefusal`, `'terminal'` в `PanelKeyCommand` - terminal-handoff
 - `toolUseResult` у `AgentUserEvent`, `text` у `askAnswer` - permissions; `origin` у `AgentUserEvent` - history
 - `settingSources` в `init`, `setSettingSources`, `askSettingSources`, `accountOutranked`, `api_error_status` - setting-sources
 - `sideQuestion`, `sideQuestionCancel`, `sideAnswer`, `sideProgress` - btw
@@ -116,7 +118,8 @@ paths:
   `carryOnWait`, `cancelCarryOn` - accounts
 
 **`webview/src/feed/build.ts`** (редьюсер ленты):
-- `case 'sessionInfo'` (строка `/status`) - session-info
+- `case 'sessionInfo'` (строка `/status`) - session-info; её `command`/`account`/`onDefault` - terminal-handoff
+- `case 'terminal'`, `case 'terminalRefused'` - terminal-handoff
 - `TodoWrite`/`TaskCreate`/`TaskUpdate`, `tasksCarried`, `pendingTasks` - task-list
 - `stintElapsed`, `stintOver`, `workGoesOn`, `pendingAgents`, подпись под ответом в `case 'result'` - turn-lifecycle
 - контекст из реплея в `case 'result'`, `historyPage`, `windowModel`, `resumed`, `SERVICE_BLOCK`,
@@ -142,6 +145,7 @@ paths:
 **`webview/src/feed/types.ts`** и **`webview/src/feed/panelState.ts`**:
 - `DraftEdit` - prompt-improver; `ErrorItem.signIn` - expired-sign-in; `ErrorItem.sampling` - setting-sources;
   `ModelStuckItem` - models; `UserItem.auto` (подпись PANEL), `PanelState.carryOn` - accounts; `SessionInfoItem` - session-info;
+  `PanelState.terminal`, `terminalRefused`, `SessionInfoItem.command`/`account`/`onDefault` - terminal-handoff;
   `PanelState.suggestion`, `suggestionDeclined`, действие `suggestionDismissed` - prompt-suggestions
 - `ClosedReason`, `ToolMeta`, `CompactOutcome`, `DetailNote`, `PermItem.mode`, `LimitItem.window`,
   `MetaItem.stats` («Stopped by you» не переводится) - i18n; `movedAccount` - accounts
@@ -174,7 +178,7 @@ paths:
 шрифтовой стек CJK - i18n; ступени `--acc-gauge-*` - calm-colors; светлая тема, `--acc-scrim`/`--acc-drop`,
 `color-scheme` - appearance; `--acc-group-deep`/`--acc-group-depth` - active-tab.
 
-**`webview/src/catalog.ts`**: `panelCommands` (`/design-login`) - accounts; `/status` - session-info.
+**`webview/src/catalog.ts`**: `panelCommands` (`/design-login`) - accounts; `/status` - session-info; `/terminal` - terminal-handoff.
 
 **`webview/src/harness/events.ts`**: `toolResult` со структурной половиной - changed-files.
 
@@ -182,7 +186,7 @@ paths:
 `answerModel` (ответ обязан быть отложенным) и `setEffort` - models; переписывание - prompt-improver;
 диктовка - voice; `savePastedFile`, `clipboardWrite`/`clipboardRead` - clipboard; `saveImage` - stats; `sessionInfo` - session-info;
 фидбэк - feedback; поиск - search; вход в аккаунт - expired-sign-in и accounts; транскрипт агента - subagents;
-`answerFork` (история и шов нового форка) - fork-tabs; `answerPanelKeys` (раскладка и перехват клавиш панели) -
+`answerFork` (история и шов нового форка) - fork-tabs; `answerToTerminal`/`answerFromTerminal` (удержание, отказ, хвост из терминала) - terminal-handoff; `answerPanelKeys` (раскладка и перехват клавиш панели) -
 panel-keys; `answerClosedTabs` (зеркало полосы и закрытые вкладки), `drafts` на `ready` - reopen-tabs; `answerPreview`,
 `rowTokens` в `sayQueue` - image-preview.
 
@@ -206,6 +210,7 @@ panel-keys; `answerClosedTabs` (зеркало полосы и закрытые 
 - `closedTabs`, `keepClosed`, `reopenTab`, `bringBackClosed`, `notePanelTabClosed`, `sendClosedTabs`, `tabSnapshot`, `byPerson` у `closeSession`, придержанная очередь (`freeToSay`, `queued.release` в `deliverPrompt`, ветка в `enqueue`), `closedJournals` и `wiped` в `attach` - reopen-tabs
 - `nameSession`, `titleWanted`/`ownTitle` у `conversations` - tab-names
 - `rewind`, `previewRewind`, `cutBack`, `rewinding` (очередь и пуш ждут отката), `uuid` в `deliverPrompt` - rewind
+- `terminal` (стол терминала), `terminal.holding` и `held` в `prompt`, `freeToSay`, `noticeOutsideWriters` в круге простоя, `terminalChanged`, `terminalRefused`, `terminalReleased`, `replayTerminalTail`, `keepQueue` у `resetJournal`, `then` у `replayTranscript`, `terminal.forget` в `closeSession`/`resumeConversation`, состояние в `attach` - terminal-handoff
 - `revertChanges` (откат файлов хода по его диффам) - changed-files
 - `undiffed` в `onAgentLine` (дифф большой правки, который CLI не прислал) - changed-files
 - `undiffed.settle` на `result` в подписчике строк (`files_settled` - что ход на деле сделал с файлами) - changed-files
@@ -215,7 +220,7 @@ panel-keys; `answerClosedTabs` (зеркало полосы и закрытые 
 
 **`ClaudeSession.kt`** (подгружает turn-lifecycle): `mute`, `heard` - reopen-tabs; `rename`, `nameAfterPerson`, `namedAs`, `ownTitle` - tab-names; `setEffort`, `effort` - models; `awaitingPermission` -
 permissions; окружение в `start` - task-list; `rememberConversation` - аргументы запуска в CLAUDE.md;
-`isBusy` - idle-sleep; `forkOrigin` - accounts и fork-tabs; `suggestionsWanted` - prompt-suggestions; `context` в `userMessage` (заметка редактора отдельным блоком) -
+`isBusy` - idle-sleep; `heldElsewhere`, `ownPids` (заслонка в `start`) - terminal-handoff; `forkOrigin` - accounts и fork-tabs; `suggestionsWanted` - prompt-suggestions; `context` в `userMessage` (заметка редактора отдельным блоком) -
 editor-context; `rewind`, `previewRewind`, `cut`, `uuid` в `userMessage` - rewind; `forkLaunch`, `origin`, «родился ли» в `start` - fork-tabs.
 
 **`ClaudeSessions.kt`** (подгружает accounts и idle-sleep): `goesOn` у `close` (процесс закрытой вкладки молчит) - reopen-tabs; `rename`, `ownTitle` - tab-names; `branchFrom` - fork-tabs; `adoptModel` - history;

@@ -34,9 +34,24 @@ interface QueueProps {
    * SessionQueue.hold). Said in the head, or the rows would promise to fire on their own and never do.
    */
   held?: boolean
+  /**
+   * A terminal holds the conversation (see TerminalCard): the queue waits for it to come back rather than for a turn
+   * to end - there is no turn here to end.
+   */
+  terminal?: boolean
 }
 
-export const Queue = ({ items, sessionId, onReorder, onRemove, onEdit, editing, sendKey, held = false }: QueueProps) => {
+export const Queue = ({
+  items,
+  sessionId,
+  onReorder,
+  onRemove,
+  onEdit,
+  editing,
+  sendKey,
+  held = false,
+  terminal = false,
+}: QueueProps) => {
   const t = useT()
   const [dragFrom, setDragFrom] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
@@ -104,7 +119,11 @@ export const Queue = ({ items, sessionId, onReorder, onRemove, onEdit, editing, 
         <span className={s.queueLabel}>{t.chrome.queue.label}</span>
         {/* Nothing to count and nothing to drag while the one message there is sits in the field. */}
         {items.length > 0 ? (
-          <span className={s.queueHint}>{held ? t.chrome.queue.held(items.length) : t.chrome.queue.hint(items.length)}</span>
+          <span className={s.queueHint}>{terminal
+              ? t.chrome.queue.terminal(items.length)
+              : held
+                ? t.chrome.queue.held(items.length)
+                : t.chrome.queue.hint(items.length)}</span>
         ) : null}
         <div className={s.spacer} />
       </div>

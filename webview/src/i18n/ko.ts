@@ -788,6 +788,8 @@ export const ko: Dict = {
       search: '대화 검색',
       fork: '선택한 곳에서 포크',
       forkWhen: '피드에서 텍스트를 선택했을 때',
+      terminal: '터미널에서 이어가기',
+      terminalWhen: 'IDE 액션이에요. 직접 지정하기 전까지 키가 없어요',
     },
   },
 
@@ -1041,6 +1043,29 @@ export const ko: Dict = {
     renameTab: '대화 이름 바꾸기',
     tabMenu: '이 대화',
     menu: '메뉴',
+  },
+
+  terminal: {
+    label: '터미널',
+    continue: '터미널에서 이어가기',
+    show: '터미널 보기',
+    back: '채팅으로 돌아오기',
+    here: '이 대화는 터미널에서 이어지고 있어요',
+    hereBody:
+      '여기에 쓴 내용은 대기열에서 기다렸다가 대화가 돌아오면 보내져요. “채팅으로 돌아오기”는 터미널을 닫고, Claude가 거기서 하던 작업은 멈춰요.',
+    elsewhere: '이 대화는 다른 터미널에서 열려 있어요',
+    elsewhereBody: '거기서 닫으면 여기서 이어갈 수 있어요. 그때까지 여기에 쓴 내용은 대기열에서 기다려요.',
+    atDesk: '이 대화는 지금 컴퓨터의 터미널에 있어요. 여기에 쓴 내용은 대기열에서 기다렸다가 채팅으로 돌아오면 보내져요.',
+    refused: '터미널에서 이어가지 못했어요',
+    reasons: {
+      noConversation: '이 탭에는 아직 대화가 없어요. 먼저 메시지를 보내 주세요.',
+      busy: 'Claude가 작업 중이거나 답을 기다리고 있어요. 턴이 끝나면 다시 시도해 주세요.',
+      background: '이 대화에서 아직 백그라운드 에이전트나 명령이 돌고 있어서 함께 멈추게 돼요.',
+      notFound: '이 컴퓨터에서 Claude Code를 찾지 못했어요.',
+      account: '이 탭의 계정을 쓸 수 없어요. 계정 화면에서 확인해 주세요.',
+      noTerminal: 'IDE 터미널을 열지 못했어요.',
+    },
+    dismiss: '닫기',
   },
 
   side: {
@@ -1307,6 +1332,12 @@ export const ko: Dict = {
       terminal: '터미널에서',
       copyId: '세션 ID 복사',
       terminalNote: '프로젝트 폴더에서 연 터미널에서 이 대화를 이어가요',
+      terminalNoteAccount: (name: string): string =>
+        name
+          ? `${name} 계정으로, 프로젝트 폴더에서 연 터미널에서 이 대화를 이어가요`
+          : '이 탭의 계정으로, 프로젝트 폴더에서 연 터미널에서 이 대화를 이어가요',
+      terminalNoteDefault: (name: string): string =>
+        `${name || '이 탭의 계정'} 대신 Claude Code의 기본 로그인으로 이어져요. “터미널에서 이어가기”는 계정을 그대로 유지해요`,
       none: '아직 ID가 없어요. 첫 메시지와 함께 생겨요',
     },
     outranked: {
@@ -1397,6 +1428,7 @@ export const ko: Dict = {
       label: '대기 중',
       hint: (n) => `${n}개가 이번 실행이 끝나면 차례로 나가요 · 끌어서 순서 변경`,
       held: (n) => `${n}개가 다음 메시지를 보낸 뒤 차례로 나가요 (기다리던 실행은 멈췄어요) · 끌어서 순서 변경`,
+      terminal: (n) => `${n}개가 대화가 터미널에서 돌아오면 차례로 나가요 · 끌어서 순서 변경`,
       edit: '입력창에서 편집',
       editing: (key, button) => `입력창에서 편집 중 · ${key} 또는 '${button}'을 누르면 이 자리로 돌아와요`,
     },
@@ -2041,6 +2073,7 @@ export const ko: Dict = {
     btwArgument: '<질문>',
     fast: '빠른 모드 전환 - Opus 최대 2.5배 빠름, 사용 크레딧으로 결제',
     status: '이 대화의 ID와 터미널에서 이어가는 명령',
+    terminal: '이 대화를 IDE 터미널에서 이어가고, 나중에 채팅으로 돌아오기',
     model: '이 세션의 모델 바꾸기',
     effort: 'Claude가 움직이기 전에 얼마나 생각할지 정하기',
     context: '지금 컨텍스트 창에 무엇이 들어 있는지',

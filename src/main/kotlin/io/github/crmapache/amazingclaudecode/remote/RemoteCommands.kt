@@ -576,6 +576,15 @@ internal object RemoteCommands {
         // the window itself (see ClaudePanel) - a menu only an IDE window has, and a card for its own feed.
         "sessionMenu",
         "sessionInfo",
+        /*
+         * A conversation into a terminal of the IDE, the terminal brought to the front, and the terminal closed to
+         * give it back (see TerminalDesk). All three act on THIS machine's screen: a terminal opened over somebody's
+         * desk is work nobody on a sofa can do, and closing one ends whatever its CLI was doing. The phone sees the
+         * state - the tab waits, and says why - and writes into the queue as before.
+         */
+        "toTerminal",
+        "showTerminal",
+        "fromTerminal",
         // Writing a file onto the machine at the asking of whoever is on the line. The picture itself is
         // harmless; a message that makes the IDE write files is not, and the statistics tab it comes from
         // is the panel's alone anyway.

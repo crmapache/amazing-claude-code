@@ -584,9 +584,29 @@ export const OutrankedRow = ({ item, onOpen }: { item: OutrankedItem; onOpen?: (
  * the value itself as a plate that copies whole on a click - copying is all these lines are for, and a plate is
  * a bigger target than a square beside a long id. Stacked, the card reads the same at any width.
  */
-export const SessionInfoRow = ({ item }: { item: SessionInfoItem }) => {
+export const SessionInfoRow = ({
+  item,
+  onTerminal,
+}: {
+  item: SessionInfoItem
+  /**
+   * Continue in terminal - the same conversation in a terminal of the IDE, on the tab's account, and back to the
+   * chat afterwards (see TerminalDesk.kt). Absent on the phone and in a step log: there is no terminal there.
+   */
+  onTerminal?: () => void
+}) => {
   const t = useT()
   const words = t.feed.session
+
+  // The IDE's line when it built one - on the tab's account (see ResumeLine.kt); the plain one from an IDE a
+  // version behind, which says nothing about accounts at all.
+  const line = item.command ?? (item.conversationId ? `claude --resume ${item.conversationId}` : '')
+  const note =
+    item.account === undefined
+      ? words.terminalNote
+      : item.onDefault
+        ? words.terminalNoteDefault(item.account)
+        : words.terminalNoteAccount(item.account)
 
   return (
     <div className={s.sessionInfo}>
@@ -594,11 +614,14 @@ export const SessionInfoRow = ({ item }: { item: SessionInfoItem }) => {
       {item.conversationId ? (
         <>
           <SessionInfoField name={words.id} value={item.conversationId} />
-          <SessionInfoField
-            name={words.terminal}
-            note={words.terminalNote}
-            value={`claude --resume ${item.conversationId}`}
-          />
+          <SessionInfoField name={words.terminal} note={note} value={line} />
+          {onTerminal ? (
+            <div className={s.sessionInfoActions}>
+              <button type="button" className={s.secondary} onClick={onTerminal}>
+                {t.terminal.continue}
+              </button>
+            </div>
+          ) : null}
         </>
       ) : (
         <p className={s.sessionInfoEmpty}>{words.none}</p>

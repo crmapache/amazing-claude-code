@@ -45,6 +45,8 @@ internal object UsageFeatures {
         // `/status`, or the id copied from the right-click menu - that one is counted by the window that
         // builds the menu rather than arriving as a message: see PanelContextMenu.
         "session_info",
+        // Continue in terminal: the tab's menu, `/terminal` and the button on the `/status` row - see TerminalDesk.
+        "terminal",
         "plan_decision",
         "ask_answer",
         "subagent_window",
@@ -283,6 +285,7 @@ internal object UsageFeatures {
         "setFastMode" -> if ((payload["on"] as? JsonPrimitive)?.booleanOrNull == true) "fast_mode" else null
         "setMode" -> "mode_switch"
         "sessionInfo" -> "session_info"
+        "toTerminal" -> "terminal"
         "planDecision" -> "plan_decision"
         "askAnswer" -> "ask_answer"
         "agentTranscript" -> "subagent_window"

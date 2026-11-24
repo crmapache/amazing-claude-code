@@ -351,6 +351,39 @@
   color: var(--acc-accent-hover);
 }
 
+/* --- A conversation in the terminal ----------------------------------------------
+   The card over the field while a terminal holds the conversation (see TerminalCard.tsx). The usage question's
+   frame and its head, body and row of buttons: the same kind of card - it holds nothing up, it says why the tab
+   is quiet. A refused try takes the warning's tint: the press did not do what it said. */
+
+.terminalCard {
+  margin-bottom: 8px;
+  border: 1px solid var(--acc-accent-32);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-accent-08);
+  overflow: hidden;
+}
+
+/* A card with no row of buttons ends on its text, with the room the row would have given it. */
+.terminalLast {
+  margin-bottom: 9px;
+}
+
+.terminalRefused {
+  margin-bottom: 8px;
+  border: 1px solid var(--acc-warn-line);
+  border-radius: var(--acc-r-2xl);
+  background: var(--acc-warn-06);
+  overflow: hidden;
+}
+
+.terminalRefusedLabel {
+  flex: none;
+  font: 600 9.5px/1 var(--acc-mono);
+  letter-spacing: 0.09em;
+  color: var(--acc-warn-light);
+}
+
 /* --- The questions -------------------------------------------------------- */
 
 /* A column that can give way (see .dock and data-shrinks above): the head and the foot keep their height

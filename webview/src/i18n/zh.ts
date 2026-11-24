@@ -788,6 +788,8 @@ export const zh: Dict = {
       search: '搜索对话',
       fork: '从所选内容分叉',
       forkWhen: '在消息流中选中文本时',
+      terminal: '在终端中继续',
+      terminalWhen: 'IDE 操作，指定前没有快捷键',
     },
   },
 
@@ -1041,6 +1043,29 @@ export const zh: Dict = {
     renameTab: '重命名对话',
     tabMenu: '这个对话',
     menu: '菜单',
+  },
+
+  terminal: {
+    label: '终端',
+    continue: '在终端中继续',
+    show: '显示终端',
+    back: '回到聊天',
+    here: '这个会话正在终端中继续',
+    hereBody:
+      '在这里写的内容会在队列中等待，会话回来后再发送。“回到聊天”会关闭终端，Claude 在那里正在做的事会停止。',
+    elsewhere: '这个会话已在另一个终端中打开',
+    elsewhereBody: '在那边关闭它，就能在这里继续。在此之前，这里写的内容会在队列中等待。',
+    atDesk: '这个会话正在电脑上的终端中。这里写的内容会在队列中等待，回到聊天后再发送。',
+    refused: '无法在终端中继续',
+    reasons: {
+      noConversation: '这个标签页还没有会话，请先发送一条消息。',
+      busy: 'Claude 正在工作或在等你回答。请在这一轮结束后再试。',
+      background: '这个会话中还有后台代理或命令在运行，它们会随之停止。',
+      notFound: '在这台机器上没有找到 Claude Code。',
+      account: '无法使用这个标签页的账号。请在账号界面检查。',
+      noTerminal: '无法打开 IDE 终端。',
+    },
+    dismiss: '关闭',
   },
 
   side: {
@@ -1307,6 +1332,12 @@ export const zh: Dict = {
       terminal: '在终端中',
       copyId: '复制会话 ID',
       terminalNote: '在项目文件夹中打开的终端里继续这个会话',
+      terminalNoteAccount: (name: string): string =>
+        name
+          ? `用账号 ${name}，在项目文件夹中打开的终端里继续这个会话`
+          : '用这个标签页的账号，在项目文件夹中打开的终端里继续这个会话',
+      terminalNoteDefault: (name: string): string =>
+        `会用 Claude Code 的普通登录继续，而不是 ${name || '这个标签页的账号'}。“在终端中继续”会保留账号`,
       none: '还没有 ID，会话在第一条消息时获得',
     },
     outranked: {
@@ -1397,6 +1428,7 @@ export const zh: Dict = {
       label: '排队中',
       hint: (n) => `${n} 条会在本轮结束后按顺序发出 · 拖动可调整顺序`,
       held: (n) => `${n} 条会在你发出下一条消息后按顺序发出（它们等待的那一轮已停止） · 拖动可调整顺序`,
+      terminal: (n) => `${n} 条会在会话从终端回来后按顺序发出 · 拖动可调整顺序`,
       edit: '在输入框中编辑',
       editing: (key, button) => `正在输入框中编辑 · 按 ${key} 或点「${button}」放回这里`,
     },
@@ -2048,6 +2080,7 @@ export const zh: Dict = {
     btwArgument: '<问题>',
     fast: '切换快速模式 - Opus 最快提速 2.5 倍，从用量额度扣费',
     status: '这个会话的 ID，以及在终端中继续它的命令',
+    terminal: '在 IDE 终端中继续这个会话，之后再回到聊天',
     model: '切换本次会话使用的模型',
     effort: '设置 Claude 动手前思考多久',
     context: '当前上下文窗口里装了什么',

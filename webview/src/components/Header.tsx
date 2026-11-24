@@ -5,7 +5,7 @@ import s from './shell.module.css'
 import { useT } from '../i18n'
 import type { Dict } from '../i18n/en'
 import { useResting } from '../hooks/useResting'
-import type { TitleSource } from '../protocol'
+import type { TerminalHoldState, TitleSource } from '../protocol'
 import { splitTabTitle } from '../feed/title'
 import type { TabCall } from '../sounds'
 import { beforeOf, placeOn, rowFor, shotOf, SWAP_GAP_PX, type Point, type Shot, type TabRect } from '../tabDrag'
@@ -136,6 +136,10 @@ interface HeaderProps {
    */
   conversationOf?: (tabId: string) => string | undefined
   onCopySessionId?: (tabId: string) => void
+  /** Whether a terminal holds a tab's conversation - the menu offers to show it rather than to open one. */
+  terminalOf?: (tabId: string) => TerminalHoldState | undefined
+  /** Continue in terminal for a tab under the pointer - see App.continueInTerminal. */
+  onContinueInTerminal?: (tabId: string) => void
   /**
    * Enter or Escape has ended a naming, and the keyboard goes back to the input field. Left to itself the
    * focus went nowhere - the field it was in is gone - and the next word typed after naming a tab needed a
@@ -523,6 +527,8 @@ export const Header = ({
   onNaming,
   conversationOf,
   onCopySessionId,
+  terminalOf,
+  onContinueInTerminal,
   onReturnToInput,
   onOpenMenu,
   layout,
@@ -1286,10 +1292,21 @@ export const Header = ({
             ...(onCopySessionId && conversationOf?.(tabMenu.sessionId)
               ? [{ id: 'copyId', label: t.feed.session.copyId }]
               : []),
+            // Only a conversation that exists can go on in a terminal, and one somebody else's terminal holds
+            // has nothing here to offer (see TerminalCard).
+            ...(onContinueInTerminal && conversationOf?.(tabMenu.sessionId) && terminalOf?.(tabMenu.sessionId) !== 'elsewhere'
+              ? [
+                  {
+                    id: 'terminal',
+                    label: terminalOf?.(tabMenu.sessionId) === 'here' ? t.terminal.show : t.terminal.continue,
+                  },
+                ]
+              : []),
           ]}
           onPick={(id) => {
             if (id === 'rename') onNaming(tabMenu.sessionId)
             if (id === 'copyId') onCopySessionId?.(tabMenu.sessionId)
+            if (id === 'terminal') onContinueInTerminal?.(tabMenu.sessionId)
           }}
           onClose={closeTabMenu}
         />

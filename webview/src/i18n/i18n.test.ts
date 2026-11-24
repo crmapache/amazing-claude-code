@@ -99,6 +99,8 @@ const SHARED_WITH_ENGLISH: Record<string, Locale[]> = {
   'menu.rows.feedback.label': ['pt-BR', 'de'],
   'menu.rows.plugins.label': ['es', 'pt-BR', 'de', 'fr'],
   'feed.session.label': ['fr'],
+  // The card over the field while a terminal holds the conversation (see TerminalCard).
+  'terminal.label': ['es', 'pt-BR', 'de', 'fr'],
   // A duration on a gauge, not a word: "5h" is how Portuguese writes it too.
   'accounts.fiveHour': ['pt-BR'],
   'improvePrompt.label': ['fr'],

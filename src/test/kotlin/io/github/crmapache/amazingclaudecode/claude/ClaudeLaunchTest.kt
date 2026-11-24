@@ -289,4 +289,59 @@ class ClaudeLaunchTest {
         assertFalse(ClaudeLaunch.CHECKPOINTS_VARIABLE in ClaudeLaunch.environment(emptyMap(), fileCheckpoints = false))
         assertFalse(ClaudeLaunch.CHECKPOINTS_VARIABLE in ClaudeLaunch.environment(emptyMap()))
     }
+
+    // The same conversation in the CLI's own interface (see terminal/TerminalDesk): the tab's choices travel, the
+    // panel's own wiring does not - a terminal has no stream, no permission channel, and no panel to be told about.
+    @Test
+    fun `a terminal's launch carries the conversation and the tab's choices, and nothing of the panel's`() {
+        val args = ClaudeLaunch.terminalArguments(
+            model = "claude-opus-5[1m]",
+            effort = "high",
+            permissionMode = "acceptEdits",
+            conversationId = "b6f4c0de-71a2-4c3e-9d1f-5a7e2c8b9f10",
+            allowBypassSwitch = true,
+            settingSources = SettingSources.USER_ONLY,
+        )
+
+        assertEquals("b6f4c0de-71a2-4c3e-9d1f-5a7e2c8b9f10", args[args.indexOf("--resume") + 1])
+        assertEquals("claude-opus-5[1m]", args[args.indexOf("--model") + 1])
+        assertEquals("high", args[args.indexOf("--effort") + 1])
+        assertEquals("acceptEdits", args[args.indexOf("--permission-mode") + 1])
+        assertTrue(ClaudeLaunch.ALLOW_BYPASS_FLAG in args)
+        assertEquals("user", args[args.indexOf(SettingSources.FLAG) + 1])
+
+        for (panelOnly in listOf("--print", "--input-format", "--output-format", ClaudeLaunch.PERMISSION_CHANNEL_FLAG, ClaudeLaunch.BRIEFING_FLAG)) {
+            assertFalse(panelOnly in args, "a panel-only flag in a terminal's launch: $panelOnly")
+        }
+    }
+
+    // On Windows the terminal's launch goes through claude.cmd as well - the same rule as the panel's own.
+    @Test
+    fun `a terminal's launch keeps to one line and no quotation marks`() {
+        val args = ClaudeLaunch.terminalArguments(
+            model = "opus",
+            effort = "max",
+            permissionMode = "bypassPermissions",
+            conversationId = "b6f4c0de-71a2-4c3e-9d1f-5a7e2c8b9f10",
+            allowBypassSwitch = true,
+        )
+
+        for (argument in args) {
+            assertFalse('\n' in argument || '\r' in argument, "a line break in an argument: $argument")
+            assertFalse('"' in argument, "a quotation mark in an argument: $argument")
+        }
+    }
+
+    @Test
+    fun `a terminal's launch leaves out what the tab never chose`() {
+        val args = ClaudeLaunch.terminalArguments(
+            model = "",
+            effort = "",
+            permissionMode = null,
+            conversationId = "b6f4c0de-71a2-4c3e-9d1f-5a7e2c8b9f10",
+            allowBypassSwitch = false,
+        )
+
+        assertEquals(listOf("--resume", "b6f4c0de-71a2-4c3e-9d1f-5a7e2c8b9f10"), args)
+    }
 }

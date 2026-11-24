@@ -122,6 +122,13 @@ interface FeedProps {
    */
   onSettingSources?: () => void
   /**
+   * Continue in terminal for this tab - the button on the `/status` row (see SessionInfoRow).
+   *
+   * Absent on the phone and in a step log: there is no terminal there. Hand in a STABLE function, for the same
+   * reason as above.
+   */
+  onTerminal?: () => void
+  /**
    * Put back what a turn changed - the buttons on the list of changed files (see ChangesRow).
    *
    * Absent on the phone and in a step log: a revert is decided looking at the file, and the file is in the
@@ -241,6 +248,7 @@ export const Feed = ({
   onOpenLink,
   signIn,
   onSettingSources,
+  onTerminal,
   onRevertChanges,
   projectRoot,
   onReuse,
@@ -894,6 +902,7 @@ export const Feed = ({
               onOpenLink={onOpenLink}
               signIn={signIn}
               onSettingSources={onSettingSources}
+              onTerminal={onTerminal}
               onRevertChanges={closedChanges.has(item.id) ? undefined : onRevertChanges}
               projectRoot={projectRoot}
               onReuse={onReuse}
@@ -981,6 +990,8 @@ interface ItemViewProps {
   signIn?: SignInOffer
   /** The settings-sources screen - see FeedProps.onSettingSources. */
   onSettingSources?: () => void
+  /** See FeedProps.onTerminal. */
+  onTerminal?: () => void
   /** See FeedProps.onRevertChanges. */
   onRevertChanges?: RevertChanges
   /** See FeedProps.projectRoot. */
@@ -1024,6 +1035,7 @@ const ItemView = memo(({
   onOpenLink,
   signIn,
   onSettingSources,
+  onTerminal,
   onRevertChanges,
   projectRoot,
   onReuse,
@@ -1131,7 +1143,7 @@ const ItemView = memo(({
       return <FastModeRow item={item} />
 
     case 'session':
-      return <SessionInfoRow item={item} />
+      return <SessionInfoRow item={item} onTerminal={onTerminal} />
 
     case 'changes':
       return <ChangesRow item={item} root={projectRoot} onRevert={onRevertChanges} />

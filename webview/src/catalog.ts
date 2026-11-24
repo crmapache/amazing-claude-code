@@ -436,6 +436,12 @@ export const panelCommands = (t: Dict): CommandOption[] => [
    * name other sessions send to it by, the command that resumes it (see SessionInfoRow).
    */
   { id: 'status', hint: t.commands.status, local: true },
+  /*
+   * The panel's, and the CLI has no such command at all: it is the CLI's own interface the conversation goes to.
+   * The panel's process gives the conversation up, the CLI comes up in a terminal tab of the IDE on the same
+   * account, and the tab waits until that terminal ends (see TerminalDesk.kt).
+   */
+  { id: 'terminal', hint: t.commands.terminal, local: true },
 ]
 
 export const builtinCommands = (t: Dict): CommandOption[] => [

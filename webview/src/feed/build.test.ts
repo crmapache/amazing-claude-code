@@ -3959,6 +3959,22 @@ describe('a task notification out of a transcript', () => {
 
       expect(state.items.filter((item) => item.kind === 'user')).toHaveLength(0)
     })
+
+    // The CLI's own interface files what the person typed under `origin: human` - the one origin that is the
+    // person. Read as "not the person", every message of a conversation carried on in a terminal was dropped.
+    it('is shown as the person when the origin says it is one', () => {
+      const state = replay([
+        {
+          type: 'user',
+          message: { role: 'user', content: 'Hello from the IDE terminal' },
+          origin: { kind: 'human' },
+        } as AgentEvent,
+      ])
+
+      const users = state.items.filter((item) => item.kind === 'user')
+      expect(users).toHaveLength(1)
+      expect(JSON.stringify(users[0])).toContain('Hello from the IDE terminal')
+    })
   })
 
   it('skips a notification that names no call at all', () => {

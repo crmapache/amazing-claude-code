@@ -96,6 +96,7 @@ export const KeysScreen = ({ keys, sendKey, voice, onOpenKeymap }: KeysScreenPro
       title: w.groups.panel,
       rows: [
         { label: w.rows.search, chords: [chord(['mod'], key('F'))] },
+        { label: w.rows.terminal, when: w.rows.terminalWhen, strokes: ide('terminal') },
         { label: w.rows.fork, when: w.rows.forkWhen, chords: [chord(['alt'], key('B'))] },
         // The dictation keys only when bound: unbound they are a setting of the voice screen, not a key.
         ...(voice && voice.push.length > 0 ? [{ label: t.voice.push, chords: [voice.push] }] : []),

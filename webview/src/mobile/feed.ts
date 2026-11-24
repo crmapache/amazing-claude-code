@@ -382,6 +382,10 @@ export const applyMessage = (
     case 'queue':
       return collect({ kind: 'queue', items: message.items, held: message.held })
 
+    // Whether a terminal at the desk holds this conversation - what is written here waits in the queue till then.
+    case 'terminal':
+      return collect({ kind: 'terminal', state: message.state })
+
     case 'context':
       return collect({ kind: 'context', used: message.used, max: message.max })
 

@@ -796,6 +796,8 @@ export const fr: Dict = {
       search: 'Chercher dans les conversations',
       fork: 'Fork depuis la sélection',
       forkWhen: 'avec du texte sélectionné dans le fil',
+      terminal: 'Continuer dans le terminal',
+      terminalWhen: 'une action de l’IDE, sans touche tant que vous n’en attribuez pas',
     },
   },
 
@@ -1051,6 +1053,29 @@ export const fr: Dict = {
     renameTab: 'Renommer la conversation',
     tabMenu: 'CETTE CONVERSATION',
     menu: 'Menu',
+  },
+
+  terminal: {
+    label: 'TERMINAL',
+    continue: 'Continuer dans le terminal',
+    show: 'Afficher le terminal',
+    back: 'Revenir au chat',
+    here: 'Cette conversation continue dans le terminal',
+    hereBody:
+      'Ce que vous écrivez ici attend dans la file et part quand la conversation revient. « Revenir au chat » ferme le terminal, et ce que Claude y fait s’arrête.',
+    elsewhere: 'Cette conversation est ouverte dans un autre terminal',
+    elsewhereBody: 'Fermez-la là-bas pour continuer ici. D’ici là, ce que vous écrivez ici attend dans la file.',
+    atDesk: 'La conversation est dans un terminal, sur l’ordinateur. Ce que vous écrivez ici attend dans la file et part quand elle revient dans le chat.',
+    refused: 'Impossible de continuer dans le terminal',
+    reasons: {
+      noConversation: 'Cet onglet n’a pas encore de conversation : envoyez d’abord un message.',
+      busy: 'Claude travaille ou attend votre réponse. Réessayez quand le tour sera terminé.',
+      background: 'Des agents ou des commandes tournent encore en arrière-plan dans cette conversation, et ils s’arrêteraient avec elle.',
+      notFound: 'Claude Code est introuvable sur cette machine.',
+      account: 'Le compte de cet onglet n’a pas pu être utilisé. Vérifiez-le dans l’écran des comptes.',
+      noTerminal: 'Impossible d’ouvrir le terminal de l’IDE.',
+    },
+    dismiss: 'Fermer',
   },
 
   side: {
@@ -1318,6 +1343,12 @@ export const fr: Dict = {
       terminal: 'Dans un terminal',
       copyId: 'Copier l’ID de session',
       terminalNote: 'Reprend cette conversation dans un terminal ouvert dans le dossier du projet',
+      terminalNoteAccount: (name: string): string =>
+        name
+          ? `Reprend cette conversation sur le compte ${name}, dans un terminal ouvert dans le dossier du projet`
+          : 'Reprend cette conversation sur le compte de cet onglet, dans un terminal ouvert dans le dossier du projet',
+      terminalNoteDefault: (name: string): string =>
+        `Continue avec la connexion habituelle de Claude Code, et non sur ${name || 'le compte de cet onglet'}. « Continuer dans le terminal » garde le compte`,
       none: 'Pas encore d’ID : la conversation en reçoit un avec son premier message',
     },
     outranked: {
@@ -1409,6 +1440,7 @@ export const fr: Dict = {
       label: 'EN ATTENTE',
       hint: (n) => `${n} partiront dans l’ordre à la fin du tour · glissez pour réordonner`,
       held: (n) => `${n} partiront dans l’ordre après votre prochain message - le tour qu’ils attendaient a été arrêté · glissez pour réordonner`,
+      terminal: (n) => `${n} partiront dans l’ordre quand la conversation reviendra du terminal · glissez pour réordonner`,
       edit: 'Modifier dans le champ',
       editing: (key, button) => `En cours de modification dans le champ · ${key} ou « ${button} » le remet ici`,
     },
@@ -2076,6 +2108,7 @@ export const fr: Dict = {
     btwArgument: '<ta question>',
     fast: "activer ou couper le mode rapide - Opus jusqu'à 2,5× plus rapide, payé en crédits d'utilisation",
     status: 'l’ID de cette conversation et la commande pour la reprendre dans un terminal',
+    terminal: 'continuer cette conversation dans le terminal de l’IDE, puis revenir au chat',
     model: 'changer le modèle de cette session',
     effort: 'régler combien de temps Claude réfléchit avant d’agir',
     context: 'ce qui remplit la fenêtre de contexte en ce moment',

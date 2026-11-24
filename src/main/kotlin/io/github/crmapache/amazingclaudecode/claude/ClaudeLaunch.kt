@@ -352,4 +352,39 @@ internal object ClaudeLaunch {
             }
         }
     }
+
+    /**
+     * The same conversation in the CLI's own interface, in a terminal (see terminal/TerminalDesk): what a
+     * person would have typed to carry it on, with the tab's choices on it.
+     *
+     * What carries over is what decides how the conversation goes on - the model, the effort, the mode, the
+     * layers of settings - so the terminal picks it up exactly where the tab left it. What does not is the
+     * panel's own: the stream on both ends, the permission channel, the guess at the next message, and the
+     * briefing most of all - it tells the agent that a person is watching a panel with buttons, and in a
+     * terminal there is none.
+     *
+     * Under the same rule as [arguments]: no line feeds and no quotation marks. Nothing here carries either -
+     * an identifier, a model's name, a level, a mode - and the test holds that it stays so, because on Windows
+     * this line, too, goes through `claude.cmd`.
+     */
+    fun terminalArguments(
+        model: String,
+        effort: String,
+        permissionMode: String?,
+        conversationId: String,
+        allowBypassSwitch: Boolean,
+        settingSources: String = SettingSources.ALL,
+    ): List<String> = buildList {
+        addAll(listOf("--resume", conversationId))
+        if (model.isNotEmpty()) addAll(listOf("--model", model))
+        if (effort.isNotEmpty()) addAll(listOf("--effort", effort))
+        permissionMode
+            ?.let(PermissionModes::normalize)
+            ?.let { addAll(listOf("--permission-mode", it)) }
+        // Shift+Tab in the terminal cycles through the modes, and "bypass" is among them only when the
+        // launch allowed it - left out, a tab running without questions would come up in a terminal that
+        // cannot even be put back into that mode.
+        if (allowBypassSwitch) add(ALLOW_BYPASS_FLAG)
+        SettingSources.flagValue(settingSources)?.let { addAll(listOf(SettingSources.FLAG, it)) }
+    }
 }

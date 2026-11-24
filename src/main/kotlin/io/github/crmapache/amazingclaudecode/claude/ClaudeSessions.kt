@@ -124,6 +124,11 @@ internal class ClaudeSessions(
     private val onReplacedQuietly: (sessionId: String) -> Unit = {},
     /** What the panel owes a tab has changed - read it anew with [carryOnOf] (see CarryOns.onChange). */
     private val onCarryOnChanged: (sessionId: String) -> Unit = {},
+    /**
+     * Whether a tab's conversation is held by a terminal and may not be raised here now - see
+     * terminal/TerminalDesk and ClaudeSession.heldElsewhere. [own] are the pids that conversation raised itself.
+     */
+    private val heldElsewhere: (sessionId: String, conversationId: String, own: Set<Long>) -> Boolean = { _, _, _ -> false },
 ) : Disposable {
 
     private val sessions = ConcurrentHashMap<String, ClaudeSession>()
@@ -161,6 +166,15 @@ internal class ClaudeSessions(
     private data class DeferredRestart(val processStartedAt: Long, val then: () -> Unit)
 
     private val pendingRestarts = ConcurrentHashMap<String, DeferredRestart>()
+
+    /**
+     * The pids every process of a tab has had, across the sessions it went through (see [ownPids]).
+     *
+     * Per tab rather than per session: a move to another account replaces the session outright, and the process
+     * it took down is still alive for a moment while the new one comes up. Known only to the old session, it
+     * would read as somebody else's process over the same conversation, and the tab would wait for itself.
+     */
+    private val tabPids = ConcurrentHashMap<String, MutableSet<Long>>()
 
     init {
         Disposer.register(parentDisposable, this)
@@ -1045,6 +1059,15 @@ internal class ClaudeSessions(
     /** Whether the process is alive right now - without creating one, unlike [session]. */
     fun isRunning(sessionId: String): Boolean = sessions[sessionId]?.isRunning == true
 
+    /** The pids of the processes this tab has raised, in every session it has had - see ConversationHolders.holderOf. */
+    fun ownPids(sessionId: String): Set<Long> = tabPids[sessionId].orEmpty() + sessions[sessionId]?.ownPids.orEmpty()
+
+    /**
+     * Which of Claude Code's settings layers this project's conversations come up with now - for a launch that
+     * is not one of ours (see terminal/TerminalDesk), which has to come up the way the tab's would.
+     */
+    fun settingSourcesNow(): String = SettingSources.normalize(settingSources())
+
     /**
      * A conversation with a turn running right now - any of the tabs.
      *
@@ -1298,6 +1321,8 @@ internal class ClaudeSessions(
         forcedMoves.remove(sessionId)?.cancel(false)
         // What the tab was to be told to carry on, unless this close IS the move it waits for (see [carryOns]).
         if (!goesOn) carryOns.drop(sessionId)
+        // And the pids of its processes, unless the tab goes on in a session that replaces this one (see [tabPids]).
+        if (!goesOn) tabPids.remove(sessionId)
 
         sessions.remove(sessionId)?.let { session ->
             if (!goesOn) session.mute()
@@ -1403,7 +1428,11 @@ internal class ClaudeSessions(
             onTurnStarted = { if (current()) onTurnStarted(sessionId) },
             settingSources = settingSources,
             onAccountOutranked = { names -> onAccountOutranked(sessionId, names) },
-            onProcessStarted = { if (current()) onProcessStarted(sessionId) },
+            onProcessStarted = {
+                slot[0]?.ownPids?.let { tabPids.getOrPut(sessionId) { ConcurrentHashMap.newKeySet() }.addAll(it) }
+                if (current()) onProcessStarted(sessionId)
+            },
+            heldElsewhere = { conversationId, own -> heldElsewhere(sessionId, conversationId, own + ownPids(sessionId)) },
         ).also { slot[0] = it }
     }
 

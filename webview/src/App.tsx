@@ -108,6 +108,7 @@ import { useHoverTarget } from './hooks/useHoverTarget'
 import { useLowPanel } from './hooks/useLowPanel'
 import { StreamSwitcher } from './components/StreamSwitcher'
 import { TaskListPanel } from './components/TaskListPanel'
+import { TerminalCard } from './components/TerminalCard'
 import { ModDock } from './components/ModDock'
 import composer from './components/composer.module.css'
 import s from './components/shell.module.css'
@@ -2651,8 +2652,24 @@ export const App = () => {
           case 'sessionInfo':
             dispatchPanel({
               session: message.sessionId,
-              action: { kind: 'sessionInfo', conversationId: message.conversationId },
+              action: {
+                kind: 'sessionInfo',
+                conversationId: message.conversationId,
+                command: message.command,
+                account: message.account,
+                onDefault: message.onDefault,
+              },
             })
+            break
+
+          // Whether a terminal holds the conversation, and why it did not go into one - see TerminalDesk.kt.
+          // Through `feed` like the queue: a state said while the feed is being restored lands after it, not under it.
+          case 'terminal':
+            feed({ session: message.sessionId, action: { kind: 'terminal', state: message.state } })
+            break
+
+          case 'terminalRefused':
+            feed({ session: message.sessionId, action: { kind: 'terminalRefused', reason: message.reason } })
             break
 
           /**
@@ -4888,6 +4905,30 @@ export const App = () => {
     [sideStep],
   )
 
+  /**
+   * Continue in terminal (see TerminalDesk.kt) - the tab's right-click menu, `/terminal` and the button on the
+   * `/status` row all come here. A tab a terminal of ours already holds brings that terminal forward rather than
+   * asking again; one held by somebody else's has nothing here to press.
+   *
+   * Whether the conversation may go now (a turn, a card, background work) the IDE decides, and says why when it
+   * may not: it is the one that sees the process, and the panel's picture of it is a moment old.
+   */
+  const continueInTerminal = useCallback((sessionId: string) => {
+    const held = panelsRef.current[sessionId]?.terminal
+    if (held === 'here') {
+      send({ type: 'showTerminal', sessionId })
+      return
+    }
+    if (held === 'elsewhere') return
+
+    // A new try takes the note about the last refusal away; a refusal again brings a fresh one.
+    dispatchPanel({ session: sessionId, action: { kind: 'terminalRefused' } })
+    send({ type: 'toTerminal', sessionId })
+  }, [])
+
+  /** The `/status` row's button - for the tab on screen, steady between its renders (see FeedProps.onTerminal). */
+  const terminalHere = useCallback(() => continueInTerminal(active), [continueInTerminal, active])
+
   const runLocal = useCallback(
     ({ name, argument }: LocalCommand) => {
       // Asked at once whatever the agent is doing - that is the whole of it: the question goes beside the
@@ -4962,9 +5003,15 @@ export const App = () => {
         return
       }
 
+      // The panel's own: the CLI has no such command - it IS the terminal (see continueInTerminal).
+      if (name === 'terminal') {
+        continueInTerminal(active)
+        return
+      }
+
       if (name === 'fork') fork()
     },
-    [fork, pickModel, pickEffort, pickFastMode, nameSession, active, openClaudeConfig, askAside, sideStep],
+    [fork, pickModel, pickEffort, pickFastMode, nameSession, active, openClaudeConfig, askAside, sideStep, continueInTerminal],
   )
 
   /** The Alt+B from the selection menu. The key is drawn in the menu, so it has to work. */
@@ -5406,6 +5453,14 @@ export const App = () => {
     }
 
     if ((queued && running) || deferFollowUpForCompact(panel.compacting, running, lastUserText(panel.items))) {
+      intoTheQueue()
+      return
+    }
+
+    // A terminal holds the conversation (see TerminalCard): no turn can start here until it comes back, so the
+    // message waits in the queue rather than standing in the feed over a "thinking" nothing answers. Found in the
+    // sandbox: sent as an ordinary message, the card and the spinner went up while the IDE quietly queued it.
+    if (panel.terminal) {
       intoTheQueue()
       return
     }
@@ -6429,6 +6484,11 @@ export const App = () => {
       case 'queue':
         setQueueToken((current) => current + 1)
         return
+
+      // The tab on screen, when it holds a conversation that exists - the tab's menu offers it on the same terms.
+      case 'terminal':
+        if (sessions.some((session) => session.id === active) && panels[active]?.sessionId) continueInTerminal(active)
+        return
     }
   }
   pressPanelKeyRef.current = pressPanelKey
@@ -6481,6 +6541,8 @@ export const App = () => {
           // Counted like the browser menu's entry and /status (see PanelContextMenu.kt).
           send({ type: 'stat', kind: 'feature', id: 'session_info' })
         }}
+        terminalOf={(tab) => panelsRef.current[tab]?.terminal}
+        onContinueInTerminal={continueInTerminal}
         onReturnToInput={() => setFocusToken((current) => current + 1)}
         onOpenMenu={openMenu}
         panelTabs={headerPanelTabs}
@@ -6573,6 +6635,15 @@ export const App = () => {
         onOpenLink={openLink}
       />
 
+      {/* Right over the queue it explains: while a terminal holds the conversation, what is typed waits there. */}
+      <TerminalCard
+        state={panel.terminal}
+        refused={panel.terminalRefused}
+        onShow={() => send({ type: 'showTerminal', sessionId: active })}
+        onBack={() => send({ type: 'fromTerminal', sessionId: active })}
+        onDismiss={() => dispatchPanel({ session: active, action: { kind: 'terminalRefused' } })}
+      />
+
       <Queue
         items={sessionQueue}
         sessionId={active}
@@ -6589,6 +6660,7 @@ export const App = () => {
         editing={running ? (queueEdits[active] ?? null) : null}
         sendKey={sendKey}
         held={panel.queueHeld}
+        terminal={panel.terminal !== undefined}
       />
 
       <Quotes
@@ -6975,6 +7047,7 @@ export const App = () => {
               onOpenLink={openLink}
               signIn={signInOffer}
               onSettingSources={openSettingSources}
+              onTerminal={terminalHere}
               onRevertChanges={revertChanges}
               projectRoot={projectRoot}
               onReuse={reuseMessage}

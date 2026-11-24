@@ -28,9 +28,11 @@ import com.intellij.util.ui.JBUI
 import io.github.crmapache.amazingclaudecode.AccBundle
 import io.github.crmapache.amazingclaudecode.claude.ClaudePreferences
 import io.github.crmapache.amazingclaudecode.claude.ClaudeSessionHub
+import io.github.crmapache.amazingclaudecode.claude.HostOs
 import io.github.crmapache.amazingclaudecode.claude.SessionClient
 import io.github.crmapache.amazingclaudecode.claude.SettingSources
 import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
+import io.github.crmapache.amazingclaudecode.claude.terminal.ResumeLine
 import io.github.crmapache.amazingclaudecode.editor.EditorContext
 import io.github.crmapache.amazingclaudecode.editor.OpenInEditor
 import io.github.crmapache.amazingclaudecode.editor.SelectionReference
@@ -937,6 +939,20 @@ internal class ClaudePanel(
 
             "sessionInfo" -> sendSessionInfo(field("sessionId"))
 
+            /*
+             * The conversation into a terminal of this IDE, and back (see TerminalDesk). At the window's own door,
+             * like the sign-in terminals: what it opens is a terminal on THIS machine, and the person in front of
+             * it is the one who works in it. Off the interface thread: the checks read the disk, and the panel's
+             * process is taken down before the terminal's comes up.
+             */
+            "toTerminal" -> field("sessionId").takeIf { it.isNotEmpty() }?.let { sessionId ->
+                ApplicationManager.getApplication().executeOnPooledThread { hub.terminal.handOver(sessionId) }
+            }
+
+            "showTerminal" -> hub.terminal.show(field("sessionId"))
+
+            "fromTerminal" -> hub.terminal.takeBack(field("sessionId"))
+
             "channelLoss" -> {
                 val reason = field("reason")
                 val expected = payload["expected"]?.jsonPrimitive?.intOrNull ?: -1
@@ -1103,13 +1119,31 @@ internal class ClaudePanel(
         if (sessionId.isEmpty()) return
 
         val conversationId = hub.conversations.conversationIdOf(sessionId)
+        // The line to paste, on the tab's own account rather than on whoever the ordinary sign-in is (see
+        // ResumeLine). The panel writes the plain one itself when this is missing - an IDE a version behind.
+        val line = conversationId?.let { resumeLine(sessionId, it) }
         webview?.send(
             buildJsonObject {
                 put("type", "sessionInfo")
                 put("sessionId", sessionId)
                 if (conversationId != null) put("conversationId", conversationId)
+                line?.let {
+                    put("command", it.command)
+                    it.account?.let { name -> put("account", name) }
+                    if (it.onDefault) put("onDefault", true)
+                }
             }.toString(),
         )
+    }
+
+    /** `/status`'s line for carrying [conversationId] on in a terminal of one's own - see ResumeLine. */
+    private fun resumeLine(sessionId: String, conversationId: String): ResumeLine.Line {
+        val accountId = hub.conversations.accountOf(sessionId)
+        if (accountId.isEmpty()) return ResumeLine.of(conversationId, account = null, drawer = null, posix = !HostOs.isWindows)
+
+        val account = ClaudeAccounts.getInstance().account(accountId)
+        val name = account?.let { it.alias.ifBlank { it.email } }.orEmpty()
+        return ResumeLine.of(conversationId, account = name, drawer = account?.storeDir, posix = !HostOs.isWindows)
     }
 
     private fun writeClipboard(text: String, html: String) {

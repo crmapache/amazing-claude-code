@@ -56,6 +56,7 @@ internal object PanelKeys {
         CLOSE_TAB("AmazingClaudeCode.CloseTab", "closeTab"),
         REOPEN_TAB("AmazingClaudeCode.ReopenTab", "reopenTab"),
         QUEUE("AmazingClaudeCode.QueueMessage", "queue"),
+        TERMINAL("AmazingClaudeCode.ContinueInTerminal", "terminal"),
     }
 
     /** What the panel does with a command - hung on the browser, found again from wherever the focus is. */
@@ -198,3 +199,6 @@ internal class CloseTabAction : PanelKeyAction(PanelKeys.Command.CLOSE_TAB)
 internal class ReopenTabAction : PanelKeyAction(PanelKeys.Command.REOPEN_TAB)
 
 internal class QueueMessageAction : PanelKeyAction(PanelKeys.Command.QUEUE)
+
+/** Continue in terminal for the tab on screen (see TerminalDesk) - unbound until somebody binds it in Keymap. */
+internal class ContinueInTerminalAction : PanelKeyAction(PanelKeys.Command.TERMINAL)

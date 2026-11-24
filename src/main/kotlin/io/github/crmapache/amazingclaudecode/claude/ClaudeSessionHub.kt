@@ -19,6 +19,8 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import io.github.crmapache.amazingclaudecode.claude.accounts.AccountDesk
 import io.github.crmapache.amazingclaudecode.claude.accounts.AccountsWatch
 import io.github.crmapache.amazingclaudecode.claude.accounts.ClaudeAccounts
+import io.github.crmapache.amazingclaudecode.claude.terminal.TerminalDesk
+import io.github.crmapache.amazingclaudecode.claude.terminal.TranscriptTail
 import io.github.crmapache.amazingclaudecode.editor.ChangeRevert
 import io.github.crmapache.amazingclaudecode.editor.DiskRefresh
 import io.github.crmapache.amazingclaudecode.editor.EditorContext
@@ -182,6 +184,7 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 letModsGo(sessionId)
                 catalog.commandsProcessStarted(sessionId)
             },
+            heldElsewhere = { sessionId, conversationId, own -> terminal.holds(sessionId, conversationId, own) },
         )
     }
 
@@ -230,6 +233,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * things that have nothing to do with accounts.
      */
     val accounts: AccountDesk by lazy { AccountDesk(project, this, this) }
+
+    /** Conversations carried on in a terminal of the IDE, and given back to their tabs (see TerminalDesk). */
+    val terminal: TerminalDesk = TerminalDesk(project, this)
 
     /** Permissions, plans and questions - everything that stops a turn to wait for a person. */
     val permissions: SessionPermissions = SessionPermissions(this)
@@ -641,6 +647,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             // that opens the panel over a queue put there from a phone would otherwise show none of it.
             val waiting = queued.of(sessionId)
             if (waiting.isNotEmpty()) batch += queueMessage(sessionId, waiting)
+
+            // And whether a terminal holds it. Live rather than journalled, like the queue: it is a state
+            // and not something said in the conversation (see [terminalChanged]).
+            terminal.stateOf(sessionId)?.let { batch += terminalMessage(sessionId, it) }
 
             // And what it works at: the effort is told by nobody but us (see [changeEffort]), so a client
             // joining now has no other way to learn it. A conversation that has not started yet says
@@ -1266,6 +1276,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         rewinding.forget(id)
         // What this conversation was waiting to say goes with it: there is nothing left to say it to.
         queued.clear(id)
+        // A terminal holding it goes on: somebody may well be working there (see TerminalDesk.forget).
+        terminal.forget(id)
         conversations.close(id)
         forgetCarryOn(id)
         stats.noteSessionClosed(id)
@@ -1933,7 +1945,10 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
 
         val seen = editorSeen(withEditor, text)
         val running = snapshot(sessionId).get().status == SessionSnapshot.STATUS_RUNNING
-        if (PromptDelivery.waitsForTheTurn(text, running)) {
+        // Into the queue as well while a terminal holds the conversation: raising a process now would be a second
+        // writer over its transcript, and the message would be lost to a launch that refuses (see TerminalDesk).
+        val held = !running && terminal.holding(sessionId)
+        if (PromptDelivery.waitsForTheTurn(text, running) || held) {
             // An identifier of our own: the message came as a send rather than as a queued one, so
             // nobody has named it.
             enqueue(
@@ -1948,6 +1963,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                 ),
                 before = null,
             )
+            // A panel that did not know of the hold yet has put its "thinking" up for this message; the tab is
+            // idle, and saying so takes it down. One that knew sent it to the queue itself (see App.submit).
+            if (held) sendStatus(sessionId, SessionSnapshot.STATUS_IDLE)
             return
         }
 
@@ -2543,6 +2561,9 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     /** Whether something may be said into this conversation now, as far as the conversation is concerned. */
     private fun freeToSay(sessionId: String): Boolean {
         if (snapshot(sessionId).get().status == SessionSnapshot.STATUS_RUNNING) return false
+        // A terminal holds the conversation: what was queued waits for it to come back (see TerminalDesk), and
+        // goes the moment it does (see [terminalReleased]).
+        if (terminal.holding(sessionId)) return false
         // Between a tab's two processes there is nothing to send into: the old conversation is gone and
         // the new one is not in yet, so this would raise a bare third one on no transcript at all. The
         // move says so itself the moment it is done (see ClaudeSessions.onMoved).
@@ -3074,6 +3095,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         }
 
         stats.noteResumed(sessionId, conversationId)
+        // A terminal holding what the tab held before is no longer this tab's business (see TerminalDesk.forget).
+        terminal.forget(sessionId)
         conversations.resume(sessionId, conversationId, wasScenarioHead)
         // The feed that was there described a different conversation: every client is told to drop it
         // rather than left showing something that no longer exists.
@@ -3101,6 +3124,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         wakeAfter: Boolean,
         /** What to do instead when the transcript is not on disk at all - see [lostTranscript]. */
         whenMissing: (() -> Unit)? = null,
+        /** What comes after the replay, on its thread - the queue of a tab back from the terminal (see [terminalReleased]). */
+        then: () -> Unit = {},
     ) {
         ApplicationManager.getApplication().executeOnPooledThread {
             if (whenMissing != null && ClaudeHistory.transcriptFile(project.basePath, conversationId) == null) {
@@ -3172,6 +3197,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
             } else {
                 settleRestored(sessionId)
             }
+
+            then()
         }
     }
 
@@ -3241,6 +3268,111 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         return if (own == null) conversations.forkOrigin(sessionId) else null
     }
 
+    // --- A conversation in the terminal -----------------------------------------
+
+    /**
+     * Whether a terminal holds the tab's conversation now - said to every client, live rather than into the
+     * journal: it is a state of the tab, like its queue, and not something said in the conversation. A client
+     * joining later is told in [attach].
+     */
+    fun terminalChanged(sessionId: String) {
+        emitLive(terminalMessage(sessionId, terminal.stateOf(sessionId)))
+    }
+
+    /**
+     * The conversation did not go into the terminal, and why - to the clients, which word it (see
+     * TerminalDesk.Refusal). Live: an answer to a press, not a line of the conversation.
+     */
+    fun terminalRefused(sessionId: String, reason: String) {
+        emitLive(
+            buildJsonObject {
+                put("type", "terminalRefused")
+                put("sessionId", sessionId)
+                put("reason", reason)
+            }.toString(),
+        )
+    }
+
+    private fun terminalMessage(sessionId: String, state: String?): String =
+        buildJsonObject {
+            put("type", "terminal")
+            put("sessionId", sessionId)
+            state?.let { put("state", it) }
+        }.toString()
+
+    /**
+     * The terminal has given the conversation back: what was done there goes into the feed, and what was
+     * written into the tab meanwhile goes into the conversation.
+     *
+     * Only when the tab still holds that conversation - a tab closed or given another one meanwhile has
+     * nothing to be told about this one.
+     */
+    fun terminalReleased(sessionId: String, conversationId: String) {
+        terminalChanged(sessionId)
+        if (conversations.conversationIdOf(sessionId) != conversationId) return
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            // The queue after the replay rather than beside it: what was written while the terminal held the
+            // conversation was written after everything the terminal did, and its card belongs under that.
+            runCatching { replayTerminalTail(sessionId, conversationId) { runQueued(sessionId) } }
+                .onFailure {
+                    thisLogger().warn("What was done in the terminal could not be replayed", it)
+                    runQueued(sessionId)
+                }
+        }
+    }
+
+    /**
+     * What the terminal added to the conversation, played into the feed after what the feed already holds.
+     *
+     * Anchored on the lines the journal holds rather than on a position in the file: a conversation taken by
+     * somebody else's terminal was not handed over at a moment this side wrote down (see TerminalDesk), and a
+     * uuid is unambiguous on either side of it (see TranscriptTail). When no anchor is found, the terminal
+     * rewound the conversation past it, or did more than a page's worth, the feed is drawn again from the
+     * conversation's end - the way it opens from the history, with nothing of the old feed left to disagree
+     * with it.
+     *
+     * The process is not raised for the replay: the terminal's has only just ended. It comes up the way a
+     * restored tab's does - when somebody looks at the tab, or writes into it (see [settleRestored]).
+     */
+    private fun replayTerminalTail(sessionId: String, conversationId: String, then: () -> Unit) {
+        val file = ClaudeHistory.transcriptFile(project.basePath, conversationId) ?: return then()
+        val known = synchronized(lock(sessionId)) {
+            journal(sessionId).since(0).asReversed().asSequence()
+                .mapNotNull { ClaudeHistory.uuidOf(it.json) }
+                .take(TranscriptTail.ANCHORS)
+                .toList()
+        }
+
+        when (val tail = TranscriptTail.after(file, known)) {
+            is TranscriptTail.Tail.Lines -> {
+                if (tail.lines.isEmpty()) {
+                    settleRestored(sessionId)
+                    return then()
+                }
+                tail.lines.forEach { line -> onAgentLine(sessionId, line, replay = true) }
+                // No cursor: the boundary over the feed is where it was (see withEarlier in feed/build.ts).
+                broadcast(
+                    sessionId,
+                    buildJsonObject {
+                        put("type", "replayFinished")
+                        put("sessionId", sessionId)
+                    }.toString(),
+                )
+                DiagnosticsLog.note(DiagnosticsLog.PANEL, "the terminal's turns went into the feed: ${tail.lines.size} messages")
+                settleRestored(sessionId)
+                then()
+            }
+
+            TranscriptTail.Tail.Whole -> {
+                // The conversation is the same one: what was queued for it is still meant for it (see resetJournal).
+                resetJournal(sessionId, keepQueue = true)
+                replayTranscript(sessionId, conversationId, adoptTranscriptModel = false, wakeAfter = false, then = then)
+                DiagnosticsLog.note(DiagnosticsLog.PANEL, "the feed was drawn again after the terminal")
+            }
+        }
+    }
+
     // --- The journal itself -------------------------------------------------------
 
     /**
@@ -3250,13 +3382,21 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
      * with a transcript of its own (see ClaudeSessions.resume), and the feed that was there belongs to
      * something else now.
      */
-    fun resetJournal(sessionId: String) {
+    fun resetJournal(
+        sessionId: String,
+        /**
+         * The feed is drawn again over the SAME conversation - back from a terminal that did more than a page's
+         * worth (see [replayTerminalTail]) - so what was queued for it still is. The reset wipes the clients' copy of
+         * the list with the rest, so it is said again.
+         */
+        keepQueue: Boolean = false,
+    ) {
         synchronized(lock(sessionId)) { journal(sessionId).reset() }
         streams[sessionId]?.clear()
         snapshots[sessionId]?.set(SessionSnapshot())
         // The tab now holds a different conversation: what was queued was meant for the one it replaced,
         // and saying it into this one would be answering a question nobody here asked.
-        if (queued.clear(sessionId)) sendQueue(sessionId, emptyList())
+        if (!keepQueue && queued.clear(sessionId)) sendQueue(sessionId, emptyList())
 
         deliver(
             buildJsonObject {
@@ -3285,6 +3425,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
         // second press on the same row of the history opened a second tab on one transcript, and a
         // search's jump into the conversation waited under its veil for a process that might not come.
         conversations.conversationIdOf(sessionId)?.let { emitLive(conversationMessage(sessionId, it)) }
+        // And what it is waiting to say, when that was kept - the reset wiped every client's copy of it.
+        if (keepQueue) queued.of(sessionId).takeIf { it.isNotEmpty() }?.let { sendQueue(sessionId, it) }
     }
 
     private fun conversationMessage(sessionId: String, conversationId: String): String =
@@ -3320,6 +3462,8 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
                         .onFailure { thisLogger().warn("A tab could not carry on", it) }
                     runCatching { putIdleConversationsToSleep() }
                         .onFailure { thisLogger().warn("The idle sweep stumbled", it) }
+                    runCatching { noticeOutsideWriters() }
+                        .onFailure { thisLogger().warn("The terminals holding conversations could not be read", it) }
                 }
             },
             IdleSleep.EVERY_MS,
@@ -3342,6 +3486,20 @@ internal class ClaudeSessionHub(private val project: Project) : Disposable {
     private fun carryOnWhatIsDue() {
         val now = System.currentTimeMillis()
         conversations.dueCarryOns(now).forEach { runQueued(it, now) }
+    }
+
+    /**
+     * Every tab asked whether somebody else has taken its conversation meanwhile - a terminal opened on it from
+     * `/status`, say (see TerminalDesk.notice).
+     *
+     * A tab asleep would otherwise learn it only when it next tries to raise a process, and the first thing that does
+     * is the person's message: by then the panel has drawn it as sent, with "thinking" over it. A tab awake would not
+     * learn it at all - its process and the other one would both write the conversation. Once a minute, so the card
+     * saying where the conversation is stands before anybody writes. Reading the register is a listing and a few
+     * small files.
+     */
+    private fun noticeOutsideWriters() {
+        tabs.tabs().forEach { tab -> terminal.notice(tab.id) }
     }
 
     private fun putIdleConversationsToSleep() {

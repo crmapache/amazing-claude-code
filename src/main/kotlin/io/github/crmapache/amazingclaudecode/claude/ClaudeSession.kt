@@ -208,9 +208,25 @@ internal class ClaudeSession(
      * processTerminated) - so this is the moment that state is let go of (see ModLines).
      */
     private val onProcessStarted: () -> Unit = {},
+    /**
+     * Whether [conversationId] is held by a terminal - one the panel opened for it, or a live process somebody
+     * else started over the same transcript - so that no process of this conversation may come up now (see
+     * terminal/TerminalDesk). [own] are the pids this conversation raised itself: a process just taken down for
+     * a restart is still alive for a moment, and it is not somebody else.
+     *
+     * Asked in [start], because every process of a tab comes up through there - a message, the queue, a phone,
+     * the MCP screen, a restored tab being looked at - and a road added tomorrow is held by it as well.
+     */
+    private val heldElsewhere: (conversationId: String, own: Set<Long>) -> Boolean = { _, _ -> false },
 ) : Disposable {
 
     private var handler: OSProcessHandler? = null
+
+    /** The pids of the processes this conversation has raised - see [heldElsewhere]. */
+    private val raised: MutableSet<Long> = ConcurrentHashMap.newKeySet()
+
+    /** The same, read from outside - see ClaudeSessions.ownPids. */
+    val ownPids: Set<Long> get() = raised.toSet()
 
     /**
      * When the process behind this conversation came up.
@@ -1872,6 +1888,15 @@ internal class ClaudeSession(
         }
         val fork = unborn?.let { forkLaunch(executable, it) } ?: ForkPoint(null, null)
         val resumed = conversationId.takeIf { unborn == null }
+
+        // Somebody else is writing this conversation - a terminal it was handed to, or one nobody told us about.
+        // A second process now is two writers over one transcript (see [heldElsewhere]); the tab waits instead,
+        // and is told so by whoever holds the hold.
+        if (resumed != null && heldElsewhere(resumed, raised.toSet())) {
+            DiagnosticsLog.note(DiagnosticsLog.AGENT, "a conversation was not started: a terminal holds it")
+            return null
+        }
+
         forkLaunched = unborn
 
         // What this launch is asking to continue - checked against what actually comes up (see
@@ -1974,6 +1999,7 @@ internal class ClaudeSession(
         )
 
         process.startNotify()
+        runCatching { process.process.pid() }.getOrNull()?.let(raised::add)
         onProcessStarted()
         startedAt = System.currentTimeMillis()
         announcedOnce = false

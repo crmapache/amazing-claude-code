@@ -795,6 +795,8 @@ export const de: Dict = {
       search: 'Gespräche durchsuchen',
       fork: 'Fork ab der Auswahl',
       forkWhen: 'mit markiertem Text im Verlauf',
+      terminal: 'Im Terminal fortsetzen',
+      terminalWhen: 'eine IDE-Aktion, ohne Taste, bis du eine zuweist',
     },
   },
 
@@ -1050,6 +1052,29 @@ export const de: Dict = {
     renameTab: 'Gespräch umbenennen',
     tabMenu: 'DIESES GESPRÄCH',
     menu: 'Menü',
+  },
+
+  terminal: {
+    label: 'TERMINAL',
+    continue: 'Im Terminal fortsetzen',
+    show: 'Terminal zeigen',
+    back: 'Zurück in den Chat',
+    here: 'Dieses Gespräch läuft im Terminal weiter',
+    hereBody:
+      'Was du hier schreibst, wartet in der Warteschlange und geht los, sobald das Gespräch zurück ist. „Zurück in den Chat“ schließt das Terminal, und was Claude dort gerade tut, bricht ab.',
+    elsewhere: 'Dieses Gespräch ist in einem anderen Terminal offen',
+    elsewhereBody: 'Schließe es dort, um hier weiterzumachen. Bis dahin wartet, was du hier schreibst, in der Warteschlange.',
+    atDesk: 'Das Gespräch läuft gerade in einem Terminal am Schreibtisch. Was du hier schreibst, wartet in der Warteschlange, bis es zurück im Chat ist.',
+    refused: 'Fortsetzen im Terminal hat nicht geklappt',
+    reasons: {
+      noConversation: 'Dieser Tab hat noch kein Gespräch - schick zuerst eine Nachricht.',
+      busy: 'Claude arbeitet oder wartet auf deine Antwort. Versuch es noch einmal, wenn der Zug vorbei ist.',
+      background: 'In diesem Gespräch laufen noch Agenten oder Befehle im Hintergrund, und sie würden mit ihm stoppen.',
+      notFound: 'Claude Code wurde auf diesem Rechner nicht gefunden.',
+      account: 'Das Konto dieses Tabs ließ sich nicht nutzen. Prüfe es im Bildschirm Konten.',
+      noTerminal: 'Das IDE-Terminal ließ sich nicht öffnen.',
+    },
+    dismiss: 'Schließen',
   },
 
   side: {
@@ -1317,6 +1342,12 @@ export const de: Dict = {
       terminal: 'Im Terminal',
       copyId: 'Sitzungs-ID kopieren',
       terminalNote: 'Setzt dieses Gespräch in einem Terminal im Projektordner fort',
+      terminalNoteAccount: (name: string): string =>
+        name
+          ? `Setzt dieses Gespräch mit dem Konto ${name} in einem Terminal im Projektordner fort`
+          : 'Setzt dieses Gespräch mit dem Konto dieses Tabs in einem Terminal im Projektordner fort',
+      terminalNoteDefault: (name: string): string =>
+        `Läuft mit der gewöhnlichen Claude-Code-Anmeldung weiter, nicht mit ${name || 'dem Konto dieses Tabs'}. „Im Terminal fortsetzen“ behält das Konto`,
       none: 'Noch keine ID - das Gespräch bekommt sie mit der ersten Nachricht',
     },
     outranked: {
@@ -1408,6 +1439,7 @@ export const de: Dict = {
       label: 'IN DER WARTESCHLANGE',
       hint: (n) => `${n} gehen der Reihe nach raus, sobald der Lauf fertig ist · zum Umsortieren ziehen`,
       held: (n) => `${n} gehen der Reihe nach nach deiner nächsten Nachricht raus - der Lauf, auf den sie warteten, wurde gestoppt · zum Umsortieren ziehen`,
+      terminal: (n) => `${n} gehen der Reihe nach raus, sobald das Gespräch aus dem Terminal zurück ist · zum Umsortieren ziehen`,
       edit: 'Im Eingabefeld bearbeiten',
       editing: (key, button) => `Wird im Eingabefeld bearbeitet · ${key} oder „${button}“ stellt sie wieder hierher`,
     },
@@ -2058,6 +2090,7 @@ export const de: Dict = {
     btwArgument: '<Frage>',
     fast: 'Schnellmodus umschalten - Opus bis zu 2,5× schneller, abgerechnet über Usage Credits',
     status: 'die ID dieses Gesprächs und der Befehl, es im Terminal fortzusetzen',
+    terminal: 'dieses Gespräch im IDE-Terminal fortsetzen und danach in den Chat zurückkehren',
     model: 'das Modell für diese Sitzung wechseln',
     effort: 'einstellen, wie lange Claude vor dem Handeln nachdenkt',
     context: 'was das Kontextfenster gerade füllt',

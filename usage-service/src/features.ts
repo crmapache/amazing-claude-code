@@ -116,6 +116,8 @@ export const FEATURES: Record<Product, Record<string, FeatureLabel>> = {
     account_add: { group: 'manage', label: 'Add a Claude account' },
     account_switch: { group: 'manage', label: 'Switch Claude account' },
     design_login: { group: 'manage', label: 'Claude Design sign-in' },
+    // The conversation carried on in a terminal of the IDE, and given back to its tab afterwards.
+    terminal: { group: 'conversation', label: 'Continue a conversation in the terminal' },
   },
   acx: {
     ...SHARED_FEATURES,

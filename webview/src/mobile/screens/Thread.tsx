@@ -4,6 +4,7 @@ import { fastModeShown } from '../../feed/fastMode'
 import { Feed } from '../../components/Feed'
 import { WorkflowAgentView } from '../../components/items/WorkflowAgentView'
 import { StreamSwitcher } from '../../components/StreamSwitcher'
+import { TerminalCard } from '../../components/TerminalCard'
 import type { CardState } from '../../hooks/useCardState'
 import { useNow } from '../../hooks/useNow'
 import { OpenAgentContext, type OpenedAgent } from '../../hooks/useOpenAgent'
@@ -471,6 +472,9 @@ export const Thread = ({
             <span className={m.taskRowChevron}>›</span>
           </button>
         )}
+
+        {/* The desk's card without its buttons: the terminal is on the desk (see TerminalCard). */}
+        <TerminalCard state={feed.terminal} />
 
         <Composer
           facts={facts}

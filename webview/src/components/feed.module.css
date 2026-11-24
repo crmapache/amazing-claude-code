@@ -3058,6 +3058,14 @@
   color: var(--acc-fg-dim);
 }
 
+/* Continue in terminal under the line it does the same as: the line is for a terminal of one's own, the button
+   for the IDE's, on the tab's account and back to the chat afterwards. */
+.sessionInfoActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
 .outranked {
   display: flex;
   align-items: baseline;

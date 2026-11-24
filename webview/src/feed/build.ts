@@ -583,13 +583,29 @@ export const reducePanel = (state: PanelState, action: PanelAction, now = Date.n
     // into the conversation too, and the id is copied from it while the talk goes on below.
     case 'sessionInfo': {
       const conversationId = action.conversationId ?? state.sessionId
-      return push(state, (id) => ({ id, kind: 'session' as const, ...(conversationId ? { conversationId } : {}) }))
+      return push(state, (id) => ({
+        id,
+        kind: 'session' as const,
+        ...(conversationId ? { conversationId } : {}),
+        // The IDE's line belongs to the id it was built for: a panel that fell back to its own note of the id has
+        // no line from the IDE to go with it.
+        ...(action.conversationId && action.command ? { command: action.command } : {}),
+        ...(action.account ? { account: action.account } : {}),
+        ...(action.onDefault ? { onDefault: true } : {}),
+      }))
     }
 
     // The whole list rather than a change to it: the IDE holds the queue, either window may have been
     // the one that changed it, and what arrives is how it stands now (see SessionQueue.kt).
     case 'queue':
       return { ...state, queue: action.items, queueHeld: action.held === true }
+
+    // A held tab is its own again, or has just been taken: either way the note about a refused try is stale.
+    case 'terminal':
+      return { ...state, terminal: action.state, terminalRefused: undefined }
+
+    case 'terminalRefused':
+      return { ...state, terminalRefused: action.reason }
 
     case 'agent':
       return noteOldest(applyAgentEvent(state, action.event, now, action.replay === true), action.event)
@@ -2468,6 +2484,9 @@ const agentAnswers = (state: PanelState): string[] =>
  * its only trace, and without it a conversation opened from the history consisted of answers alone, as
  * though nobody had asked for any of it.
  */
+/** The origin the CLI files a message typed by the person under - the one origin that IS the person. */
+const HUMAN_ORIGIN = 'human'
+
 const addReplayedPrompt = (
   state: PanelState,
   event: Extract<AgentEvent, { type: 'user' }>,
@@ -2482,7 +2501,14 @@ const addReplayedPrompt = (
   // (see AgentUserEvent.origin). The text below says the same thing, and is the only word about it in
   // transcripts written before the field existed - but a long enough report reaches here with its end cut
   // off, and the field is what holds then.
-  if (event.isMeta || event.parent_tool_use_id || event.origin?.kind) return state
+  //
+  // Any origin but the person's own: the CLI's own interface files every message typed into it under
+  // `origin: {kind: 'human'}` (2.1.293), and reading every origin as "not the person" dropped each of them - a
+  // conversation carried on in a terminal came back to the panel as answers with nobody asking (see
+  // terminal-handoff.md), and so did any terminal conversation opened from the history.
+  if (event.isMeta || event.parent_tool_use_id || (event.origin?.kind && event.origin.kind !== HUMAN_ORIGIN)) {
+    return state
+  }
 
   const blocks = blocksOf(event.message.content)
   const text = replayedPromptText(blocks)

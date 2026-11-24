@@ -136,5 +136,11 @@
                 description="Send the message after the agent finishes its current work">
             <keyboard-shortcut first-keystroke="alt ENTER" keymap="$default"/>
         </action>
+        <!-- The conversation on screen into a terminal of the IDE, and back (see TerminalDesk). No key of its own:
+             every free one is somebody's habit, and Find Action reaches it as it is. -->
+        <action id="AmazingClaudeCode.ContinueInTerminal"
+                class="io.github.crmapache.amazingclaudecode.toolwindow.ContinueInTerminalAction"
+                text="Amazing Claude Code GUI: Continue in Terminal"
+                description="Carry the conversation the Claude panel shows on in the IDE terminal, and come back to the chat after"/>
     </actions>
 </idea-plugin>

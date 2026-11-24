@@ -1063,6 +1063,8 @@ export const en = {
       search: 'Search conversations',
       fork: 'Fork from the selection',
       forkWhen: 'with text selected in the feed',
+      terminal: 'Continue in terminal',
+      terminalWhen: 'an IDE action, unbound until you bind it',
     },
   },
 
@@ -1343,6 +1345,32 @@ export const en = {
     /** The heading of a tab's right-click menu, and of a history row's (see ContextMenu). */
     tabMenu: 'THIS CONVERSATION',
     menu: 'Menu',
+  },
+
+  /** Continue in terminal (see TerminalDesk.kt): the card over the field while a terminal holds the conversation. */
+  terminal: {
+    label: 'TERMINAL',
+    /** The tab's menu, the `/status` row's button. */
+    continue: 'Continue in terminal',
+    show: 'Show terminal',
+    back: 'Return to chat',
+    here: 'This conversation continues in the terminal',
+    hereBody:
+      'What you write here waits in the queue and goes when the conversation is back. Return to chat closes the terminal, and whatever Claude is doing there stops.',
+    elsewhere: 'This conversation is open in another terminal',
+    elsewhereBody: 'Close it there to continue here. What you write here waits in the queue until then.',
+    /** hereBody on a phone, which has no terminal to show or close. */
+    atDesk: 'The conversation is in a terminal at the desk. What you write here waits in the queue and goes when it is back in the chat.',
+    refused: "Couldn't continue in the terminal",
+    reasons: {
+      noConversation: 'This tab has no conversation yet - send a message first.',
+      busy: 'Claude is working or waiting for your answer. Try again when the turn is over.',
+      background: 'Background agents or commands are still running in this conversation, and they would stop with it.',
+      notFound: 'Claude Code was not found on this machine.',
+      account: "This tab's account could not be used. Check it on the accounts screen.",
+      noTerminal: 'The IDE terminal could not be opened.',
+    },
+    dismiss: 'Close',
   },
 
   /** The card of side questions over the field - `/btw` (see SideQuestion.tsx). */
@@ -1729,6 +1757,14 @@ export const en = {
       terminal: 'In a terminal',
       copyId: 'Copy Session ID',
       terminalNote: 'Continues this conversation in a terminal opened in the project folder',
+      /** `/status` on an added account: the line names that account's drawer (see ResumeLine.kt). */
+      terminalNoteAccount: (name: string): string =>
+        name
+          ? `Continues this conversation on ${name}, in a terminal opened in the project folder`
+          : "Continues this conversation on this tab's account, in a terminal opened in the project folder",
+      /** The same on Windows, where the line cannot carry the account - it says so. */
+      terminalNoteDefault: (name: string): string =>
+        `Continues on the ordinary Claude Code sign-in rather than on ${name || "this tab's account"}. Continue in terminal keeps the account`,
       none: 'No ID yet - the conversation gets one with its first message',
     },
     outranked: {
@@ -1850,6 +1886,9 @@ export const en = {
       /** A queue that came back with a tab opened again after it was closed while it worked (see SessionQueue.hold). */
       held: (n: number): string =>
         `${n} will fire in order after your next message - the turn they waited for was stopped · drag to reorder`,
+      /** A queue waiting for the conversation to come back from the terminal that holds it (see TerminalCard). */
+      terminal: (n: number): string =>
+        `${n} will fire in order once the conversation is back from the terminal · drag to reorder`,
       /** On the pencil beside a queued message: it goes back into the field to be corrected. */
       edit: 'Edit in the field',
       /**
@@ -2640,6 +2679,7 @@ export const en = {
     btwArgument: '<question>',
     fast: 'toggle fast mode - Opus up to 2.5× faster, paid from usage credits',
     status: "this conversation's ID and the command to resume it in a terminal",
+    terminal: 'continue this conversation in the IDE terminal, then come back to the chat',
     model: 'switch the model for this session',
     effort: 'set how long Claude thinks before acting',
     context: 'what fills the context window right now',

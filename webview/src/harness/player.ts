@@ -914,6 +914,50 @@ const answerAgentTranscript = (message: WebviewMessage): void => {
   }, 350)
 }
 
+/** What the harness remembers while it plays the IDE's terminal desk. */
+const terminalDesk = { statusAsked: 0, asked: 0 }
+
+/**
+ * Continue in terminal (see TerminalDesk.handOver): held at once, as the IDE holds a tab before the terminal is
+ * even open - and every third press refused, because the panel's process is "busy".
+ */
+const answerToTerminal = (sessionId: string): void => {
+  terminalDesk.asked += 1
+  setTimeout(() => {
+    if (terminalDesk.asked % 3 === 0) {
+      window.__accReceive?.({ type: 'terminalRefused', sessionId, reason: 'busy' })
+      return
+    }
+    window.__accReceive?.({ type: 'terminal', sessionId, state: 'here' })
+  }, 200)
+}
+
+/**
+ * Return to chat: the terminal is closed, its process ends, and the turn made there is played into the feed
+ * after what the feed held (see ClaudeSessionHub.replayTerminalTail) - a replay with no cursor, so the mark over
+ * the feed stays where it was.
+ */
+const answerFromTerminal = (sessionId: string): void => {
+  const line = (event: unknown): void => {
+    window.__accReceive?.({ type: 'agent', sessionId, event, replay: true } as never)
+  }
+
+  setTimeout(() => {
+    window.__accReceive?.({ type: 'terminal', sessionId })
+    line({
+      type: 'user',
+      uuid: `t-${sessionId}-1`,
+      message: { role: 'user', content: [{ type: 'text', text: 'Run the migrations against staging once more.' }] },
+    })
+    line({
+      type: 'assistant',
+      uuid: `t-${sessionId}-2`,
+      message: { content: [{ type: 'text', text: 'Done in the terminal: both migrations applied, no drift left.' }] },
+    })
+    window.__accReceive?.({ type: 'replayFinished', sessionId } as never)
+  }, 400)
+}
+
 /**
  * A conversation chosen in the history screen.
  *
@@ -1866,14 +1910,30 @@ const listenToPanel = () => {
     }
 
     // `/status`, answered as the IDE answers it: the conversation's id - made up here, as there is no CLI
-    // behind the harness to have given one.
+    // behind the harness to have given one. Every second answer is a tab on an added account, so the line with
+    // the account's drawer in front of it and its note can be seen as well (see ResumeLine.kt).
     if (message?.type === 'sessionInfo') {
+      const conversationId = 'b6f4c0de-71a2-4c3e-9d1f-5a7e2c8b9f10'
+      const onAccount = (terminalDesk.statusAsked += 1) % 2 === 0
       window.__accReceive?.({
         type: 'sessionInfo',
         sessionId: message.sessionId,
-        conversationId: 'b6f4c0de-71a2-4c3e-9d1f-5a7e2c8b9f10',
+        conversationId,
+        ...(onAccount
+          ? {
+              command: `CLAUDE_SECURESTORAGE_CONFIG_DIR=/Users/you/.amazing-claude-code/accounts/k3v9 ANTHROPIC_API_KEY= ANTHROPIC_AUTH_TOKEN= CLAUDE_CODE_OAUTH_TOKEN= claude --resume ${conversationId}`,
+              account: 'Work',
+            }
+          : {}),
       })
     }
+
+    // Continue in terminal, answered as the IDE answers it (see TerminalDesk.kt): the tab is held at once, and
+    // every third press is refused, so the refusal's card can be seen too.
+    if (message?.type === 'toTerminal') answerToTerminal(message.sessionId)
+
+    // Closing the terminal gives the conversation back, with what was done there played into the feed.
+    if (message?.type === 'fromTerminal') answerFromTerminal(message.sessionId)
 
     // The three halves of the "New chats" screen, answered as the IDE answers them.
     if (message?.type === 'setDefaultModel') {

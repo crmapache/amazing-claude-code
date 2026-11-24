@@ -792,6 +792,8 @@ export const pt: Dict = {
       search: 'Buscar nas conversas',
       fork: 'Fork a partir da seleção',
       forkWhen: 'com texto selecionado no feed',
+      terminal: 'Continuar no terminal',
+      terminalWhen: 'uma ação do IDE, sem tecla até você atribuir uma',
     },
   },
 
@@ -1047,6 +1049,29 @@ export const pt: Dict = {
     renameTab: 'Renomear conversa',
     tabMenu: 'ESTA CONVERSA',
     menu: 'Menu',
+  },
+
+  terminal: {
+    label: 'TERMINAL',
+    continue: 'Continuar no terminal',
+    show: 'Mostrar o terminal',
+    back: 'Voltar ao chat',
+    here: 'Esta conversa continua no terminal',
+    hereBody:
+      'O que você escrever aqui espera na fila e é enviado quando a conversa voltar. “Voltar ao chat” fecha o terminal, e o que o Claude estiver fazendo lá para.',
+    elsewhere: 'Esta conversa está aberta em outro terminal',
+    elsewhereBody: 'Feche-a lá para continuar aqui. Até lá, o que você escrever aqui espera na fila.',
+    atDesk: 'A conversa está em um terminal no computador. O que você escrever aqui espera na fila e é enviado quando ela voltar ao chat.',
+    refused: 'Não foi possível continuar no terminal',
+    reasons: {
+      noConversation: 'Esta aba ainda não tem conversa: envie uma mensagem primeiro.',
+      busy: 'O Claude está trabalhando ou esperando sua resposta. Tente de novo quando o turno terminar.',
+      background: 'Ainda há agentes ou comandos em segundo plano nesta conversa, e eles parariam junto com ela.',
+      notFound: 'O Claude Code não foi encontrado nesta máquina.',
+      account: 'Não foi possível usar a conta desta aba. Verifique-a na tela de contas.',
+      noTerminal: 'Não foi possível abrir o terminal do IDE.',
+    },
+    dismiss: 'Fechar',
   },
 
   side: {
@@ -1314,6 +1339,12 @@ export const pt: Dict = {
       terminal: 'No terminal',
       copyId: 'Copiar ID da sessão',
       terminalNote: 'Continua esta conversa em um terminal aberto na pasta do projeto',
+      terminalNoteAccount: (name: string): string =>
+        name
+          ? `Continua esta conversa na conta ${name}, em um terminal aberto na pasta do projeto`
+          : 'Continua esta conversa na conta desta aba, em um terminal aberto na pasta do projeto',
+      terminalNoteDefault: (name: string): string =>
+        `Continua no login normal do Claude Code, e não na conta ${name || 'desta aba'}. “Continuar no terminal” mantém a conta`,
       none: 'Ainda sem ID: a conversa recebe um com a primeira mensagem',
     },
     outranked: {
@@ -1405,6 +1436,7 @@ export const pt: Dict = {
       label: 'NA FILA',
       hint: (n) => `${n} vão sair em ordem quando a rodada terminar · arraste para reordenar`,
       held: (n) => `${n} vão sair em ordem depois da sua próxima mensagem - a rodada que esperavam foi parada · arraste para reordenar`,
+      terminal: (n) => `${n} vão sair em ordem quando a conversa voltar do terminal · arraste para reordenar`,
       edit: 'Editar no campo',
       editing: (key, button) => `Sendo editada no campo · ${key} ou “${button}” a devolve para cá`,
     },
@@ -2053,6 +2085,7 @@ export const pt: Dict = {
     btwArgument: '<pergunta>',
     fast: 'ligar ou desligar o modo veloz - Opus até 2,5× mais rápido, pago com créditos de uso',
     status: 'o ID desta conversa e o comando para continuá-la no terminal',
+    terminal: 'continuar esta conversa no terminal do IDE e depois voltar ao chat',
     model: 'trocar o modelo desta sessão',
     effort: 'definir quanto o Claude pensa antes de agir',
     context: 'o que ocupa a janela de contexto agora',

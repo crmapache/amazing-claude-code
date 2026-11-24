@@ -34,6 +34,7 @@ class PanelKeysTest {
             PanelKeys.Command.CLOSE_TAB to CloseTabAction::class,
             PanelKeys.Command.REOPEN_TAB to ReopenTabAction::class,
             PanelKeys.Command.QUEUE to QueueMessageAction::class,
+            PanelKeys.Command.TERMINAL to ContinueInTerminalAction::class,
         )
 
         assertEquals(PanelKeys.Command.entries.toSet(), expected.keys)

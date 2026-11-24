@@ -863,6 +863,12 @@ export interface SessionInfoItem {
   id: string
   kind: 'session'
   conversationId?: string
+  /** The line to paste into a terminal, as the IDE built it on the tab's account - see the `sessionInfo` message. */
+  command?: string
+  /** The added account the tab runs on, by name - for the note under the line. */
+  account?: string
+  /** The line carries on on the ordinary sign-in rather than on [account] (Windows) - said under it. */
+  onDefault?: boolean
 }
 
 /**
