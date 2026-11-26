@@ -42,15 +42,15 @@ describe('the two plugins', () => {
 
   it('differ in their features only where the agent underneath does', () => {
     expect(apart(FEATURES.acc, FEATURES.acx)).toEqual({
-      missingHere: ['design_login', 'stop_task', 'terminal'],
-      notInPlugin: ['feedback_sent', 'project_trust'],
+      missingHere: ['design_login', 'stop_task'],
+      notInPlugin: ['project_trust'],
     })
     expect(apart(SCREENS.acc, SCREENS.acx)).toEqual({
-      missingHere: ['claudeConfig', 'font', 'settingSources'],
+      missingHere: ['claudeConfig', 'settingSources'],
       notInPlugin: ['codexConfig', 'newChatContext'],
     })
     expect(apart(SETTINGS.acc, SETTINGS.acx)).toEqual({
-      missingHere: ['claude_config', 'font_family', 'setting_sources'],
+      missingHere: ['claude_config', 'setting_sources'],
       notInPlugin: ['codex_config', 'project_trust'],
     })
   })

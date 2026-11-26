@@ -154,9 +154,10 @@ const SHARED_SETTINGS: Record<string, string> = {
   newChatMode: 'New chats start in mode',
   pairedDevices: 'Phones paired',
   spellcheck: 'Spell check on',
+  font: 'Own panel font',
 }
 
 export const REPORTED_SETTINGS: Record<Product, Record<string, string>> = {
-  acc: { ...SHARED_SETTINGS, accounts: 'Claude accounts', font: 'Own panel font' },
+  acc: { ...SHARED_SETTINGS, accounts: 'Claude accounts' },
   acx: { ...SHARED_SETTINGS, accounts: 'Codex accounts' },
 }

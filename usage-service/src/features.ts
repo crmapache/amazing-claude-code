@@ -106,6 +106,9 @@ const SHARED_FEATURES: Record<string, FeatureLabel> = {
   reopen_tab: { group: 'conversation', label: 'Reopen a closed tab' },
   // The list of files a turn changed, with its buttons that put them back.
   revert_changes: { group: 'editor', label: "Revert a turn's changes to a file" },
+  // The conversation carried on in a terminal of the IDE, and given back to its tab afterwards - `claude
+  // --resume` in ACC, `codex resume` in ACX (0.3.2).
+  terminal: { group: 'conversation', label: 'Continue a conversation in the terminal' },
 }
 
 export const FEATURES: Record<Product, Record<string, FeatureLabel>> = {
@@ -116,8 +119,6 @@ export const FEATURES: Record<Product, Record<string, FeatureLabel>> = {
     account_add: { group: 'manage', label: 'Add a Claude account' },
     account_switch: { group: 'manage', label: 'Switch Claude account' },
     design_login: { group: 'manage', label: 'Claude Design sign-in' },
-    // The conversation carried on in a terminal of the IDE, and given back to its tab afterwards.
-    terminal: { group: 'conversation', label: 'Continue a conversation in the terminal' },
   },
   acx: {
     ...SHARED_FEATURES,
@@ -125,9 +126,6 @@ export const FEATURES: Record<Product, Record<string, FeatureLabel>> = {
     account_add: { group: 'manage', label: 'Add a Codex account' },
     account_switch: { group: 'manage', label: 'Switch Codex account' },
     project_trust: { group: 'project', label: 'Trust a project with its Codex settings' },
-    // ACC's feedback screen stopped taking messages (it now points to a tip or a pull request), so only
-    // the fork still sends one - until it catches up with that screen.
-    feedback_sent: { group: 'feedback', label: 'Send feedback' },
   },
 }
 
@@ -168,12 +166,12 @@ const SHARED_SCREENS: Record<string, string> = {
   feedbackLog: 'Feedback: the debug report',
   usageStats: 'Usage statistics',
   usageStatsReport: 'Usage statistics: what gets sent',
+  font: 'Appearance: font',
 }
 
 export const SCREENS: Record<Product, Record<string, string>> = {
   acc: {
     ...SHARED_SCREENS,
-    font: 'Appearance: font',
     accounts: 'Claude accounts',
     settingSources: 'Claude Code settings sources',
     claudeConfig: 'Claude Code settings',
@@ -205,12 +203,12 @@ const SHARED_SETTINGS: Record<string, string> = {
   new_chat: 'New chats: model, effort or mode',
   voice: 'Voice input',
   relay: 'Relay address',
+  font_family: 'Panel font',
 }
 
 export const SETTINGS: Record<Product, Record<string, string>> = {
   acc: {
     ...SHARED_SETTINGS,
-    font_family: 'Panel font',
     executable: 'Path to Claude Code',
     claude_config: 'Claude Code settings',
     setting_sources: 'Claude Code settings sources',
