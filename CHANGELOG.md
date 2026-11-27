@@ -9,6 +9,10 @@ commits.
 
 ## [Unreleased]
 
+## [0.13.65] - 2026-11-27
+
+- Changed: a small internal cleanup with no visible effect. Three places in the plugin still called IDE functions that JetBrains has marked as outdated: looking up the project's folders when you open a folder named in the conversation, re-reading the files the agent has changed, and following the steps of a search through your conversations with AI. They now call the functions that took their place, which do exactly the same thing in every IDE version the plugin supports. The plugin works exactly as before.
+
 ## [0.13.64] - 2026-11-24
 
 - Added: carry a conversation on in the IDE terminal and bring it back to the chat. Right-click a tab and choose Continue in terminal, type /terminal, press the button under the /status line, or find Continue in Terminal with Find Action. The conversation opens in a terminal tab named after it, in Claude Code's own interface, on the same model, effort, mode and account as the tab. While the terminal runs, the tab waits: a card above the field says so, with Show terminal and Return to chat, and whatever you write in the panel or on the phone waits in the queue. When Claude Code in the terminal exits, with /exit or by closing its tab, everything done there appears in the conversation and the queued messages go out after it. While a turn is running, a question is open or background agents are at work, the hand-over is refused and the card says why, because closing the panel's process would cut that work off. The first time in a folder, Claude Code in the terminal may ask whether you trust it; that is its own question.
@@ -1175,7 +1179,8 @@ commits.
 
 - First public release.
 
-[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.64...HEAD
+[Unreleased]: https://github.com/crmapache/amazing-claude-code/compare/0.13.65...HEAD
+[0.13.65]: https://github.com/crmapache/amazing-claude-code/compare/0.13.64...0.13.65
 [0.13.64]: https://github.com/crmapache/amazing-claude-code/compare/0.13.63...0.13.64
 [0.13.63]: https://github.com/crmapache/amazing-claude-code/compare/0.13.62...0.13.63
 [0.13.62]: https://github.com/crmapache/amazing-claude-code/compare/0.13.61...0.13.62
