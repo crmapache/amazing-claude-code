@@ -106,7 +106,7 @@ internal class DiskRefresh(
         val files = mutableListOf<VirtualFile>()
         val folders = mutableListOf<VirtualFile>()
 
-        ReadAction.run<Throwable> {
+        ReadAction.runBlocking<Throwable> {
             for (path in paths) {
                 val nio = runCatching { Path.of(path) }.getOrNull() ?: continue
                 val known = fs.findFileByNioFile(nio)

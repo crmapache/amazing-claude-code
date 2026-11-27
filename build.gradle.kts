@@ -268,11 +268,12 @@ intellijPlatform {
         // saving the documents throws, and the point of that code is that the agent reads what is on the
         // screen rather than what was last written to disk.
         //
-        // Softer: deprecated usages do not fail the task. Each of them is deliberate and none has a
-        // supported replacement: opening a terminal for the sign-in (ClaudeLogin), rereading files after
-        // the agent's edits (DiskRefresh), catching the dictation hotkey while the keyboard is the IDE's
+        // Softer: deprecated usages do not fail the task. Each of them is deliberate. Two have no
+        // supported replacement: catching the dictation hotkey while the keyboard is the IDE's
         // (VoiceHotkeys), and the list of recent projects (RemoteAgent) - the one that is not deprecated
-        // lives in a class closed to plugins, which would fail this very task.
+        // lives in a class closed to plugins, which would fail this very task. The third, the renderer of
+        // the list that picks between files of the same name (OpenInEditor), has one, but it draws the
+        // rows differently, so moving to it is a visible change rather than a cleanup.
         //
         // Softer: a missing dependency does not fail the task. Exactly one comes up missing and it is
         // not missing at all - the embedded browser, which below 2026.2 is a marketplace plugin rather

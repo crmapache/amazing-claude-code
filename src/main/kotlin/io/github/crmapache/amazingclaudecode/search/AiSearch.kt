@@ -1,8 +1,8 @@
 package io.github.crmapache.amazingclaudecode.search
 
-import com.intellij.execution.process.ProcessAdapter
 import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessHandler
+import com.intellij.execution.process.ProcessListener
 import com.intellij.execution.process.ProcessOutputTypes
 import com.intellij.openapi.util.Key
 import com.intellij.util.concurrency.AppExecutorUtil
@@ -234,7 +234,7 @@ Best match first, at most ten, and none at all - {"hits": []} - when nothing gen
      * happening while it happens. The text arrives in whatever pieces the pipe hands over, so the tail
      * of a half-written line is kept for the next one - a line split down the middle parses as nothing.
      */
-    private class StepReader(private val onStep: (AiStep) -> Unit) : ProcessAdapter() {
+    private class StepReader(private val onStep: (AiStep) -> Unit) : ProcessListener {
 
         private val tail = StringBuilder()
 

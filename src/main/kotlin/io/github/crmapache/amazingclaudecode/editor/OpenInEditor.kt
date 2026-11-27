@@ -173,7 +173,7 @@ internal object OpenInEditor {
      */
     private fun underProject(project: Project, file: VirtualFile): Boolean {
         val roots = runCatching {
-            ReadAction.compute<List<VirtualFile>, RuntimeException> {
+            ReadAction.computeBlocking<List<VirtualFile>, RuntimeException> {
                 ProjectRootManager.getInstance(project).contentRoots.toList()
             }
         }.getOrDefault(emptyList())
